@@ -36,15 +36,27 @@ export interface Weights {
   trackingBase: number;
   /** Extra cost growing with the square of the tracking, at the maximum. */
   trackingSlope: number;
+  /**
+   * Precise mode: cost of a line end missing its target, per (miss / band)². High on purpose (ADR-013):
+   * a whole band's miss costs as much as a hyphen before the last line, so edge precision ranks above
+   * the hyphen budget and Sinneinheiten, below correct hyphenation, alternation and the last-line rules.
+   */
+  edge: number;
+  /** Precise mode: cost of tracking, per (tracking / max)²: prefer the least tracking that hits the edge. */
+  trackingPrecise: number;
 }
 
 /**
- * Tracking assist (Laufweite, plan §4.3): an opt-in rescue for lines that just
- * miss their band. Off by default (ADR-002). It is only tried when the
- * paragraph cannot be set strictly without it, and every tracked line is reported.
+ * Tracking (Laufweite). Off by default (ADR-002).
+ * - rescue (ADR-010): whole units, only for lines that miss their band, only when the paragraph
+ *   cannot be set strictly without it.
+ * - precise (ADR-013, the designer's intent): every long and short line gets the tracking that puts
+ *   its end on its target (long: the full measure, short: the Flatterzone), within ±max, in steps of
+ *   0.01 unit. The solver chooses breaks knowing tracking will close the remaining gap.
  */
 export interface TrackingRules {
   enabled: boolean;
+  mode: 'rescue' | 'precise';
   /** Largest tracking on one line, in 1/1000 em, tighter or looser. */
   max: number;
   /** The em in points (the font size). Needed to turn units into width. */
@@ -141,6 +153,8 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     lastLineTooShort: 1e4,
     trackingBase: 400,
     trackingSlope: 600,
+    edge: 400,
+    trackingPrecise: 20,
   },
   // English hyphenates less (Hochuli, plan §2A.5).
   en: {
@@ -158,6 +172,8 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     lastLineTooShort: 1e4,
     trackingBase: 400,
     trackingSlope: 600,
+    edge: 400,
+    trackingPrecise: 20,
   },
 };
 
@@ -224,6 +240,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
   const widthFactor = Math.min(2, Math.max(0.6, charsPerLine / 60));
   const tracking: TrackingRules = {
     enabled: settings.tracking?.enabled ?? false,
+    mode: settings.tracking?.mode ?? 'rescue',
     max: settings.tracking?.max ?? DEFAULT_TRACKING_MAX,
     emSize: settings.tracking?.emSize ?? 0,
   };

@@ -72,6 +72,7 @@ export function targetGap(P: ResolvedParams, role: Role, startItem: number): num
 }
 
 function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean): DPResult | null {
+  const precise = allowTracking && P.tracking.enabled && P.tracking.mode === 'precise';
   const { items, n, candidates } = M;
   const Z = P.flatterzone;
   const band = P.band;
@@ -132,7 +133,18 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         const lo = role === 'long' ? 0 : Z;
         const hi = lo + band;
         let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
-        if (dist > TOL && trackUnit > 0) {
+        if (precise && trackUnit > 0) {
+          // Precise Laufweite: track the line so its end lands on its target, within ±max, never past the measure.
+          const target = targetGap(P, role, g.start);
+          let t = Math.round(((gap - target) / trackUnit) * 100) / 100;
+          t = Math.max(-P.tracking.max, Math.min(P.tracking.max, t));
+          if (gap - t * trackUnit < -TOL) t = Math.floor((gap / trackUnit) * 100) / 100;
+          tracking = t;
+          gap -= t * trackUnit;
+          dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
+          if (overfull > 0 && gap >= -TOL) overfull = 0;
+          cost = node.cost + W.trackingPrecise * (t / Math.max(1, P.tracking.max)) ** 2 + (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
+        } else if (dist > TOL && trackUnit > 0) {
           // Tracking rescue: the smallest whole value that brings the line into its band.
           const tMin = Math.max(-P.tracking.max, Math.ceil((gap - hi) / trackUnit - 1e-9));
           const tMax = Math.min(P.tracking.max, Math.floor((gap - lo) / trackUnit + 1e-9));
@@ -152,7 +164,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           cost += SOFT_COST.band + SOFT_COST.bandSlope * (dist / band) ** 2;
         }
         const target = targetGap(P, role, g.start);
-        cost += W.centring * ((gap - target) / band) ** 2;
+        cost += (precise ? W.edge : W.centring) * ((gap - target) / band) ** 2;
         if (!node.exempt) {
           // Short gap minus long gap: how much shorter the short neighbour is.
           const diff = role === 'short' ? gap - node.gap : node.gap - gap;
@@ -422,15 +434,17 @@ export function solveParagraph(items: readonly Item[], settings: FlatterSettings
   // phase (then with tracking); soft. Tracking is a rescue, so it is never used when a
   // strict setting exists without it, and the designer's phase wins over an untracked flip.
   const track = P.tracking.enabled;
+  // Precise Laufweite tracks every line from the start; the rescue only after strict fails without it.
+  const precise = track && P.tracking.mode === 'precise';
   let solvedAs: 'strict' | 'soft' = 'strict';
   let phaseFlipped = false;
   let found: { res: DPResult; role: Role } | null = null;
   if (P.mode === 'strict') {
-    found = pick(requested, true, false) ?? (track ? pick(requested, true, true) : null);
+    found = precise ? pick(requested, true, true) : (pick(requested, true, false) ?? (track ? pick(requested, true, true) : null));
     if (!found && requested.length === 1) {
       // Plan §4.3 step 1: try the other phase.
       const other = [opposite(requested[0]!)];
-      found = pick(other, true, false) ?? (track ? pick(other, true, true) : null);
+      found = precise ? pick(other, true, true) : (pick(other, true, false) ?? (track ? pick(other, true, true) : null));
       phaseFlipped = found !== null;
     }
   }

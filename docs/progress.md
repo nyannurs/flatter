@@ -2,6 +2,14 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (later): precise Laufweite; Variation removed (ADR-013)
+
+- The designer wants tracking for geometric precision, not as a rescue. New precise mode: every line end pulled onto its edge within ±max, fractional tracking, edges prioritised above hyphen budget and Sinneinheiten. Panel and playground use it, with an edge-precision readout. Variation slider removed.
+- Fixed the tracking width model (n − 1 steps per line, measured in InDesign).
+- The source-hygiene test had never run (its own regex contained the character it guards against); fixed, and it found and fixed two more literal characters in an old test.
+- InDesign: precise Laufweite steers every line as planned (integration test cases added).
+- **Open question for the designer:** tracking alone moves a 60-character line by about ±0.6 pt per unit, while word steps are 20–40 pt, so real text stays 10–20 pt off its edges even at ±10–15. Options: larger tracking, per-line word-space adjustment, or both.
+
 ## 2026-10-16 (late): fixes after the user's first panel test
 
 The user moved a slider on their TestFile and saw short freezes, an error ("paragraph does not fit on one measuring line") and black panel text on the dark theme. Fixed (details in `docs/spike-results.md`):

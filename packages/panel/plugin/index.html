@@ -31,7 +31,6 @@
     <sp-detail>RAG</sp-detail>
     <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone (% of measure)</sp-label></sp-slider>
     <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label">Band (% of zone)</sp-label></sp-slider>
-    <sp-slider id="variation" min="0" max="100" step="5" value="0" show-value="true"><sp-label slot="label">Variation (%)</sp-label></sp-slider>
     <div class="row">
       <sp-picker id="phase" size="s" label="Phase">
         <sp-menu slot="options">
@@ -66,8 +65,8 @@
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>LAUFWEITE</sp-detail>
-    <sp-checkbox id="tracking">Tracking rescue for near-miss lines</sp-checkbox>
-    <sp-slider id="trackMax" min="1" max="15" step="1" value="3" show-value="true" disabled><sp-label slot="label">Largest tracking (1/1000 em)</sp-label></sp-slider>
+    <sp-checkbox id="tracking">Align line ends exactly (tracking per line)</sp-checkbox>
+    <sp-slider id="trackMax" min="1" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Largest tracking (1/1000 em)</sp-label></sp-slider>
   </div>
 
   <div class="buttons">

@@ -142,11 +142,14 @@ export class ParagraphMetrics {
     return end > start ? this.letterPrefix[end]! - this.letterPrefix[start]! : 0;
   }
 
-  /** Characters a tracking value applies to on a line from start to end ending at break b (the hyphen counts). */
+  /**
+   * How many tracking steps move the line's visible end: tracking is added between characters, so a
+   * line of n characters (the hyphen counts) gains n − 1 steps (measured in InDesign, 2026-10-16).
+   */
   trackedChars(start: number, end: number, b: number): number {
     const base = end > start ? this.charPrefix[end]! - this.charPrefix[start]! : 0;
     const pen = b < this.n ? this.penaltyAt(b) : undefined;
-    return base + (pen?.flagged && pen.width > 0 ? 1 : 0);
+    return Math.max(0, base + (pen?.flagged && pen.width > 0 ? 1 : 0) - 1);
   }
 
   glueCount(start: number, end: number): number {

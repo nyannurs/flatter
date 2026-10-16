@@ -14,7 +14,7 @@ describe('buildParagraph', () => {
   });
 
   it('keeps non-breaking spaces unbreakable and turns newlines into forced breaks', () => {
-    const items = buildParagraph('10 kg Mehl\nZeile', { measure: mono });
+    const items = buildParagraph('10\u00a0kg Mehl\nZeile', { measure: mono });
     expect(items[1]).toMatchObject({ type: 'glue', noBreak: true });
     expect(items[5]).toMatchObject({ type: 'penalty', forced: true });
   });
@@ -53,7 +53,7 @@ describe('buildParagraph', () => {
   });
 
   it('uses only discretionary hyphens when the text has them', () => {
-    const items = buildParagraph('Wach­stube', { measure: mono, hyphenate: every3() });
+    const items = buildParagraph('Wach\u00adstube', { measure: mono, hyphenate: every3() });
     expect(boxes(items)).toEqual(['Wach', 'stube']);
     expect(penalties(items)[0]).toMatchObject({ flagged: true, quality: 'A' });
   });

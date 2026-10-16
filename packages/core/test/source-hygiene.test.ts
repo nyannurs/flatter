@@ -1,6 +1,6 @@
 /**
  * Guards against invisible characters in source files. Writing escapes such as
- *   through a shell can store the real character instead, which silently
+ * \u2028 through a shell can store the real character instead, which silently
  * breaks regular expressions and strings (this happened three times).
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 const DIRS = ['packages', 'tools'];
-const FORBIDDEN = /[  ­   ​﻿￼]/;
+// Built from code points so this file can never contain the characters it looks for.
+const FORBIDDEN = new RegExp('[' + [0x2028, 0x2029, 0x00ad, 0x00a0, 0x202f, 0x2007, 0x200b, 0xfeff, 0xfffc].map((c) => String.fromCharCode(c)).join('') + ']');
 
 function* sources(dir: string): Generator<string> {
   for (const name of readdirSync(dir)) {

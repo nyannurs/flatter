@@ -60,6 +60,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
       variation: fc.constantFrom(0, 0.5, 1),
       hanging: fc.boolean(),
       tracking: fc.option(fc.integer({ min: 0, max: 10 }), { nil: undefined }),
+      trackingMode: fc.constantFrom<'rescue' | 'precise'>('rescue', 'precise'),
     })
     .map(
       (r): FlatterSettings => ({
@@ -72,7 +73,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
         phase: r.phase,
         variation: r.variation,
         hyphenCountsTowardWidth: !r.hanging,
-        ...(r.tracking !== undefined ? { tracking: { enabled: true, max: r.tracking, emSize: 10 } } : {}),
+        ...(r.tracking !== undefined ? { tracking: { enabled: true, mode: r.trackingMode, max: r.tracking, emSize: 10 } } : {}),
       }),
     );
 
@@ -141,12 +142,12 @@ describe('solver invariants for any paragraph', () => {
 
         // Tracking: whole units within the maximum, only on band lines, and only as a rescue.
         for (const line of plan.lines) {
-          expect(Number.isInteger(line.tracking)).toBe(true);
+          if (P.tracking.mode === 'rescue') expect(Number.isInteger(line.tracking)).toBe(true);
           if (!P.tracking.enabled) expect(line.tracking).toBe(0);
           expect(Math.abs(line.tracking)).toBeLessThanOrEqual(P.tracking.enabled ? P.tracking.max : 0);
           if (line.kind !== 'band') expect(line.tracking).toBe(0);
         }
-        if (P.tracking.enabled && P.mode === 'strict') {
+        if (P.tracking.enabled && P.tracking.mode === 'rescue' && P.mode === 'strict') {
           const untracked = solveParagraph(items, { ...settings, tracking: { enabled: false } });
           if (untracked.solvedAs === 'strict' && !untracked.phaseFlipped) expect(plan.stats.trackedLines).toBe(0);
         }

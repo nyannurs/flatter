@@ -134,3 +134,16 @@ The designer asked whether the solver uses Laufweite, then decided: add tracking
 - **Target**: the story of the current selection (text frame or text cursor). Stored settings are loaded into the panel when the selection moves to a story Flatter has been applied to.
 - **Dev builds** poll the application label `flatter-dev-command` every 300 ms and answer in `flatter-dev-result`, so terminal scripts can drive tests inside the loaded panel. Release builds (`npm run panel:release`) leave this out.
 - **Loading for development**: `tools/indesign/uxp-load.mjs` talks to the UXP Developer Tool service directly (Adobe's CLI does not run on Node 24).
+
+## ADR-013: Laufweite for geometric precision; Variation removed (2026-10-16)
+
+The designer clarified (2026-10-16): the tracking slider is meant to make the long–short rhythm **more geometric and exact**, not to rescue near misses. "I want to be able to hone in the perfect ragged text for an aesthetic publication." Also: remove the Variation slider.
+
+- **Precise mode** (`tracking.mode = 'precise'`, used by the panel and playground): every band line gets the tracking that puts its end on its target (long lines on the full measure, short lines on the Flatterzone), within ±max, in steps of 0.01 unit (InDesign accepts fractional tracking; measured 2026-10-16). A line never exceeds the measure. The last line and forced lines are not tracked.
+- **Priorities in precise mode**: missing an edge costs 400 × (miss / band)², so edge precision ranks above the hyphen budget and Sinneinheiten, still below correct hyphenation, strict alternation and the last-line rules. Tracking itself costs 20 × (t / max)², so the least tracking that reaches the edge wins.
+- **Rescue mode** (ADR-010) stays in the solver API; the panel no longer offers it.
+- **Tracking steps**: tracking sits between characters, so a line of n characters gains n − 1 steps at its visible edge (measured in InDesign). The solver's width model was corrected accordingly.
+- **Readout**: plans report `edgeMiss` (worst distance of a line end from its target) and the spread of long and short line ends; the panel and playground show them.
+- **Variation** is gone from the panel and playground (it barely changed any break: 0 of 38 German lines at 100 %). The core keeps the option for API compatibility.
+
+**Known limit (measured, German reference text, 60 characters per line, 10 pt):** words are large steps (20–40 pt with their space) compared with what tracking can move a line (about ±0.6 pt per 1/1000 em). With ±10 the worst line still sits 14–19 pt off its edge; truly geometric edges need more flexibility. Options put to the designer: allow larger tracking, adjust word spaces per line (track only the spaces, which Bringhurst prefers over letterspacing), or both.

@@ -84,6 +84,11 @@ export interface PlanStats {
   shortGapSpread: number;
   /** Lines with tracking (Laufweite) applied. */
   trackedLines: number;
+  /** Largest distance of a band line's end from its target, in points. */
+  edgeMiss: number;
+  /** Spread of the long lines' ends and of the short lines' ends (max − min of their gaps), in points. */
+  longEdgeRange: number;
+  shortEdgeRange: number;
   /** DP states explored, for performance tracking. */
   states: number;
 }

@@ -54,6 +54,7 @@ inNewDocument((doc: Any) => {
       reapply: { lines: `${again.linesAsPlanned}/${again.linesPlanned}`, probes: again.probes, ms: again.ms },
       tracked: r.trackedLines,
       oversetLines: r.oversetLines,
+      edges: r.paragraphs.map((p) => ({ long: +p.plan.stats.longEdgeRange.toFixed(2), short: +p.plan.stats.shortEdgeRange.toFixed(2), worst: +p.plan.stats.edgeMiss.toFixed(2) })),
       remove: {
         ...removed,
         restoredExactly: JSON.stringify(afterRemove) === JSON.stringify(original),
@@ -97,6 +98,14 @@ inNewDocument((doc: Any) => {
   for (const width of [240, 260]) {
     run(`German, ${width} pt, tracking rescue ±3`, () => frameWithDefaults(doc, [40, 40, 560, 40 + width], DE_TEXT.join('\r'), 'German: 2006 Reform'), {
       tracking: { enabled: true, max: 3 },
+    });
+  }
+
+  for (const max of [5, 15]) {
+    run(`German, precise Laufweite ±${max}`, () => frameWithDefaults(doc, [40, 40, 500, 340], DE_TEXT.join('\r'), 'German: 2006 Reform'), {
+      bandShare: 0.25,
+      zoneShare: 0.2,
+      tracking: { enabled: true, mode: 'precise', max },
     });
   }
 

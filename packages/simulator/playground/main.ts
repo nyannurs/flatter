@@ -42,7 +42,6 @@ function render(): void {
   $('zOut').textContent = `${num('z').toFixed(1)} % · ${z.toFixed(1)} pt`;
   $('modeTag').textContent = modeLabel(z, measure);
   $('bandOut').textContent = `${num('band')} % of zone · ${band.toFixed(1)} pt`;
-  $('variationOut').textContent = `${num('variation')} %`;
   $('maxHyphOut').textContent = String(num('maxHyph'));
   $('trackMaxOut').textContent = `±${num('trackMax')}/1000 em`;
   $<HTMLInputElement>('trackMax').disabled = !checked('tracking');
@@ -54,7 +53,6 @@ function render(): void {
     measure,
     flatterzone: z,
     band,
-    variation: num('variation') / 100,
     phase: val('phase') as 'long' | 'short' | 'auto',
     continuous: checked('continuous'),
     mode: val('mode') as 'strict' | 'soft',
@@ -62,13 +60,19 @@ function render(): void {
     noHyphenation: checked('noHyph'),
     hyphenation: val('hyphMode') as 'safe' | 'normal',
     sense: checked('sense'),
-    tracking: { enabled: checked('tracking'), max: num('trackMax') },
+    tracking: { enabled: checked('tracking'), mode: 'precise', max: num('trackMax') },
   });
   const s = summarise(result);
+  const plans = result.paragraphs.map((p) => p.plan);
+  const edge = {
+    long: Math.max(0, ...plans.map((p) => p.stats.longEdgeRange)),
+    short: Math.max(0, ...plans.map((p) => p.stats.shortEdgeRange)),
+    worst: Math.max(0, ...plans.map((p) => p.stats.edgeMiss)),
+  };
   const allGood = s.errors === 0;
   $('status').innerHTML =
     `<span class="big ${allGood ? 'ok' : 'bad'}">${allGood ? '✓' : '⚠'} ${s.inRhythm}/${s.bandLines} lines in rhythm</span>` +
-    `<span class="meta">${s.perfect}/${s.paragraphs} paragraphs strict · ${s.hyphens} hyphens · ${s.tracked} tracked lines · ${s.errors} errors · ${s.warnings} warnings · solved in ${result.solveMs.toFixed(1)} ms</span>`;
+    `<span class="meta">edges: long ±${edge.long.toFixed(1)} pt, short ±${edge.short.toFixed(1)} pt, worst ${edge.worst.toFixed(1)} pt off · ${s.perfect}/${s.paragraphs} paragraphs strict · ${s.hyphens} hyphens · ${s.tracked} tracked lines · ${s.errors} errors · ${s.warnings} warnings · solved in ${result.solveMs.toFixed(1)} ms</span>`;
 
   $('preview').innerHTML = renderSvg(
     result.paragraphs.map((p) => p.plan),
@@ -86,7 +90,7 @@ function render(): void {
   $('issues').innerHTML = items.length ? `<h2>Report</h2><ul>${items.join('')}</ul>` : '';
 }
 
-for (const id of ['chars', 'size', 'z', 'band', 'variation', 'maxHyph', 'trackMax']) $(id).addEventListener('input', schedule);
+for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'trackMax']) $(id).addEventListener('input', schedule);
 for (const id of ['phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;

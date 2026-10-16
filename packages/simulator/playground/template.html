@@ -104,7 +104,6 @@
       <legend>Rag</legend>
       <div class="ctl"><label for="z"><span>Flatterzone <span id="modeTag" class="mode-tag"></span></span><span id="zOut"></span></label><input id="z" type="range" min="8.3" max="25" step="0.1" value="20"></div>
       <div class="ctl"><label for="band"><span>Band</span><span id="bandOut"></span></label><input id="band" type="range" min="10" max="90" step="1" value="50"></div>
-      <div class="ctl"><label for="variation"><span>Variation</span><span id="variationOut"></span></label><input id="variation" type="range" min="0" max="100" step="5" value="0"></div>
       <div class="ctl row">
         <div><label for="phase"><span>Phase</span></label><select id="phase"><option value="long">Start long</option><option value="short">Start short</option><option value="auto">Auto</option></select></div>
         <div><label for="mode"><span>Mode</span></label><select id="mode"><option value="strict">Strict</option><option value="soft">Soft</option></select></div>
@@ -122,8 +121,8 @@
 
     <fieldset>
       <legend>Laufweite</legend>
-      <label class="check"><input id="tracking" type="checkbox"> Tracking rescue for lines that just miss their band</label>
-      <div class="ctl"><label for="trackMax"><span>Largest tracking</span><span id="trackMaxOut"></span></label><input id="trackMax" type="range" min="1" max="15" step="1" value="3"></div>
+      <label class="check"><input id="tracking" type="checkbox"> Align line ends exactly (tracking per line)</label>
+      <div class="ctl"><label for="trackMax"><span>Largest tracking</span><span id="trackMaxOut"></span></label><input id="trackMax" type="range" min="1" max="30" step="1" value="5"></div>
     </fieldset>
 
     <fieldset>

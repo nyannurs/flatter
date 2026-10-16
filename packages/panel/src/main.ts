@@ -55,21 +55,20 @@ export function settingsFromUI(): ApplySettings {
   return {
     zoneShare: num('zone') / 100,
     bandShare: num('band') / 100,
-    variation: num('variation') / 100,
     phase: picked('phase', 'long') as ApplySettings['phase'],
     mode: picked('mode', 'strict') as ApplySettings['mode'],
     hyphenation: picked('hyphenation', 'safe') as ApplySettings['hyphenation'],
     maxConsecutiveHyphens: num('maxHyph'),
     sense: checked('sense'),
     continuous: checked('continuous'),
-    ...(tracking ? { tracking: { enabled: true, max: num('trackMax') } } : {}),
+    // Laufweite in precise mode (ADR-013): every line end is pulled onto its edge, within ±max.
+    ...(tracking ? { tracking: { enabled: true, mode: 'precise' as const, max: num('trackMax') } } : {}),
   };
 }
 
 function settingsToUI(s: ApplySettings): void {
   if (s.zoneShare !== undefined) $('zone').value = s.zoneShare * 100;
   if (s.bandShare !== undefined) $('band').value = s.bandShare * 100;
-  if (s.variation !== undefined) $('variation').value = s.variation * 100;
   if (s.phase) $('phase').value = s.phase;
   if (s.mode) $('mode').value = s.mode;
   if (s.hyphenation) $('hyphenation').value = s.hyphenation;
@@ -114,6 +113,9 @@ function render(r: ApplyResult, ms?: number): void {
   let band = 0;
   let inRhythm = 0;
   let strict = 0;
+  let longRange = 0;
+  let shortRange = 0;
+  let worstMiss = 0;
   const items: string[] = [];
   for (const p of r.paragraphs) {
     const broken = new Set(p.plan.violations.filter((v) => v.kind === 'band' || v.kind === 'contrast').map((v) => v.line));
@@ -121,6 +123,9 @@ function render(r: ApplyResult, ms?: number): void {
     band += bandLines.length;
     inRhythm += bandLines.filter((l) => !broken.has(l.index)).length;
     if (p.plan.feasible) strict++;
+    longRange = Math.max(longRange, p.plan.stats.longEdgeRange);
+    shortRange = Math.max(shortRange, p.plan.stats.shortEdgeRange);
+    worstMiss = Math.max(worstMiss, p.plan.stats.edgeMiss);
     for (const v of p.plan.violations) {
       if (v.kind === 'tight-steering') continue;
       const where = v.line >= 0 ? `¶${p.index + 1}, line ${v.line + 1}` : `¶${p.index + 1}`;
@@ -134,7 +139,8 @@ function render(r: ApplyResult, ms?: number): void {
   setStatus(
     `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} lines in rhythm`,
     allGood ? 'ok' : 'bad',
-    `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked` +
+    `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · ` +
+      `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked` +
       (r.oversetLines ? ` · ${r.oversetLines} lines overset (not visible, not set)` : '') +
       (ms !== undefined ? ` · ${ms} ms` : '') +
       (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
@@ -265,7 +271,7 @@ function onSelectionChanged(): void {
 }
 
 function init(): void {
-  for (const id of ['zone', 'band', 'variation', 'maxHyph', 'trackMax']) {
+  for (const id of ['zone', 'band', 'maxHyph', 'trackMax']) {
     $(id).addEventListener('input', onInput);
     $(id).addEventListener('change', onInput);
   }

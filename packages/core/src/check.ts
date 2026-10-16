@@ -118,8 +118,11 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
     prevEnd = endWord;
 
     if (line.tracking !== 0) {
-      const allowed = P.tracking.enabled && Math.abs(line.tracking) <= P.tracking.max && Number.isInteger(line.tracking);
-      out.push(
+      const precise = P.tracking.mode === 'precise';
+      const allowed = P.tracking.enabled && Math.abs(line.tracking) <= P.tracking.max + 1e-9 && (precise || Number.isInteger(line.tracking));
+      if (allowed && precise) {
+        // Every line is tracked in precise mode; the paragraph summary reports it instead.
+      } else out.push(
         allowed
           ? {
               kind: 'tracking',
@@ -236,7 +239,12 @@ function spread(xs: number[]): number {
 
 export function planStats(lines: readonly PlannedLine[]): Omit<PlanStats, 'states'> {
   const band = lines.filter((l) => l.kind === 'band');
+  const miss = band.map((l) => Math.abs(l.available - l.targetWidth - l.gap));
+  const range = (xs: number[]) => (xs.length ? Math.max(...xs) - Math.min(...xs) : 0);
   return {
+    edgeMiss: miss.length ? Math.max(...miss) : 0,
+    longEdgeRange: range(band.filter((l) => l.role === 'long').map((l) => l.gap)),
+    shortEdgeRange: range(band.filter((l) => l.role === 'short').map((l) => l.gap)),
     lines: lines.length,
     bandLines: band.length,
     hyphens: lines.filter((l) => l.hyphenClass !== undefined).length,
