@@ -1,18 +1,105 @@
 # Phase 0 spike results
 
-Findings for spikes S1 to S7 (see plan §8). Each entry records the question, the setup, the result against the pass criterion, and any plan amendments.
+Findings for spikes S1–S7 (plan §8), run on 2026-10-16 in InDesign 2026 (21.6.0.57) on macOS, in throwaway documents created and closed by the scripts. Spike code: `tools/indesign/spikes/src/` (bundle with `node tools/indesign/build-spikes.mjs [prefix]`, run with `tools/indesign/run.sh tools/indesign/spikes/dist/<name>.idjs`).
 
-_No spikes run yet._
+| Spike | Question | Result |
+|---|---|---|
+| S1 | Do per-line wrap teeth reproduce planned breaks? | **Pass.** 867/867 lines without hyphenation, 858/858 with hyphenation after re-planning (≤ 2 rounds). |
+| S2 | Can we measure widths accurately in bulk? | **Pass for unhyphenated lines** (exact to 0.001 pt). Hyphenated lines ±0.16 pt (kerning against the hyphen). |
+| S3 | Can we get InDesign's hyphenation points? | **Yes, by probing.** No API exists. About 8 ms and 3 compositions per word. |
+| S4 | Live loop latency in the panel | Not run: needs the panel (UXP Developer Tool). |
+| S5 | Events that detect text edits | No text-edit event exists. Listeners must live in a loaded plugin; see below. |
+| S6 | Layout interactions | Works with columns, threading, baseline grid, hidden or non-printing teeth. Breaks with optical margin alignment, "ignore text wrap", and teeth below the text when "wrap only affects text beneath" is on. |
+| S7 | Duden availability and style | **Yes.** Duden is the default German vendor; the Duden style is a scriptable paragraph attribute. |
 
-## S7 (partial, 2026-10-16): dictionary vendor
+## S1: steering with wrap teeth
 
-- InDesign 2026 (21.6.0.57). Duden ships with InDesign and is already the default hyphenation vendor for German: 1996 Reform, German: 2006 Reform, German: Swiss, German: Swiss 2006 Reform and German: Austria 2006 Reform. Available vendors: Duden, Hunspell, Proximity, User Dictionary Only.
-- English (USA, UK, Canadian) uses Hunspell; Proximity is the alternative.
-- Readable via `app.languagesWithVendors[i].hyphenationVendor` and `.hyphenationVendorList`; the vendor is settable there too (not yet tried). The Duden hyphenation *style* (Aesthetic / Preferred Aesthetic, plan §5.2) is not among the scriptable properties of `LanguageWithVendors`: still to find, possibly UI-only.
-- Scripting route: both ExtendScript and UXP scripts run from the terminal (`tools/indesign/run.sh`), so spikes S1–S3 and S5–S7 can run without the UXP Developer Tool.
+Setup: text measured in InDesign (S2 method), breaks planned by `@flatter/core`, one tooth per band line, then lines read back. Fonts Minion Pro 10 and 12 pt, Georgia 9 pt; measures 220–340 pt; leading 1.0×, 1.2× and 1.5× the type size; 3 German and 3 English paragraphs.
 
-## Notes to take into the spikes (from simulator work, 2026-10-16)
+- **Variant A, no hyphenation: 867 of 867 lines broke exactly as planned**, at every leading, including leading equal to the type size. Each tooth affects only its own line.
+- **Variant B, hyphenation (Safe classes from `@flatter/hyphenation`; InDesign with Duden Preferred Aesthetic / Hunspell): 858 of 858 lines after re-planning.** InDesign refused 3 planned points (Pro-gramm, Zusam-men, Ein-zelne); marking a refused point unavailable and solving again converged in at most 2 rounds (9 re-plans over 126 trials). 90 lines were hyphenated.
+- Hyphenation matters for the rhythm: strict alternation in 40 of 42 paragraph/measure settings with hyphenation, 31 of 42 without.
+- **Tooth recipe** (`tools/indesign/spikes/src/teeth.ts`): a rectangle 0.1 pt high, centred half an x-height above the baseline, from the steering width to past the frame edge; bounding-box wrap, left side, offset 0; no stroke, no fill. Baselines are predictable with `firstBaselineOffset = LEADING_OFFSET` and fixed leading: baseline i = frame top + (i + 1) × leading.
+- **UXP pitfall: `rect.strokeWeight = 0` silently does nothing.** The default 1 pt stroke then moves the wrap edge 0.5 pt to the left (the wrap uses visible bounds) and every line breaks a word early. Set stroke and fill when creating the object, or through `properties = {...}`.
+- Steering margin ε = 0.05 pt worked. InDesign squeezes a line in if it is up to ~0.1–0.3 pt too wide (S2), so the solver's slack must exceed ε plus that tolerance; no test line came close.
+- Speed in a script: about 60 ms per paragraph trial including creating and removing the frame and its teeth. The live loop only moves teeth, so S4 should be much faster; still to measure.
 
-- **S2 measurement**: the solver measures lines by advance width (the right edge of the last glyph's advance, including the hyphen). Visible ink ends about half a point earlier because of right side bearings. Decide during S2 whether InDesign's end offsets are advance-based, and whether bands should use ink or advance edges.
-- **S1 steering**: the plan now reports `slack` per line, the extra width the composer needs to take one more fragment. Lines with slack under 2ε are flagged "tight-steering". Check how small a slack the teeth can reliably steer.
-- **Phase flips**: 5–21 % of paragraphs in the reference texts cannot start long. Worth confirming with real InDesign text that this rate holds.
+## S2: measurement
+
+- Set the paragraph once on a 9000 pt wide line and read `characters.everyItem().horizontalOffset` / `endHorizontalOffset`: fragment widths include kerning inside the fragment. Bulk reads took about 25 ms per paragraph.
+- **Unhyphenated lines: predicted width = actual width, exactly** (0.000 pt), except where InDesign squeezes (below).
+- **Hyphenated lines: ±0.16 pt.** The last letter is kerned against the hyphen instead of the next letter. `line.endHorizontalOffset` excludes the hyphen, so its glyph cannot be measured from the line; Minion Pro 10 pt hyphen advance = 3.56 pt.
+- **Fitting tolerance:** InDesign fits a line whose advance width exceeds the available width by up to about 0.1–0.3 pt at 10 pt, compressing it slightly. The amount depends on the last glyph (probably its right side bearing: InDesign checks ink, not advance). Word spacing settings make no difference (tested with 100/100/100 and the default 80/100/133).
+- Consequence: ε must stay well below the slack minus ~0.4 pt; a tooth placed at the advance width of the planned line always admits it.
+
+## S3: InDesign's hyphenation points
+
+- **No DOM API lists them.** Probe instead (`s3-probe.ts`): the text "x <word>" in one frame; narrow the frame step by step; line 1 ending inside the word reveals the last point that fits. The leading "x " guarantees a legal break, so InDesign never emergency-breaks the word (without it, InDesign breaks overlong words at any letter, which looks like a point).
+- **Replace text in place** (`story.texts.item(0).contents = ...`): assigning `frame.contents` drops the paragraph settings, including the language.
+- **Cost: about 8 ms and 3.1 compositions per word** (German and English). Above the 5 ms target, but each unique word is probed once per document and setting (cache key: word, language, hyphenation settings, Duden style).
+- **German, Duden Preferred Aesthetic: 99 points over 91 words; it refused 46 of our 141 Safe points**, mostly syllable breaks inside stems (Ausstel-lungen, Flugblät-ter). **English, Hunspell: refused 1 of our 42** (compos-itor).
+- **InDesign uses points we did not list**: Duden takes one reading of ambiguous words (Wach-stube, Stau-becken); Hunspell picks homograph readings (pres-ent, proj-ect). These must be merged into the item list as potential breaks (class C/X) so steering knows the composer could take them.
+- Consequence for the adapter: Safe points = our A/B ∩ InDesign's probed points; all probed points are potential breaks for steering.
+
+### Duden styles (`s3b-duden-styles.ts`, 84 German words)
+
+| Style | Points | Words with a point | Examples |
+|---|---|---|---|
+| All (InDesign's default) | 133 | 82 | Ur-ins-tinkt, be-in-hal-ten, Aus-stel-lun-gen |
+| All but unaesthetic | 125 | 81 | Ur-ins-tinkt, be-inhal-ten |
+| **Preferred aesthetic** | 89 | 80 | Ur-instinkt, be-inhalten, Aus-stellungen, Feier-abend, Programm-hefte |
+| Aesthetic | 55 | 48 | same style, but 36 words lose every point |
+
+"All" allows meaning-distorting divisions (Urins-tinkt, bein-halten). **Preferred Aesthetic confirms ADR-002**: it breaks almost only at word joints and still offers a point in most words.
+
+## S5: edit detection
+
+- Event types in the DOM (read via ExtendScript): `afterSelectionChanged`, `afterSelectionAttributeChanged`, `afterContextChanged`, document open/save/close/revert events, `afterAttributeChanged` (MutationEvent), `onIdle` (IdleEvent, via `app.idleTasks`). **There is no text-content-changed event.**
+- **A listener registered by a one-off UXP script fires later but its script context is gone**: InDesign shows "An attached script generated the following error: Script context is not available anymore! Do you want to disable this event handler?" (seen 2026-10-16 during the spike). Listeners must be registered by the loaded plugin (panel), which stays alive.
+- Plan: in the panel, use `afterSelectionChanged` to note which managed story holds the insertion point (typing moves it), and an idle task to compare a cheap content hash of those stories; mark them stale and, in Live mode, recompute the affected paragraphs. Manual Recompute stays as the fallback (plan §8 S5).
+
+## S6: layout interactions (`s6-layout.ts`)
+
+One German and one English paragraph, 280 pt measure, no hyphenation, 13 lines in total. Without teeth only 2 of 13 lines match the plan, so a match means the steering works.
+
+| Case | Lines as planned |
+|---|---|
+| No teeth | 2/13 |
+| Teeth (control) | 13/13 |
+| Teeth on a hidden layer | 13/13 |
+| Teeth on a hidden layer with "suppress text wrap when hidden" | 13/13 (the option had no effect in this test) |
+| Non-printing teeth | 13/13 |
+| Two columns (teeth per column) | 13/13 |
+| Two threaded frames (teeth per frame) | 13/13 |
+| Aligned to a baseline grid equal to the leading | 13/13 |
+| "Text wrap only affects text beneath" on, teeth on a layer above the text | 13/13 |
+| "Text wrap only affects text beneath" on, teeth below the text | 2/13 |
+| Frame set to ignore text wrap | 2/13 |
+| Optical margin alignment on | 5/13 |
+
+- The preference "Text Wrap Only Affects Text Beneath" is `textPreferences.zOrderTextWrap` in scripting. Other composition preferences that touch wrap: `justifyTextWraps`, `abutTextToTextWrap`, `honourTextIndentsWithTextWrap` (the user's defaults: false, true, true).
+- `doc.layers.add()` makes the new layer active, so later frames land on it. Put text and teeth on explicit layers.
+- Not tested: PDF export. Teeth have no stroke and no fill, so they print nothing either way; they are also set non-printing.
+
+## S7: Duden
+
+- Duden ships with InDesign and is the default hyphenation vendor for German 1996/2006 Reform, Swiss, Swiss 2006 and Austria 2006. Readable and settable via `app.languagesWithVendors[i].hyphenationVendor`; options: Duden, Hunspell, Proximity, User Dictionary Only. English uses Hunspell.
+- **The Duden style is the paragraph attribute `providerHyphenationStyle`** (`HyphenationStyleEnum`: HYPH_ALL, HYPH_ALL_BUT_UNAESTHETIC, HYPH_AESTHETIC, HYPH_PREFERRED_AESTHETIC). The user's [Basic Paragraph] style is HYPH_ALL. The plugin's "Fix settings" should set HYPH_PREFERRED_AESTHETIC on target paragraphs (ADR-002).
+
+## Other runtime findings
+
+- **UXP scripts that contain "async" followed by a word, even inside a string, run asynchronously**: `doScript` returns immediately and the result appears later. The `hyphen` package's error text triggers this. `tools/indesign/run.sh` therefore polls for the result label.
+- **The `hyphen` package's per-language entry points cannot be used in UXP** (they build an async hyphenator at load). `@flatter/hyphenation` now uses the synchronous core with the pattern files directly.
+- In UXP, `itemByName()` results cannot be assigned to text attributes; assign the name string (`appliedLanguage = 'German: 2006 Reform'`).
+- Single-line Composer, left aligned, hyphenation zone 0, `firstBaselineOffset = LEADING_OFFSET` and fixed leading give fully predictable composition for steering.
+
+## Plan amendments from Phase 0
+
+1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.
+2. **"Fix settings" (plan §5.5) adds**: Duden style Preferred Aesthetic (`providerHyphenationStyle`), Single-line Composer, left alignment, hyphenation zone 0, fixed leading, `firstBaselineOffset = LEADING_OFFSET`, frames must not ignore text wrap, optical margin alignment off on managed stories (ADR-002 #2 measures to the frame edge; supporting optical margins would need measuring with it on).
+3. **Hyphenation points**: probe every unique word once per document and setting (~8 ms per word) and cache in a document label. Safe points = our A/B ∩ InDesign's probed points. Every probed point is a potential break for steering, even when we never use it.
+4. **Verify and re-plan** stays: refused points are marked unavailable; at most 2 rounds in all S1 trials.
+5. **Steering margin** ε = 0.05 pt. The solver's tight-steering check should compare slack with ε plus InDesign's fitting tolerance (about 0.03 em) rather than 2ε. To do in Phase 3.
+6. **Hyphenated line widths** are known to about ±0.16 pt (kerning against the hyphen); the margin and the read-back absorb this.
+7. **Edit detection** must live in the panel: `afterSelectionChanged` to note the active story, an idle task comparing content hashes, manual Recompute as fallback.
+8. **S4 (live latency)** still open; it needs the panel loaded through the UXP Developer Tool.

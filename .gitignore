@@ -29,3 +29,6 @@ packages/simulator/out/
 
 # Local InDesign test documents (kept out of version control)
 /InDesign Test File/
+
+# Built UXP spike scripts
+tools/indesign/spikes/dist/

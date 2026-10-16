@@ -77,6 +77,9 @@ tools/indesign/run.sh some-script.jsx                    # ExtendScript; result 
 - UXP scripts run through `app.doScript(..., ScriptLanguage.UXPSCRIPT)`, so most Phase 0 spikes need no plugin and no UXP Developer Tool. The UDT is only needed to load the panel (Phase 4, spike S4).
 - Never modify the user's open documents (e.g. `InDesign Test File/TestFile.indd`). Spikes create their own documents and close them without saving unless asked.
 - macOS asks once whether the terminal may control InDesign; the user has to click OK.
+- Spikes: TypeScript in `tools/indesign/spikes/src/`, bundled with the real packages by `node tools/indesign/build-spikes.mjs [prefix]` into `tools/indesign/spikes/dist/*.idjs` (git-ignored). Results and the UXP pitfalls found so far are in `docs/spike-results.md`. Read it before writing InDesign code.
+- Never register event listeners from a one-off script: when the script ends InDesign shows the user an error dialog for every event ("Script context is not available anymore"). Listeners belong in the loaded panel. If one slips through, find it in `app.eventListeners` (by id) and remove only that one.
+- A UXP script whose text contains "async" followed by a word runs asynchronously; `run.sh` polls for the result, so a script must always write its result label, even on error.
 
 ## Environment gotchas
 

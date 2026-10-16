@@ -15,6 +15,8 @@ Status: design phase · Languages in scope: German (de-DE 2006 reform, de-CH 200
 
 ---
 
+> **Phase 0 results (2026-10-16):** spikes S1–S3 and S5–S7 are done; see `docs/spike-results.md`, including the plan amendments at its end. Where they differ, the spike results win (§0.5).
+
 ## 1. Goal
 
 A UXP panel plugin for InDesign that sets left-aligned ragged text (Flattersatz) in a **strictly alternating rhythm: long, short, long, short …**, with:

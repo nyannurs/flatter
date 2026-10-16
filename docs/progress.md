@@ -2,6 +2,22 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (late night): Phase 0 spikes run in InDesign
+
+**Done** (details and numbers in `docs/spike-results.md`)
+- S1 steering with wrap teeth: **pass**. 867/867 lines without hyphenation; 858/858 with hyphenation after re-planning (≤ 2 rounds). Fonts Minion Pro and Georgia, 9–12 pt, measures 220–340 pt, leading 1.0–1.5×.
+- S2 measurement: unhyphenated lines exact; hyphenated ±0.16 pt; InDesign squeezes lines up to ~0.3 pt too wide.
+- S3 hyphenation points: no API; probing works at ~8 ms per word. Duden Preferred Aesthetic refuses many of our syllable points and keeps joints.
+- S5 events: no text-edit event; listeners only in the panel. A test listener caused an error dialog for the user; it was removed (by the user's click and by id afterwards).
+- S6 layout: works with columns, threading, baseline grid, hidden/non-printing teeth; breaks with optical margin alignment, "ignore text wrap", and teeth below the text when "wrap only affects text beneath" is on.
+- S7 Duden: default vendor; style scriptable via `providerHyphenationStyle`; "All" (InDesign's default) allows Urins-tinkt and bein-halten.
+- `@flatter/hyphenation` now uses the `hyphen` package's synchronous core (the per-language entry points fail in UXP).
+- Plan amendments listed at the end of `docs/spike-results.md`; `docs/plan.md` points to them.
+
+**Next**
+- S4 (live latency) needs the panel: the user installs the UXP Developer Tool.
+- Phase 3, the InDesign adapter, can start: measure, probe and cache points, solve, steer, read back and re-plan, settings check and fix, single undo step.
+
 ## 2026-10-16 (night): InDesign access confirmed
 
 - InDesign 2026 (21.6) is installed; Duden is already the German hyphenation vendor (no setup needed). Details in `docs/spike-results.md` (S7, partial).

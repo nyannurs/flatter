@@ -4,10 +4,17 @@
  * de-1996 MIT (generated from the wortliste project), en-gb MIT, en-us
  * permissive notice (G. D. C. Kuiken). Keep the notices when bundling.
  */
-import de from 'hyphen/de-1996/index.js';
-import enGb from 'hyphen/en-gb/index.js';
-import enUs from 'hyphen/en-us/index.js';
+import createHyphenator from 'hyphen/hyphen.js';
+import dePatterns from 'hyphen/patterns/de-1996.js';
+import enGbPatterns from 'hyphen/patterns/en-gb.js';
+import enUsPatterns from 'hyphen/patterns/en-us.js';
 import type { HyphenationSource } from './types.ts';
+
+// Use the synchronous core directly. The package's per-language entry points also build an
+// async hyphenator at load time, which throws in InDesign's UXP runtime (no global object).
+const de = { hyphenateSync: createHyphenator(dePatterns) };
+const enGb = { hyphenateSync: createHyphenator(enGbPatterns) };
+const enUs = { hyphenateSync: createHyphenator(enUsPatterns) };
 
 function source(name: string, engine: { hyphenateSync(t: string, o?: { minWordLength?: number }): string }): HyphenationSource {
   const cache = new Map<string, number[]>();
