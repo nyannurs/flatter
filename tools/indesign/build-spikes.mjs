@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const src = resolve(here, 'spikes/src');
 const only = process.argv[2];
-const entries = readdirSync(src).filter((f) => /^s\d.*\.ts$/.test(f) && (!only || f.startsWith(only)));
+const entries = readdirSync(src).filter((f) => /^[si]\d.*\.ts$/.test(f) && (!only || f.startsWith(only)));
 const variants = { 's1-steer.ts': [['s1-steer-a', false], ['s1-steer-b', true]] };
 for (const f of entries) {
   for (const [name, hyph] of variants[f] ?? [[f.replace(/\.ts$/, ''), undefined]]) {

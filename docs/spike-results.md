@@ -93,6 +93,13 @@ One German and one English paragraph, 280 pt measure, no hyphenation, 13 lines i
 - In UXP, `itemByName()` results cannot be assigned to text attributes; assign the name string (`appliedLanguage = 'German: 2006 Reform'`).
 - Single-line Composer, left aligned, hyphenation zone 0, `firstBaselineOffset = LEADING_OFFSET` and fixed leading give fully predictable composition for steering.
 
+## Integration findings (Phase 3, 2026-10-16)
+
+- **Do not measure in place.** In the composed story, a space at a line end has a shortened advance (0–2.3 pt) and a letter before a break loses its kerning. Plans built from such widths missed by one word (17/21 lines). Measuring a duplicate of the paragraph on one wide line in the probe frame fixed it (all lines as planned) and makes plans independent of the current breaks.
+- **`autoLeading` is the auto-leading percentage**, not a switch; auto leading shows as `leading = Leading.AUTO`.
+- Moving a rectangle with `r.geometricBounds = …` works (unlike `strokeWeight`).
+- Measured in InDesign 2026 with three paragraphs per story: first Apply about 1 s (probing ~80–100 words once, measuring, two composition rounds), re-apply about 0.15 s with the probe cache.
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

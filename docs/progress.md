@@ -2,6 +2,18 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (later still): Phase 3 InDesign adapter built
+
+**Done**
+- `packages/indesign-adapter` (ADR-011): measure, probe and cache InDesign's hyphenation points, merge with our classes, solve, steer with teeth, read back, re-plan, apply tracking for the rescue, check and fix settings, Remove with exact restore, one undo step per Apply and Remove.
+- Node tests: 23 for the adapter (fake greedy composer for the loop), plus a source-hygiene test that catches invisible characters. 121 tests in total.
+- InDesign integration tests (`npm run test:indesign`, throwaway documents): German and English, two columns, threaded frames, indents and paragraph spacing, tracking rescue: every line as planned; re-apply with the probe cache; Remove restores the original composition exactly; one Undo reverts Apply. Tracking scan over 250–340 pt: 32 of 32 tracked lines set as planned.
+- Found and fixed: measuring in place is unreliable (see `docs/spike-results.md`, integration findings).
+
+**Next**
+- Phase 4, the panel: needs the UXP Developer Tool (the user is installing it). Then spike S4 (live latency).
+- Phase 3 leftovers: edit detection (panel), mixed formatting inside words, tabs, threaded frames of different widths.
+
 ## 2026-10-16 (late night): Phase 0 spikes run in InDesign
 
 **Done** (details and numbers in `docs/spike-results.md`)

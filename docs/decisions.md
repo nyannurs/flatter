@@ -113,3 +113,15 @@ The designer asked whether the solver uses Laufweite, then decided: add tracking
 
 ±3 meets the 95 % target in all languages with very few tracked lines. ±4 or ±5 fixes the last near misses. Larger values help narrow columns (below 55 characters) but start to change the grey value of a line. Bringhurst warns against letterspacing lowercase, which is why the rescue stays opt-in and small.
 - **InDesign (Phase 3)**: the adapter applies tracking as a character attribute on that line's text, records it in the story label, and Remove resets it. Steering widths already include the tracked width.
+
+## ADR-011: InDesign adapter design (2026-10-16)
+
+- **Port boundary**: the apply loop (`packages/indesign-adapter/src/apply.ts`) talks to InDesign only through a small `Port` interface (paragraphs, probe, readLines, setTeeth, setTracking). `DomPort` implements it with the DOM; Node tests use a fake greedy composer, so the loop logic is tested without InDesign.
+- **Loop**: measure every paragraph, merge probed InDesign points with our classes (Safe = ours A/B ∩ InDesign; InDesign-only points become C, our vetoes stay X, points InDesign refuses are dropped), solve, place teeth at the slots InDesign currently gives the planned lines, read back. A planned hyphen InDesign did not take while its tooth sat on the right line marks that point refused and re-plans; a tooth on the wrong line (line count or column changed) is moved next round. Typically 2 rounds: place, verify.
+- **Measuring**: each paragraph is duplicated into the probe frame and measured on one 9000 pt line with hyphenation off. Measuring in place is unreliable: a space that ends a line has a shortened advance, and a letter before a break loses its kerning, so plans would depend on the current breaks (found in integration testing).
+- **Probe frame**: on the pasteboard, on the control layer, ignoring text wrap, with the paragraph's formatting copied; removed after each Apply. Probed points are cached in the document label `flatter-probe`, keyed by font, size, language, hyphenation settings and Duden style.
+- **Control layer** "Flatter (Steuerung)": created on demand, kept topmost, not printable, wrap suppression off; removed when the last tooth goes. Teeth are labelled `flatter-tooth` = story id.
+- **Fix settings** records every original value in the story label `flatter` (per paragraph attribute, optical margin alignment, frames' ignore-wrap, base tracking) so Remove restores the original composition exactly. Auto leading is fixed to the value it currently produces.
+- **Tracking rescue**: planned tracking is applied to the tracked lines' characters relative to the paragraph's base tracking, reset before measuring on re-apply, and restored on Remove.
+- **Undo**: Apply and Remove each run inside `app.doScript(…, UndoModes.ENTIRE_SCRIPT)`: one undo step.
+- **Not yet handled**: paragraphs with mixed fonts or languages inside a word (the probe uses the paragraph's first character), tabs and anchored objects (reported as unsupported), threaded frames of different widths, live updates on edit (needs the panel).

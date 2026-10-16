@@ -26,6 +26,7 @@ npm run typecheck       # tsc for core, simulator and playground
 npm run sim -- --help   # simulator CLI: text -> SVG + report (default: German reference text, 60 chars)
 npm run playground      # bundles the live playground to packages/simulator/out/playground.html
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
+npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
 ```
 
 To view the playground locally, start the `playground` entry in `.claude/launch.json` (a tiny Node static server, `packages/simulator/serve.mjs`). The published copy for the user is the private artifact https://claude.ai/artifact/SvGpvN2649PeRYDPECqJkp; republish it from `packages/simulator/out/playground-artifact.html` after `npm run playground` so the link stays the same.
@@ -39,6 +40,10 @@ packages/core/        solver: item model, metrics, DP, checker, text builder. Pu
 packages/hyphenation/ hyphenation: TeX patterns + second opinion -> classes A/B/C/X, hard rules, exceptions,
                       ambiguous words, Sinneinheiten break costs. German second opinion = 2006 rule syllabifier
                       with a stem lexicon (src/lexicon-de.ts); English = US and UK patterns must agree.
+packages/indesign-adapter/  InDesign side. Pure, Node-tested: items.ts (items from measured advances, merging probed
+                      points), geometry.ts (teeth), settings.ts (required settings), apply.ts (plan → steer → read back →
+                      re-plan loop against the Port interface). UXP only: dom-port.ts (Port with the DOM), dom.ts
+                      (applyFlatter / removeFlatter / checkSettings, one undo step each). Tests use a fake greedy composer.
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
                       CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs)
 test/fixtures/texts/  German and English reference texts (written for this project, seeded with hard hyphenation cases)
@@ -50,7 +55,7 @@ docs/spike-results.md InDesign spike findings (Phase 0)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
-Planned but not created yet: `packages/indesign-adapter`, `packages/panel`.
+Planned but not created yet: `packages/panel` (needs the UXP Developer Tool).
 
 ## Conventions
 

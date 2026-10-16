@@ -1,0 +1,14 @@
+{
+  "name": "@flatter/indesign-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "InDesign side of Flatter: measure, probe hyphenation, steer with wrap teeth, read back, re-plan. Pure logic is tested in Node; DOM code runs in UXP.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flatter/core": "0.1.0",
+    "@flatter/hyphenation": "0.1.0"
+  }
+}
