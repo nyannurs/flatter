@@ -2,6 +2,19 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-17 — Fixes after the user's precise-tracking test (partial, usage limit)
+
+Done:
+- Tracking no longer touches each line's last letter (InDesign counts the tracking after a line's last glyph when fitting, so lines planned to the edge broke early; likely cause of "0/106 lines set as planned"). Model: trackedChars = chars − 1, generated hyphen adds nothing. Adapter spans end one character early.
+- DomPort.setTracking reads the paragraph's current tracking from its style ranges and writes only changed runs (was: reset whole paragraph each tick, about 1.5 s per tick).
+- Panel content scrolls (#scroll wrapper).
+
+Not yet done / next:
+- Verify in InDesign on a throwaway copy of the user's story (zone 17 %, band 90 %, hyphens 1, precise max 30); check lines-as-planned and tick time.
+- Remove or reword the "mechanical … Consider some Variation" warning in precise mode (check.ts analysePattern).
+- Make report items clickable to select the line; explain report messages more plainly.
+- Open question to user: per-line word-space adjustment.
+
 ## 2026-10-16 (later): precise Laufweite; Variation removed (ADR-013)
 
 - The designer wants tracking for geometric precision, not as a rescue. New precise mode: every line end pulled onto its edge within ±max, fractional tracking, edges prioritised above hyphen budget and Sinneinheiten. Panel and playground use it, with an edge-precision readout. Variation slider removed.

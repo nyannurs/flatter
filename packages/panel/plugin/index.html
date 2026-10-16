@@ -20,9 +20,12 @@
   .bad { color: #d7a015; }
   .err { color: #e34850; }
   #report sp-body { margin: 2px 0; }
+  html, body { height: 100%; margin: 0; }
+  #scroll { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 0 12px 24px; }
 </style>
 </head>
 <body>
+<div id="scroll">
   <div class="head"><sp-heading size="XS">Flatter</sp-heading><sp-detail id="modeTag">FLATTERSATZ</sp-detail></div>
   <sp-body size="S" id="target">Select a text frame or put the cursor in text.</sp-body>
 
@@ -80,5 +83,6 @@
   <sp-detail id="meta"></sp-detail>
   <div id="report"></div>
   <script src="index.js"></script>
+</div>
 </body>
 </html>

@@ -280,20 +280,53 @@ export class DomPort implements Port {
 
   /** Base tracking per paragraph, recorded the first time Flatter touches its tracking. */
   baseTracking: Record<string, number> = {};
+  /** Paragraphs Flatter has tracked in this session. */
   private trackedNow = new Set<number>();
+  /** Characters whose tracking was written (for timing reports). */
+  trackingWrites = 0;
 
+  /**
+   * Set the paragraph's tracking to base + span units. Only characters whose tracking differs are
+   * written, as runs of equal value: rewriting the whole paragraph on every slider tick made InDesign
+   * recompose all of it (1.5 s per tick in a 12,000-character paragraph). The current tracking is
+   * read from the document (three calls over its style ranges), so Undo cannot leave us out of step.
+   */
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void {
-    const para = this.story.paragraphs.item(paragraph);
     if (!spans.length && !this.trackedNow.has(paragraph)) return;
+    const para = this.story.paragraphs.item(paragraph);
     const key = String(paragraph);
     if (!(key in this.baseTracking)) this.baseTracking[key] = Number(para.characters.item(0).tracking) || 0;
     const base = this.baseTracking[key]!;
-    para.texts.item(0).tracking = base;
-    for (const s of spans) {
-      if (s.to > s.from) para.characters.itemByRange(s.from, s.to - 1).tracking = base + s.units;
+    const n = Number(para.characters.length);
+    const want = new Float64Array(n);
+    for (const s of spans) want.fill(s.units, Math.max(0, s.from), Math.min(n, s.to));
+    const from = this.currentTracking(para, n, base);
+    let k = 0;
+    while (k < n) {
+      if (want[k] === from[k]) { k++; continue; }
+      let e = k + 1;
+      while (e < n && want[e] === want[k] && want[e] !== from[e]) e++;
+      para.characters.itemByRange(k, e - 1).tracking = base + want[k]!;
+      this.trackingWrites += e - k;
+      k = e;
     }
     if (spans.length) this.trackedNow.add(paragraph);
     else this.trackedNow.delete(paragraph);
+  }
+
+  /** The paragraph's tracking per character, as an offset from base, read from its style ranges. */
+  private currentTracking(para: Any, n: number, base: number): Float64Array {
+    const out = new Float64Array(n);
+    const ranges = para.textStyleRanges.everyItem();
+    const idx = asArray(ranges.index).map(Number);
+    const tr = asArray(ranges.tracking).map(Number);
+    const start = Number(para.index);
+    for (let r = 0; r < idx.length; r++) {
+      const a = Math.max(0, idx[r]! - start);
+      const e = r + 1 < idx.length ? idx[r + 1]! - start : n;
+      out.fill((tr[r] ?? base) - base, a, Math.min(n, e));
+    }
+    return out;
   }
 
   /** Reset paragraphs to their recorded base tracking (before measuring, and on Remove). */

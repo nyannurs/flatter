@@ -239,11 +239,12 @@ function solve(items: Item[], data: ParagraphData, settings: ApplySettings, star
   });
 }
 
-/** Character spans of the lines the plan tracks. */
+/** Character spans of the lines the plan tracks: every character but the line's last (see trackedChars). */
 function trackingSpans(w: Working): TrackingSpan[] {
   return w.plan.lines
     .filter((l) => l.tracking !== 0)
-    .map((l) => ({ from: w.measured.charRange[l.startItem]![0], to: w.measured.charRange[l.endItem - 1]![1], units: l.tracking }));
+    .map((l) => ({ from: w.measured.charRange[l.startItem]![0], to: w.measured.charRange[l.endItem - 1]![1] - 1, units: l.tracking }))
+    .filter((s) => s.to > s.from);
 }
 
 function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {

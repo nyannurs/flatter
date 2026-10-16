@@ -143,13 +143,15 @@ export class ParagraphMetrics {
   }
 
   /**
-   * How many tracking steps move the line's visible end: tracking is added between characters, so a
-   * line of n characters (the hyphen counts) gains n − 1 steps (measured in InDesign, 2026-10-16).
+   * How many tracking steps move the line's end. Tracking is applied to every character of the line
+   * except the last one: InDesign also counts the tracking after a line's last glyph when it decides
+   * whether the line fits, so tracking that last glyph would make a line planned to the edge too wide
+   * (found in the user's test, 2026-10-16). A line of n characters therefore gains n − 1 steps, and the
+   * generated hyphen, inheriting the untracked last letter, adds none.
    */
-  trackedChars(start: number, end: number, b: number): number {
+  trackedChars(start: number, end: number, _b: number): number {
     const base = end > start ? this.charPrefix[end]! - this.charPrefix[start]! : 0;
-    const pen = b < this.n ? this.penaltyAt(b) : undefined;
-    return Math.max(0, base + (pen?.flagged && pen.width > 0 ? 1 : 0) - 1);
+    return Math.max(0, base - 1);
   }
 
   glueCount(start: number, end: number): number {
