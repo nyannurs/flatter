@@ -18,6 +18,8 @@ export interface FakeOptions {
   tolerance?: number;
   /** Space before each paragraph in points. */
   spaceBefore?: number;
+  /** Lines that fit in the frame; later lines are overset. */
+  maxLines?: number;
 }
 
 const advance = (c: string) => (c === ' ' ? 2.5 : /[il.,:;'’!]/.test(c) ? 2.5 : /[mwMW]/.test(c) ? 7.5 : 5);
@@ -50,6 +52,10 @@ export class FakeInDesign implements Port {
     }));
   }
 
+  overset(): boolean {
+    return this.o.maxLines !== undefined && this.allLines().length > this.o.maxLines;
+  }
+
   probe(words: readonly string[]): Map<string, number[]> | undefined {
     if (!this.o.probing) return undefined;
     return new Map(words.map((w) => [w, this.o.accepts(w)]));
@@ -67,6 +73,11 @@ export class FakeInDesign implements Port {
 
   readLines(): ReadLine[] {
     this.compositions++;
+    const all = this.allLines();
+    return this.o.maxLines === undefined ? all : all.slice(0, this.o.maxLines);
+  }
+
+  private allLines(): ReadLine[] {
     const out: ReadLine[] = [];
     let y = 0;
     this.texts.forEach((text, paragraph) => {
@@ -76,7 +87,7 @@ export class FakeInDesign implements Port {
       let line = 0;
       while (start < chars.length) {
         const baseline = y + this.o.leading;
-        const slot: LineSlot = { page: 0, baseline, startX: 0, columnRight: this.o.measure, gutter: 10, size: this.o.size };
+        const slot: LineSlot = { page: 0, baseline, startX: 0, columnRight: this.o.measure, gutter: 10, size: this.o.size, ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : {}) };
         const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size);
         const max = tooth ? tooth.bounds[1] - slot.startX : this.o.measure;
         const track = this.tracking.get(paragraph) ?? [];

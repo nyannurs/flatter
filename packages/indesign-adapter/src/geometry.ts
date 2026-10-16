@@ -21,6 +21,8 @@ export interface LineSlot {
   gutter: number;
   /** Font size of the line, for the x-height estimate. */
   size: number;
+  /** Lowest baseline that still fits in this frame or column; lines are never extrapolated past it. */
+  limit?: number;
 }
 
 export interface ToothSpec {
@@ -67,7 +69,10 @@ export function slotsForPlan(planned: number, current: readonly LineSlot[], lead
     if (known) out.push(known);
     else {
       const prev = out[i - 1]!;
-      out.push({ ...prev, baseline: prev.baseline + leading, startX: current[current.length - 1]!.startX });
+      const baseline = prev.baseline + leading;
+      // Do not place teeth below the frame: they would hit other text (and overset lines have no position).
+      if (prev.limit !== undefined && baseline > prev.limit + 1e-6) break;
+      out.push({ ...prev, baseline, startX: current[current.length - 1]!.startX });
     }
   }
   return out;

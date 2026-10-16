@@ -53,6 +53,7 @@ inNewDocument((doc: Any) => {
       teeth,
       reapply: { lines: `${again.linesAsPlanned}/${again.linesPlanned}`, probes: again.probes, ms: again.ms },
       tracked: r.trackedLines,
+      oversetLines: r.oversetLines,
       remove: {
         ...removed,
         restoredExactly: JSON.stringify(afterRemove) === JSON.stringify(original),
@@ -87,6 +88,11 @@ inNewDocument((doc: Any) => {
   run('German, indents and space before', () =>
     frameWithDefaults(doc, [40, 40, 500, 340], DE_TEXT.join('\r'), 'German: 2006 Reform', { firstLineIndent: 12, spaceBefore: 6 }),
   );
+
+  run('German, one long overset paragraph', () => {
+    const long = Array.from({ length: 8 }, () => DE_TEXT.join(' ')).join(' ');
+    return frameWithDefaults(doc, [40, 40, 300, 340], long, 'German: 2006 Reform');
+  });
 
   for (const width of [240, 260]) {
     run(`German, ${width} pt, tracking rescue ±3`, () => frameWithDefaults(doc, [40, 40, 560, 40 + width], DE_TEXT.join('\r'), 'German: 2006 Reform'), {

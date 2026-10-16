@@ -99,3 +99,14 @@ describe('live session (panel)', () => {
     expect(r.linesAsPlanned).toBe(r.linesPlanned);
   });
 });
+
+describe('overset stories', () => {
+  it('steers the visible lines, places no teeth below the frame, and reports overset lines', () => {
+    const fake = new FakeInDesign(DE, { measure: 260, accepts: ourSafe, maxLines: 10 });
+    const r = applyToPort(fake);
+    expect(r.oversetLines).toBeGreaterThan(0);
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+    expect(r.linesPlanned).toBe(10);
+    expect(fake.teeth.every((t) => t.bounds[2] <= 13 * 10 + 1)).toBe(true);
+  });
+});

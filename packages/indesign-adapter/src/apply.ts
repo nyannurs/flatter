@@ -48,6 +48,8 @@ export interface ApplyResult {
   teeth: number;
   /** Lines given tracking (Laufweite) by the rescue. */
   trackedLines: number;
+  /** Planned lines that fall outside the frames (overset); they cannot be steered. */
+  oversetLines: number;
 }
 
 /** Map an InDesign language name to the hyphenation module's language. */
@@ -80,6 +82,7 @@ export class FlatterSession {
   private teeth: ToothSpec[] = [];
   private usedSlots = new Map<number, LineSlot[]>();
   private settings: ApplySettings = {};
+  private overset = false;
   rounds = 0;
 
   constructor(port: Port) {
@@ -104,6 +107,7 @@ export class FlatterSession {
       this.work.push({ data, measured, items: measured.items, plan: undefined as unknown as Plan, refused: [] });
     }
     this.current = this.port.readLines();
+    this.overset = this.port.overset();
   }
 
   /** Solve every paragraph with these settings. Points InDesign refused earlier stay refused. */
@@ -145,7 +149,7 @@ export class FlatterSession {
       for (const w of this.work) {
         const got = this.current.filter((l) => l.paragraph === w.data.index);
         const used = this.usedSlots.get(w.data.index) ?? [];
-        const bad = firstMismatch(w, got);
+        const bad = firstMismatch(w, got, this.overset);
         if (bad < 0) {
           if (got.some((l, i) => used[i] && !sameSlot(l.slot, used[i]!))) changed = true;
           continue;
@@ -174,7 +178,7 @@ export class FlatterSession {
     const usedSlots = this.usedSlots;
     const results: ParagraphResult[] = this.work.map((w) => {
       const got = current.filter((l) => l.paragraph === w.data.index);
-      const bad = firstMismatch(w, got);
+      const bad = firstMismatch(w, got, this.overset);
       const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set(w.measured.unsupported)] };
       if (bad >= 0) {
         const line = w.plan.lines[bad]!;
@@ -198,7 +202,8 @@ export class FlatterSession {
       return s + w.plan.lines.filter((line, i) => matches(w, line, got[i])).length;
     }, 0);
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
-    return { paragraphs: results, rounds: this.rounds, linesPlanned, linesAsPlanned, teeth: this.teeth.length, trackedLines };
+    const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - visibleCount(this.current, w.data.index)), 0) : 0;
+    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, oversetLines };
   }
 
   private hyphenator(lang: HyphenLanguage): Hyphenator {
@@ -253,7 +258,17 @@ function matches(w: Working, line: Plan['lines'][number], got: ReadLine | undefi
   return !!got && got.lastVisible === plannedLastVisible(w, line.endItem) && got.hyphenated === (line.endsWithHyphen && w.items[line.breakAt]?.type === 'penalty' && (w.items[line.breakAt] as { width: number }).width > 0);
 }
 
-function firstMismatch(w: Working, got: readonly ReadLine[]): number {
+function visibleCount(lines: readonly ReadLine[], paragraph: number): number {
+  return lines.filter((l) => l.paragraph === paragraph).length;
+}
+
+function firstMismatch(w: Working, got: readonly ReadLine[], overset = false): number {
+  // In an overset story the lines after the last visible one cannot be compared (or steered).
+  const n = overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
+  if (overset) {
+    for (let k = 0; k < n; k++) if (!matches(w, w.plan.lines[k]!, got[k])) return k;
+    return -1;
+  }
   if (got.length !== w.plan.lines.length) {
     const i = w.plan.lines.findIndex((line, k) => !matches(w, line, got[k]));
     return i < 0 ? Math.min(got.length, w.plan.lines.length) : i;

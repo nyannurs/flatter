@@ -5,6 +5,7 @@
  */
 import { modeLabel } from '@flatter/core';
 import {
+  clearMeasureCache,
   liveUpdate,
   liveVerify,
   openSession,
@@ -34,6 +35,12 @@ const picked = (id: string, fallback: string) => String($(id).value || fallback)
 
 interface PanelState {
   live?: LiveSession;
+  /** Apply runs (synchronously, can take seconds on long stories); ticks wait for it. */
+  busy: boolean;
+  /** Input arrived while busy: run one more tick afterwards. */
+  pending: boolean;
+  /** Apply failed for this story: do not retry on every slider tick. */
+  failed?: { storyId: number; message: string };
   storyId?: number;
   dragging: boolean;
   tickTimer?: ReturnType<typeof setTimeout>;
@@ -41,7 +48,7 @@ interface PanelState {
   lastTickMs?: number;
   lastResult?: ApplyResult;
 }
-const state: PanelState = { dragging: false };
+const state: PanelState = { dragging: false, busy: false, pending: false };
 
 export function settingsFromUI(): ApplySettings {
   const tracking = checked('tracking');
@@ -91,14 +98,14 @@ export function targetStory(): Any | undefined {
 
 function syncLabels(): void {
   const share = num('zone') / 100;
-  $('modeTag').textContent = modeLabel(share, 1);
+  $('modeTag').textContent = modeLabel(share, 1).toUpperCase();
   $('trackMax').disabled = !checked('tracking');
 }
 
 function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = ''): void {
   const el = $('status');
   el.textContent = text;
-  el.className = 'status' + (kind ? ' ' + kind : '');
+  el.className = kind;
   $('meta').textContent = meta;
 }
 
@@ -117,17 +124,18 @@ function render(r: ApplyResult, ms?: number): void {
     for (const v of p.plan.violations) {
       if (v.kind === 'tight-steering') continue;
       const where = v.line >= 0 ? `¶${p.index + 1}, line ${v.line + 1}` : `¶${p.index + 1}`;
-      items.push(`<div class="sev-${v.severity}"><b>${where}</b>: ${escapeHtml(v.message)}</div>`);
+      items.push(`<sp-body size="XS" class="${v.severity === 'error' ? 'err' : v.severity === 'warning' ? 'bad' : ''}">${where}: ${escapeHtml(v.message)}</sp-body>`);
     }
-    if (!p.steered && p.mismatch) items.push(`<div class="sev-error"><b>¶${p.index + 1}, line ${p.mismatch.line + 1}</b>: InDesign did not break where planned.</div>`);
-    for (const w of p.refused) items.push(`<div class="sev-info"><b>¶${p.index + 1}</b>: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</div>`);
-    for (const u of p.unsupported) items.push(`<div class="sev-warning"><b>¶${p.index + 1}</b>: contains a ${u}; Flatter cannot plan around it yet.</div>`);
+    if (!p.steered && p.mismatch) items.push(`<sp-body size="XS" class="err">¶${p.index + 1}, line ${p.mismatch.line + 1}: InDesign did not break where planned.</sp-body>`);
+    for (const w of p.refused) items.push(`<sp-body size="XS">¶${p.index + 1}: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</sp-body>`);
+    for (const u of p.unsupported) items.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${u}; Flatter cannot plan around it yet.</sp-body>`);
   }
   const allGood = inRhythm === band && r.linesAsPlanned === r.linesPlanned;
   setStatus(
     `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} lines in rhythm`,
     allGood ? 'ok' : 'bad',
     `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked` +
+      (r.oversetLines ? ` · ${r.oversetLines} lines overset (not visible, not set)` : '') +
       (ms !== undefined ? ` · ${ms} ms` : '') +
       (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
   );
@@ -139,23 +147,40 @@ function escapeHtml(s: string): string {
 }
 
 function fail(e: unknown): void {
-  setStatus('Something went wrong', 'err', String((e as Error)?.message ?? e));
+  setStatus('Flatter could not set this story', 'err', `${String((e as Error)?.message ?? e)}. Nothing was changed. Press Apply to try again.`);
 }
 
+/** Apply: measure, probe, plan, steer. Shows "Preparing…" first (it can take seconds on long stories). */
 function apply(): void {
   const story = targetStory();
   if (!story) {
     setStatus('Select a text frame first.', 'bad');
     return;
   }
-  try {
-    const { live, report } = openSession(story, settingsFromUI());
-    state.live = live;
-    state.storyId = story.id;
-    render(report, report.ms);
-  } catch (e) {
-    fail(e);
-  }
+  if (state.busy) return;
+  state.busy = true;
+  state.failed = undefined;
+  setStatus('Preparing…', '', 'Measuring the text and checking hyphenation. This happens once per story.');
+  $('report').innerHTML = '';
+  // Let the panel paint the status before the long synchronous work starts.
+  setTimeout(() => {
+    try {
+      const { live, report } = openSession(story, settingsFromUI());
+      state.live = live;
+      state.storyId = story.id;
+      render(report, report.ms);
+    } catch (e) {
+      state.live = undefined;
+      state.failed = { storyId: story.id, message: String((e as Error)?.message ?? e) };
+      fail(e);
+    } finally {
+      state.busy = false;
+      if (state.pending) {
+        state.pending = false;
+        onInput();
+      }
+    }
+  }, 30);
 }
 
 function remove(): void {
@@ -182,6 +207,12 @@ function onInput(): void {
 function tick(): void {
   const story = targetStory();
   if (!story) return;
+  if (state.busy) {
+    state.pending = true;
+    return;
+  }
+  // After a failed Apply, sliders do not retry (each retry would freeze InDesign again).
+  if (state.failed && state.failed.storyId === story.id) return;
   try {
     if (!state.live || state.storyId !== story.id || !state.live.story.isValid) {
       apply();
@@ -220,6 +251,7 @@ function onSelectionChanged(): void {
   $('target').textContent = `Story: ${words}…`;
   if (state.storyId !== story.id) {
     state.live = undefined;
+    state.failed = undefined;
     state.storyId = story.id;
     const stored = storedSettings(story);
     if (stored) {
@@ -240,8 +272,14 @@ function init(): void {
   for (const id of ['phase', 'mode', 'hyphenation', 'sense', 'continuous', 'tracking']) $(id).addEventListener('change', onInput);
   $('apply').addEventListener('click', apply);
   $('recompute').addEventListener('click', () => {
+    // Recompute measures afresh (for example after formatting changed inside a paragraph).
+    clearMeasureCache();
     state.live = undefined;
+    state.failed = undefined;
     apply();
+  });
+  $('apply').addEventListener('click', () => {
+    state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
   app.addEventListener('afterSelectionChanged', onSelectionChanged);

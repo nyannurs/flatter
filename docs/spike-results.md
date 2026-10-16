@@ -114,6 +114,17 @@ Run by the dev panel itself (`tools/indesign/panel-command.sh '{"cmd":"s4","tick
 - Moving a rectangle with `r.geometricBounds = …` works (unlike `strokeWeight`).
 - Measured in InDesign 2026 with three paragraphs per story: first Apply about 1 s (probing ~80–100 words once, measuring, two composition rounds), re-apply about 0.15 s with the probe cache.
 
+## Findings from the user's first panel test (2026-10-16)
+
+The user's TestFile has one 11,800-character paragraph (about 360 lines) in a frame that shows about 20 of them; the rest is overset.
+
+- **Overset lines have no position.** `story.lines.everyItem().baseline` throws ("property is not applicable") as soon as one line is overset. Read lines per frame (`textContainers[i].lines`); the last visible character is the last container's last character. Paragraphs that start in a frame are planned whole; only their visible lines get teeth, and teeth are never extrapolated below a frame's bottom.
+- **Long paragraphs** do not fit one 9000 pt measuring line. Measure on several such lines; a space that ends one of them gets the normal space width. Do not call anything that reuses the probe frame while the paragraph sits in it.
+- **A failed Apply must undo itself.** The first version fixed settings, then failed while measuring, leaving the story with changed settings and no record of the originals. Apply now undoes its own partial step on failure. (The user's document was restored by undoing Flatter's own seven undo steps.)
+- **No retry storm.** With Live on, every slider tick retried the failed Apply, freezing InDesign each time. The panel now runs Apply once, shows "Preparing…", ignores ticks while busy, and does not retry after a failure until Apply is pressed.
+- **Theme.** The UXP host CSS variables used for text colour are not available in InDesign; text rendered black on the dark theme. The panel now uses Spectrum text elements (sp-heading, sp-body, sp-detail, sp-divider), which follow the theme.
+- **Speed on the long story:** first Apply about 2.4 s (measuring the paragraph and probing 72 words); re-apply 30–50 ms with measurements cached while the plugin is loaded (Recompute clears the cache); slider ticks about 10 ms.
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

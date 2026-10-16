@@ -37,7 +37,10 @@ export interface Port {
   paragraphs(): ParagraphData[];
   /** InDesign's hyphenation points per word (S3 probing), or undefined when probing is unavailable. */
   probe(words: readonly string[], paragraph: ParagraphData): Map<string, number[]> | undefined;
+  /** Lines visible in the story's frames (overset lines have no position and are left out). */
   readLines(): ReadLine[];
+  /** The story continues beyond its last frame. */
+  overset(): boolean;
   /** Replace this story's teeth with these. */
   setTeeth(teeth: readonly ToothSpec[]): void;
   /**

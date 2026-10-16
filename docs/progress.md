@@ -2,6 +2,16 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (late): fixes after the user's first panel test
+
+The user moved a slider on their TestFile and saw short freezes, an error ("paragraph does not fit on one measuring line") and black panel text on the dark theme. Fixed (details in `docs/spike-results.md`):
+- Overset stories: lines read per frame; visible lines steered, overset lines reported.
+- Long paragraphs measured over several wide lines; measurements cached while the plugin is loaded.
+- Failed Apply undoes its own partial changes; the panel shows "Preparing…", does not retry on every tick, ignores ticks while busy.
+- Panel text uses theme-aware Spectrum elements.
+- The user's document had partial changes from the failed attempts; they were reverted by undoing only Flatter's undo steps.
+- Note for the user: their test story is German text tagged "English: USA", so it gets English hyphenation and no Duden.
+
 ## 2026-10-16 (night, cont.): Phase 4 panel built and loaded in InDesign
 
 **Done**

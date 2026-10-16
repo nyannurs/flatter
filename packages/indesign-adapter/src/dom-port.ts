@@ -20,6 +20,16 @@ const TOLERANCE = 0.4;
 
 export const asArray = <T>(v: T | T[]): T[] => (Array.isArray(v) ? v : [v]);
 
+/**
+ * Measurements kept while the plugin is loaded, keyed by the paragraph's formatting signature and
+ * text: re-applying a long paragraph does not re-measure it. clearMeasureCache() forces a fresh measure
+ * (the panel's Recompute does this, e.g. after changing formatting inside a paragraph).
+ */
+const measureCache = new Map<string, number[]>();
+export function clearMeasureCache(): void {
+  measureCache.clear();
+}
+
 /** Find or create the control layer, keep it on top, never printing, never suppressing wrap. */
 export function controlLayer(doc: Any): Any {
   const id = indesign();
@@ -64,6 +74,20 @@ export class DomPort implements Port {
     return String(this.story.id);
   }
 
+  overset(): boolean {
+    return !!this.story.overflows;
+  }
+
+  /** Story index of the last character that sits in a frame (-1 if none). Overset text has no position. */
+  private visibleEnd(): number {
+    const containers = asArray(this.story.textContainers);
+    for (let k = containers.length - 1; k >= 0; k--) {
+      const chars = containers[k].characters;
+      if (chars.length) return Number(chars.lastItem().index);
+    }
+    return -1;
+  }
+
   paragraphs(): ParagraphData[] {
     if (this.paragraphsCache) return this.paragraphsCache;
     const story = this.story;
@@ -80,7 +104,7 @@ export class DomPort implements Port {
     const right = asArray(paras.everyItem().rightIndent).map(Number);
     const first = asArray(paras.everyItem().firstLineIndent).map(Number);
     const column = this.columnWidth();
-    const composedEnd = this.lastComposedIndex();
+    const visibleEnd = this.visibleEnd();
     const out: ParagraphData[] = [];
     let start = 0;
     this.paraStarts = [];
@@ -88,23 +112,35 @@ export class DomPort implements Port {
       const len = lengths[p]!;
       this.paraStarts.push(start);
       const end = start + len;
-      // Leave out overset paragraphs: they have no measurements.
-      if (end - 1 <= composedEnd) {
+      // Leave out paragraphs that start in the overset text: none of their lines can be steered.
+      // A paragraph that starts in a frame is planned whole; only its visible lines get teeth.
+      if (start <= visibleEnd && len > 1) {
         let chars = text.slice(start, end);
         if (chars[chars.length - 1] === '\r') chars = chars.slice(0, -1);
         const para = paras.item(p);
-        // Measure on one very wide line in the probe frame (spike S2): exact, and independent of
-        // where the story currently breaks (a letter before a break loses its kerning, a space at a
-        // line end has an unreliable width).
-        const advances = this.measureParagraph(para, chars.length);
+        // Measure on very wide lines in the probe frame (spike S2): exact, and independent of where
+        // the story currently breaks (a letter before a break loses its kerning, a space at a line
+        // end has an unreliable width).
+        const key = `${this.probeKey(para)}\u0000${chars.join('')}`;
+        let advances = measureCache.get(key);
+        if (!advances) {
+          advances = this.measureParagraph(para, chars.length);
+          measureCache.set(key, advances);
+        }
         const size = sizes[p]!;
         const lead = typeof leadings[p] === 'number' ? (leadings[p] as number) : (size * autoLeading[p]!) / 100;
+        const hKey = `hyphen\u0000${this.probeKey(para)}`;
+        let hyphenWidth = measureCache.get(hKey)?.[0];
+        if (hyphenWidth === undefined) {
+          hyphenWidth = this.hyphenWidth(para);
+          measureCache.set(hKey, [hyphenWidth]);
+        }
         out.push({
           index: p,
           chars,
           advances,
           language: String(para.appliedLanguage.name),
-          hyphenWidth: this.hyphenWidth(para),
+          hyphenWidth,
           size,
           leading: lead,
           measure: column - left[p]! - right[p]!,
@@ -132,37 +168,41 @@ export class DomPort implements Port {
 
   readLines(): ReadLine[] {
     const story = this.story;
-    this.story.recompose();
-    const text = Array.from(String(story.contents));
-    const lines = story.lines;
-    const n = lines.length;
-    if (!n) return [];
-    const contents = asArray(lines.everyItem().contents).map((c: Any) => Array.from(String(c)));
-    const xs = asArray(lines.everyItem().horizontalOffset).map(Number);
-    const baselines = asArray(lines.everyItem().baseline).map(Number);
-    const frames = this.frames();
-    const paras = this.paragraphs();
-    const sizeOf = new Map(paras.map((p) => [p.index, p.size]));
+    story.recompose();
     if (!this.paraStarts.length) this.paragraphs();
+    const text = Array.from(String(story.contents));
+    const frames = this.frames();
+    const containers = asArray(story.textContainers);
+    const sizeOf = new Map((this.paragraphsCache ?? []).map((p) => [p.index, p.size]));
     const out: ReadLine[] = [];
-    let first = 0;
     const lineInPara = new Map<number, number>();
-    for (let i = 0; i < n; i++) {
-      const len = contents[i]!.length;
-      const p = this.paragraphAt(first);
-      const pStart = this.paraStarts[p]!;
-      let last = first + len - 1;
-      while (last > first && /^[\s\r]$/.test(text[last] ?? '')) last--;
-      const lastChar = text[first + len - 1] ?? '';
-      const nextChar = text[first + len] ?? '';
-      const frame = frames.find((f) => xs[i]! >= f.left - 0.5 && xs[i]! <= f.right + 0.5 && baselines[i]! >= f.top - 0.5 && baselines[i]! <= f.bottom + 0.5) ?? frames[0]!;
-      const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
-      const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnRight: col.right, gutter: col.gutter, size: sizeOf.get(p) ?? 10 };
-      const k = lineInPara.get(p) ?? 0;
-      lineInPara.set(p, k + 1);
-      out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });
-      first += len;
-    }
+    let first = -1;
+    containers.forEach((container: Any, ci: number) => {
+      // Lines are read per frame: overset lines have no baseline, and reading them throws.
+      const lines = container.lines;
+      const n = lines.length;
+      if (!n) return;
+      const contents = asArray(lines.everyItem().contents).map((c: Any) => Array.from(String(c)));
+      const xs = asArray(lines.everyItem().horizontalOffset).map(Number);
+      const baselines = asArray(lines.everyItem().baseline).map(Number);
+      if (first < 0) first = Number(lines.item(0).characters.item(0).index);
+      const frame = frames[ci]!;
+      for (let i = 0; i < n; i++) {
+        const len = contents[i]!.length;
+        const p = this.paragraphAt(first);
+        const pStart = this.paraStarts[p]!;
+        let last = first + len - 1;
+        while (last > first && /^[\s\r]$/.test(text[last] ?? '')) last--;
+        const lastChar = text[first + len - 1] ?? '';
+        const nextChar = text[first + len] ?? '';
+        const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
+        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnRight: col.right, gutter: col.gutter, size: sizeOf.get(p) ?? 10, limit: frame.bottom };
+        const k = lineInPara.get(p) ?? 0;
+        lineInPara.set(p, k + 1);
+        out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });
+        first += len;
+      }
+    });
     return out;
   }
 
@@ -284,13 +324,6 @@ export class DomPort implements Port {
     return p;
   }
 
-  private lastComposedIndex(): number {
-    const lines = this.story.lines;
-    if (!lines.length) return -1;
-    const lens = asArray(lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
-    return lens.reduce((s, x) => s + x, 0) - 1;
-  }
-
   private frames(): { page: number; left: number; right: number; top: number; bottom: number; columns: { left: number; right: number; gutter: number }[] }[] {
     const containers = asArray(this.story.textContainers);
     return containers.map((f: Any) => {
@@ -351,20 +384,38 @@ export class DomPort implements Port {
     return this.scratch;
   }
 
-  /** Advances of a paragraph's characters, set on one line in the probe frame with hyphenation off. */
+  /**
+   * Advances of a paragraph's characters, set on 9000 pt lines in the probe frame with hyphenation
+   * off. Long paragraphs take several such lines; a space that ends one of them has an unreliable
+   * width (spike S2), so it gets the paragraph's normal space width.
+   */
   measureParagraph(para: Any, length: number): number[] {
+    // Measured first: it reuses the probe frame, so it cannot run while the paragraph sits there.
+    const space = this.spaceWidth(para);
     const frame = this.scratchFrame(para);
     const story = frame.parentStory;
     const left = Number(frame.geometricBounds[1]);
-    frame.geometricBounds = [0, left, 200, left + 9000];
     story.texts.item(0).contents = '';
     para.texts.item(0).duplicate(this.id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
     const all = story.texts.item(0);
-    all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0 };
+    all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0 };
+    frame.geometricBounds = [0, left, 20000, left + 9000];
+    if (story.overflows) throw new Error('paragraph too long to measure');
     const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
     const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
-    if (story.lines.length > 1 || xs.length < length) throw new Error('paragraph does not fit on one measuring line');
-    return Array.from({ length }, (_, i) => xe[i]! - xs[i]!);
+    if (xs.length < length) throw new Error('paragraph did not copy into the measuring frame');
+    const lineEnds = new Set<number>();
+    let at = -1;
+    for (const len of asArray(story.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length)) {
+      at += len;
+      lineEnds.add(at);
+    }
+    const chars = Array.from(String(story.contents));
+    return Array.from({ length }, (_, i) => (lineEnds.has(i) && /^\s$/.test(chars[i] ?? '') ? space : xe[i]! - xs[i]!));
+  }
+
+  spaceWidth(para: Any): number {
+    return this.measureSecond(para, 'x x');
   }
 
   hyphenWidth(para: Any): number {

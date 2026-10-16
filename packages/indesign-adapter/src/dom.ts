@@ -38,6 +38,19 @@ export function settingValue(v: unknown): SettingValue {
   return String(v);
 }
 
+/**
+ * After a failed operation, undo whatever it changed before failing (its own undo step only),
+ * so a story is never left with fixed settings but no record of the originals.
+ */
+function rollBack(name: string): void {
+  try {
+    const doc = indesign().app.activeDocument;
+    if (doc && String(doc.undoName) === name) doc.undo();
+  } catch {
+    /* nothing to undo */
+  }
+}
+
 function undoable<T>(name: string, fn: () => T): T {
   const id = indesign();
   let result: T | undefined;
@@ -55,7 +68,10 @@ function undoable<T>(name: string, fn: () => T): T {
     id.UndoModes.ENTIRE_SCRIPT,
     name,
   );
-  if (error) throw error;
+  if (error) {
+    rollBack(name);
+    throw error;
+  }
   return result as T;
 }
 
@@ -143,6 +159,8 @@ export interface ApplyReport extends ApplyResult {
   ms: number;
   probes: number;
   check: Check;
+  /** Where the time went, in ms. */
+  timings: { fixSettings: number; prepare: number; plan: number; steerAndVerify: number; check: number };
 }
 
 /** A story Flatter is working on, kept alive by the panel between slider ticks. */
@@ -171,7 +189,11 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
     mode === 'entire' ? id.UndoModes.ENTIRE_SCRIPT : id.UndoModes.AUTO_UNDO,
     name,
   );
-  if (error) throw error;
+  if (error) {
+    // Ticks merge into the previous step: rolling back would discard the whole Apply.
+    if (mode === 'entire') rollBack(name);
+    throw error;
+  }
   return result as T;
 }
 
@@ -185,23 +207,31 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     const doc = story.parent;
     const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
     state.settings = settings;
+    const tFix = Date.now();
     if (opts.fixSettings !== false) fixSettingsInPlace(story, state);
+    const fixMs = Date.now() - tFix;
     const layer = controlLayer(doc);
     const port = new DomPort(doc, story, layer);
     // Measure without the tracking an earlier Apply added.
     if (state.tracking) port.resetTracking(state.tracking);
     const session = new FlatterSession(port);
+    const tPrep = Date.now();
     try {
       session.prepare(settings);
     } finally {
       port.dispose();
     }
+    const tPlan = Date.now();
     session.plan(settings);
+    const tSteer = Date.now();
     session.steer();
     const result = session.verify(settings.maxRounds ?? 6);
     port.dropParkedTeeth();
     saveState(story, state, port);
-    return { live: { story, port, session, state }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check: checkSettings(story) } };
+    const tCheck = Date.now();
+    const check = checkSettings(story);
+    const timings = { fixSettings: fixMs, prepare: tPlan - tPrep, plan: tSteer - tPlan, steerAndVerify: tCheck - tSteer, check: Date.now() - tCheck };
+    return { live: { story, port, session, state }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check, timings } };
   });
 }
 
