@@ -2,6 +2,14 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (night): InDesign access confirmed
+
+- InDesign 2026 (21.6) is installed; Duden is already the German hyphenation vendor (no setup needed). Details in `docs/spike-results.md` (S7, partial).
+- Claude can run ExtendScript and UXP scripts in the running InDesign from the terminal: `tools/indesign/run.sh`. This answers "who runs the spikes": Claude, through scripting.
+- The UXP Developer Tool is not installed yet. The user was given install steps; it is only needed for the panel (Phase 4) and spike S4.
+
+**Next**: Phase 0 spikes S1, S2, S3 in InDesign, in a new test document (never the user's TestFile.indd).
+
 ## 2026-10-16 (evening): tracking rescue (Laufweite) added
 
 **Done**
@@ -62,8 +70,7 @@ Newest entry first. Each entry says what changed, where things stand, and what c
 
 **Waiting on the user**
 - Feedback on the playground.
-- InDesign version, whether German uses the Duden dictionary, and whether the UXP Developer Tool is installed.
+- UXP Developer Tool installation (only needed for the panel).
 - Their own German and English texts; typical font, size, leading and column width. They created `InDesign Test File/TestFile.indd` (git-ignored).
-- Who runs the InDesign spikes: the user, or Claude via computer use.
 - Distribution plan (affects which hyphenation pattern licences may be bundled).
 - Who acts as the typographer for the final side-by-side review.

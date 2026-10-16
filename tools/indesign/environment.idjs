@@ -1,0 +1,8 @@
+// Read-only report of the InDesign environment relevant to Flatter (spike S7, plan §5.5).
+const { app } = require("indesign");
+const langs = [];
+for (let i = 0; i < app.languagesWithVendors.length; i++) {
+  const l = app.languagesWithVendors.item(i);
+  if (/German|English/.test(l.name)) langs.push({ name: l.name, hyphenation: l.hyphenationVendor, available: l.hyphenationVendorList });
+}
+app.insertLabel("flatter-result", JSON.stringify({ version: app.version, documents: app.documents.length, languages: langs }, null, 2));

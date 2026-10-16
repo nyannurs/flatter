@@ -65,6 +65,19 @@ Planned but not created yet: `packages/indesign-adapter`, `packages/panel`.
 
 Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
 
+## Running code in InDesign
+
+InDesign 2026 (21.6) is installed on the user's Mac and Claude may drive it (user, 2026-10-16). Use scripting, not screen clicks:
+
+```bash
+tools/indesign/run.sh tools/indesign/environment.idjs   # UXP script; result via the "flatter-result" app label
+tools/indesign/run.sh some-script.jsx                    # ExtendScript; result = last expression
+```
+
+- UXP scripts run through `app.doScript(..., ScriptLanguage.UXPSCRIPT)`, so most Phase 0 spikes need no plugin and no UXP Developer Tool. The UDT is only needed to load the panel (Phase 4, spike S4).
+- Never modify the user's open documents (e.g. `InDesign Test File/TestFile.indd`). Spikes create their own documents and close them without saving unless asked.
+- macOS asks once whether the terminal may control InDesign; the user has to click OK.
+
 ## Environment gotchas
 
 - When writing files through a shell heredoc, escapes like ` ` can end up as the literal invisible character. Check with a grep or write escapes via Python. This already broke a regex once.
