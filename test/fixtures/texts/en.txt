@@ -1,0 +1,9 @@
+A good ragged right margin does not happen by accident. When text is set flush left, the right edge seems to be left to chance, yet that edge decides whether a page looks calm or restless. Lines should alternate in a recognisable rhythm without forming staircases, holes or bellies, and every word division has to be correct, or the reader stumbles at the end of each line.
+
+The archive kept a record of every project the studio had ever printed: catalogues, posters, a slim guide to the exhibitions in the old warehouse by the river. Nobody had looked at it for years. The caretaker drank his tea, waited for the evening, and listened to a therapist on the radio explain why ordinary routines are a quiet kind of knowledge.
+
+American and British editors do not always agree on where a word may be divided. One house follows pronunciation, the other prefers the structure of the word, so democracy and knowledge break differently on each side of the Atlantic. Both agree that a division should never mislead, which is why nobody wants to read about mans laughter or a leg end on the following line.
+
+Some words change their division with their meaning. To record a song is not the same as to keep a record of it, and to present an argument differs from a present wrapped in paper. A careful compositor notices such things at once, while a machine has to be told, and even then it may need a second opinion before it commits.
+
+In the end the eye decides. No program can replace a typesetter who looks at a column and sees at once where the rhythm falters. A tool can, however, take over the patient work of finding the best break line by line, and it can say honestly where the rules do not quite add up.

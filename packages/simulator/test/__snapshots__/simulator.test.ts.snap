@@ -1,0 +1,154 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`reference texts > sets the de reference text the same way as last time (60 characters) 1`] = `
+[
+  [
+    "L Ein guter Flattersatz entsteht nicht von selbst. Wer Texte",
+    "S linksbündig setzt, überlässt den rechten Rand",
+    "L scheinbar dem Zufall, doch gerade dieser Rand bestimmt, ob",
+    "S eine Seite ruhig oder unruhig wirkt. Die Zeilen",
+    "L sollen sich in einem erkennbaren Rhythmus abwechseln,",
+    "S ohne dass Treppen, Löcher oder Bäuche entste-",
+    "L hen, und die Trennungen müssen stimmen, sonst stolpert der",
+    "· Blick über jede Zeile.",
+  ],
+  [
+    "L In der Wachstube des alten Rathauses lagen die Druckerzeug-",
+    "S nisse der vergangenen Woche auf einem Stapel:",
+    "L Flugblätter, Programmhefte und ein dünnes Verzeichnis der",
+    "S Ausstellungen im Staubecken der ehemaligen",
+    "L Mühle. Niemand hatte sie gelesen. Der Pförtner trank seinen",
+    "S Kaffee mit viel Zucker und wartete auf den Fei-",
+    "L erabend, während draußen ein Esel geduldig vor der leeren",
+    "· Kiste stand.",
+  ],
+  [
+    "L Die Rechtschreibreform von 2006 hat das Trennen in einigen",
+    "S Punkten vereinfacht. Das ck bleibt zusammen,",
+    "L das st darf getrennt werden, und bei Zusammensetzungen",
+    "S wie Schifffahrt bleiben alle drei Konsonanten",
+    "L erhalten. Einzelne Vokale am Wortanfang oder am Wortende",
+    "S werden dagegen nicht mehr abgetrennt, wes-",
+    "L halb Wörter wie Abend, Ofen oder Biomüll am Zeilenende",
+    "· vollständig stehen bleiben sollten.",
+  ],
+  [
+    "L Schwieriger sind Wörter, deren Bedeutung von der Trenn-",
+    "S stelle abhängt. Ein Urinstinkt ist kein Instinkt für",
+    "L irgendetwas Anrüchiges, und wer beinhalten falsch zerlegt,",
+    "S macht aus einem Verb ein Rätsel. Ein Spiegelei",
+    "L im Häuschen am See, ein Mädchen mit einem Blumentopf",
+    "S voller Erde: Solche Sätze zeigen, wie viel Sorgfalt",
+    "· in jeder einzelnen Trennung steckt.",
+  ],
+  [
+    "L Am Ende entscheidet das Auge. Kein Programm kann die",
+    "S Erfahrung einer Setzerin ersetzen, die eine Ko-",
+    "L lumne betrachtet und sofort sieht, wo der Rhythmus kippt.",
+    "S Ein Werkzeug kann aber die mühsame Arbeit",
+    "L übernehmen, Zeile für Zeile die beste Stelle zu suchen, und es",
+    "S kann ehrlich sagen, wo die Regeln nicht vollstän-",
+    "· dig aufgehen.",
+  ],
+]
+`;
+
+exports[`reference texts > sets the en-GB reference text the same way as last time (60 characters) 1`] = `
+[
+  [
+    "L A good ragged right margin does not happen by accident.",
+    "S When text is set flush left, the right edge seems",
+    "L to be left to chance, yet that edge decides whether a page",
+    "S looks calm or restless. Lines should alternate",
+    "L in a recognisable rhythm without forming staircases, holes",
+    "S or bellies, and every word division has to be",
+    "· correct, or the reader stumbles at the end of each line.",
+  ],
+  [
+    "S The archive kept a record of every project",
+    "L the studio had ever printed: catalogues, posters, a slim",
+    "S guide to the exhibitions in the old warehouse",
+    "L by the river. Nobody had looked at it for years. The care-",
+    "S taker drank his tea, waited for the evening, and",
+    "L listened to a therapist on the radio explain why ordinary",
+    "· routines are a quiet kind of knowledge.",
+  ],
+  [
+    "L American and British editors do not always agree on where",
+    "S a word may be divided. One house follows pro-",
+    "L nunciation, the other prefers the structure of the word, so",
+    "S democracy and knowledge break differently on",
+    "L each side of the Atlantic. Both agree that a division should",
+    "S never mislead, which is why nobody wants",
+    "L to read about mans laughter or a leg end on the following",
+    "· line.",
+  ],
+  [
+    "L Some words change their division with their meaning.",
+    "S To record a song is not the same as to keep",
+    "L a record of it, and to present an argument differs from a",
+    "S present wrapped in paper. A careful compos-",
+    "L itor notices such things at once, while a machine has to",
+    "S be told, and even then it may need a second",
+    "· opinion before it commits.",
+  ],
+  [
+    "L In the end the eye decides. No program can replace a type-",
+    "S setter who looks at a column and sees at once",
+    "L where the rhythm falters. A tool can, however, take over",
+    "S the patient work of finding the best break line",
+    "L by line, and it can say honestly where the rules do not quite",
+    "· add up.",
+  ],
+]
+`;
+
+exports[`reference texts > sets the en-US reference text the same way as last time (60 characters) 1`] = `
+[
+  [
+    "L A good ragged right margin does not happen by accident.",
+    "S When text is set flush left, the right edge seems",
+    "L to be left to chance, yet that edge decides whether a page",
+    "S looks calm or restless. Lines should alternate",
+    "L in a recognisable rhythm without forming staircases, holes",
+    "S or bellies, and every word division has to be",
+    "· correct, or the reader stumbles at the end of each line.",
+  ],
+  [
+    "S The archive kept a record of every project the",
+    "L studio had ever printed: catalogues, posters, a slim guide",
+    "S to the exhibitions in the old warehouse by the",
+    "L river. Nobody had looked at it for years. The caretaker",
+    "S drank his tea, waited for the evening, and lis-",
+    "L tened to a therapist on the radio explain why ordinary",
+    "· routines are a quiet kind of knowledge.",
+  ],
+  [
+    "L American and British editors do not always agree on where",
+    "S a word may be divided. One house follows pro-",
+    "L nunciation, the other prefers the structure of the word, so",
+    "S democracy and knowledge break differently on",
+    "L each side of the Atlantic. Both agree that a division should",
+    "S never mislead, which is why nobody wants",
+    "L to read about mans laughter or a leg end on the following",
+    "· line.",
+  ],
+  [
+    "L Some words change their division with their meaning.",
+    "S To record a song is not the same as to keep",
+    "L a record of it, and to present an argument differs from a",
+    "S present wrapped in paper. A careful compos-",
+    "L itor notices such things at once, while a machine has to",
+    "S be told, and even then it may need a second",
+    "· opinion before it commits.",
+  ],
+  [
+    "L In the end the eye decides. No program can replace a type-",
+    "S setter who looks at a column and sees at once",
+    "L where the rhythm falters. A tool can, however, take over",
+    "S the patient work of finding the best break line",
+    "L by line, and it can say honestly where the rules do not quite",
+    "· add up.",
+  ],
+]
+`;

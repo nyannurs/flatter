@@ -26,3 +26,6 @@ coverage/
 
 # Simulator snapshot output that is regenerated
 packages/simulator/out/
+
+# Local InDesign test documents (kept out of version control)
+/InDesign Test File/

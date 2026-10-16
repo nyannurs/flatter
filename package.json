@@ -1,0 +1,25 @@
+{
+  "name": "flatter",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/simulator --noEmit && tsc -p packages/simulator/playground --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "node --experimental-strip-types packages/simulator/src/cli.ts",
+    "playground": "node packages/simulator/build-playground.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

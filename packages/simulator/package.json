@@ -1,0 +1,16 @@
+{
+  "name": "@flatter/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Development harness: renders solver plans to SVG with real font metrics. Not shipped in the plugin.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flatter/core": "0.1.0",
+    "@fontsource/source-serif-4": "^5.3.1",
+    "hyphen": "^1.14.1",
+    "opentype.js": "^2.0.0"
+  }
+}
