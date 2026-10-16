@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.ccx
+*.tsbuildinfo
+coverage/
+
+# Logs and env
+*.log
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# InDesign lock and backup files (keep .indd/.idml fixtures tracked)
+*.idlk
+~*.indd
+
+# Simulator snapshot output that is regenerated
+packages/simulator/out/
