@@ -28,6 +28,8 @@ const { values } = parseArgs({
     hyphenation: { type: 'string', default: 'safe' },
     'max-hyphens': { type: 'string', default: '2' },
     'no-hyphenation': { type: 'boolean', default: false },
+    sense: { type: 'boolean' },
+    'no-sense': { type: 'boolean', default: false },
     font: { type: 'string' },
     out: { type: 'string' },
     help: { type: 'boolean', default: false },
@@ -52,6 +54,7 @@ if (values.help) {
   --hyphenation <h>    safe | normal (default safe)
   --max-hyphens <n>    consecutive hyphenated lines (default 2)
   --no-hyphenation     do not hyphenate at all
+  --sense / --no-sense Sinneinheiten penalties (default: on for German, off for English)
   --font <file>        .woff/.ttf/.otf font (default Source Serif 4)
   --out <file.svg>     write the SVG here (default packages/simulator/out/<lang>.svg)`);
   process.exit(0);
@@ -79,6 +82,7 @@ const result = simulate(readFileSync(textPath, 'utf8'), {
   hyphenation: values.hyphenation as 'safe' | 'normal',
   maxConsecutiveHyphens: Number(values['max-hyphens']),
   noHyphenation: values['no-hyphenation'],
+  ...(values['no-sense'] ? { sense: false } : values.sense ? { sense: true } : {}),
 });
 
 const out = values.out ?? resolve(repoRoot, `packages/simulator/out/${lang}.svg`);

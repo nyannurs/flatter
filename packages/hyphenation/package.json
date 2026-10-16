@@ -1,0 +1,14 @@
+{
+  "name": "@flatter/hyphenation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hyphenation for Flatter: pattern engine, rule-based second opinion, consensus classes A/B/C/X, hard rules, Sinneinheiten lists.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flatter/core": "0.1.0",
+    "hyphen": "1.14.1"
+  }
+}

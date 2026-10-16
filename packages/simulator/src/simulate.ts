@@ -3,7 +3,8 @@
  */
 import { buildParagraph, solveStory, type Item, type Plan, type StorySettings } from '@flatter/core';
 import type { SimFont } from './font.ts';
-import { coreLanguage, patternHyphenator, type SimLanguage } from './hyphenator.ts';
+import { createHyphenator, createSenseRule } from '@flatter/hyphenation';
+import { coreLanguage, type SimLanguage } from './hyphenator.ts';
 
 export interface SimulateOptions extends Omit<StorySettings, 'measure' | 'language'> {
   font: SimFont;
@@ -15,6 +16,8 @@ export interface SimulateOptions extends Omit<StorySettings, 'measure' | 'langua
   chars?: number;
   /** Turn hyphenation off entirely. */
   noHyphenation?: boolean;
+  /** Sinneinheiten penalties (plan §2A.6). Default: on for German, off for English. */
+  sense?: boolean;
 }
 
 export interface SimParagraph {
@@ -50,17 +53,20 @@ export function simulate(text: string, opts: SimulateOptions): SimResult {
   const size = opts.fontSize;
   const measure = opts.measure ?? (opts.chars ?? 60) * averageCharWidth(opts.font, size, paragraphs.join(' '));
   const t0 = performance.now();
-  const hyphenate = opts.noHyphenation ? undefined : patternHyphenator(opts.language);
+  const hyphenator = opts.noHyphenation ? undefined : createHyphenator({ language: opts.language });
   const language = coreLanguage(opts.language);
+  const sense = opts.sense ?? language === 'de';
+  const breakCost = sense ? createSenseRule(opts.language) : undefined;
   const itemsList = paragraphs.map((p) =>
     buildParagraph(p, {
       measure: (s) => opts.font.measure(s, size),
-      ...(hyphenate ? { hyphenate } : {}),
+      ...(hyphenator ? { hyphenate: hyphenator.points } : {}),
+      ...(breakCost ? { breakCost } : {}),
       language,
     }),
   );
   const t1 = performance.now();
-  const { font: _f, fontSize: _s, language: _l, measure: _m, chars: _c, noHyphenation: _n, ...settings } = opts;
+  const { font: _f, fontSize: _s, language: _l, measure: _m, chars: _c, noHyphenation: _n, sense: _se, ...settings } = opts;
   const plans = solveStory(itemsList, { ...settings, measure, language });
   const t2 = performance.now();
   return {

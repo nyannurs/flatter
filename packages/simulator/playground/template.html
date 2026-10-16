@@ -115,7 +115,9 @@
     <fieldset>
       <legend>Hyphenation</legend>
       <div class="ctl"><label for="maxHyph"><span>Max hyphens in a row</span><span id="maxHyphOut"></span></label><input id="maxHyph" type="range" min="1" max="3" step="1" value="2"></div>
+      <div class="ctl"><label for="hyphMode"><span>Hyphenation</span></label><select id="hyphMode"><option value="safe">Safe: classes A and B only</option><option value="normal">Normal: also class C</option></select></div>
       <label class="check"><input id="noHyph" type="checkbox"> No hyphenation</label>
+      <label class="check"><input id="sense" type="checkbox" checked> Sinneinheiten (avoid breaks inside units of meaning)</label>
     </fieldset>
 
     <fieldset>
@@ -136,7 +138,7 @@
     </div>
     <div class="preview" id="preview"></div>
     <div class="issues" id="issues"></div>
-    <p class="note">Development preview. Widths come from Source Serif 4 without kerning, and hyphenation comes from TeX patterns only, so every hyphen is shown as class B. In InDesign, widths and allowed breaks come from InDesign itself and its Duden dictionary.</p>
+    <p class="note">Development preview. Widths come from Source Serif 4 without kerning. Hyphenation points come from TeX patterns checked against a second opinion (German: the 2006 rules; English: US and UK practice must agree). A = main joint, B = agreed point, C = only one source accepts it. In InDesign, InDesign's own Duden dictionary becomes the authority.</p>
   </main>
 </div>
 <script>/*SCRIPT*/</script>

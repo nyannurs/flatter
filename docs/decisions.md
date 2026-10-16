@@ -66,3 +66,27 @@ Also observed: 5–21 % of paragraphs cannot start long and flip to start short 
 ## ADR-007: Playground as a private artifact (2026-10-16)
 
 The user is a designer and should judge the rhythm by eye without running code. The simulator's playground is published as a private claude.ai artifact (https://claude.ai/artifact/SvGpvN2649PeRYDPECqJkp). The build emits two files: `out/playground.html` (full document, local) and `out/playground-artifact.html` (content only; the artifact host adds the document skeleton). Republish the artifact file to keep the same link.
+
+## ADR-008: Hyphenation pattern licences (2026-10-16)
+
+Checked against the hyph-utf8 sources on 2026-10-16:
+
+| Patterns | Licence | Notes |
+|---|---|---|
+| German de-1996 (also used for de-CH) | MIT | Generated from the wortliste project. Keep the copyright notice. |
+| British English en-gb | MIT | Keep the notice. The underlying Oxford word list is not distributed and is not needed. |
+| US English en-us | Permissive notice (G. D. C. Kuiken) | Copying and modification allowed; keep the notice. |
+| `hyphen` npm wrapper | ISC | |
+
+All may be bundled in the plugin as long as the notices ship with it. `THIRD_PARTY_NOTICES.md` lists them; Phase 7 packaging must include it.
+
+## ADR-009: Hyphenation consensus design (2026-10-16)
+
+- **Authority**: TeX patterns stand in until InDesign can be probed (spike S3). The `authority` option takes any source, so the InDesign/Duden probe slots in without changing the rest.
+- **German second opinion**: an implementation of the 2006 rules plus a lexicon-based compound and prefix splitter. Independent of the patterns, so their agreement means something. The splitter also supplies main joints (class A). When the lexicon allows two equally good parses, the differing joints become class C automatically.
+- **English second opinion**: the other variety's patterns. US and UK practice differ systematically (knowl-edge / know-ledge), so requiring both is conservative by design. British English additionally keeps short leading parts and short compound parts whole.
+- **Exceptions** are per variety (de, en-US, en-GB), override both sources, and match inflected forms (Urinstinkte). They are the place for meaning-distorting divisions that are orthographically allowed (Urin-stinkt, bein-halten, Drucker-zeugnis).
+- **Ambiguous words** (two legitimate readings: Wachstube, Staubecken, Musikerleben, English homographs) keep only points every reading shares and that are a joint in none of them.
+- **Hard rules** (always class X): fewer than 2 letters before or 3 after, words shorter than 6 letters, ck and ch in German, a single vowel at the start or end of a word or word part, misleading English splits, capitalised English words.
+- **Golden corpora are precision tests**, not recall tests: the plugin may hyphenate less than allowed, never wrongly.
+- **Sinneinheiten** costs: article 30, preposition 20, one-letter word 30, pronoun 10 (English), abbreviation, initials and dates 120, number + unit 300. For scale, a German class B hyphen costs about 120. On by default for German, off for English (plan §2A.6).

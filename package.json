@@ -6,11 +6,12 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/simulator --noEmit && tsc -p packages/simulator/playground --noEmit",
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/hyphenation --noEmit && tsc -p packages/simulator --noEmit && tsc -p packages/simulator/playground --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "node --experimental-strip-types packages/simulator/src/cli.ts",
-    "playground": "node packages/simulator/build-playground.mjs"
+    "playground": "node packages/simulator/build-playground.mjs",
+    "corpus-report": "node packages/hyphenation/scripts/corpus-report.ts"
   },
   "engines": {
     "node": ">=22"

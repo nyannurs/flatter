@@ -58,6 +58,8 @@ function render(): void {
     mode: val('mode') as 'strict' | 'soft',
     maxConsecutiveHyphens: num('maxHyph'),
     noHyphenation: checked('noHyph'),
+    hyphenation: val('hyphMode') as 'safe' | 'normal',
+    sense: checked('sense'),
   });
   const s = summarise(result);
   const allGood = s.errors === 0;
@@ -82,13 +84,15 @@ function render(): void {
 }
 
 for (const id of ['chars', 'size', 'z', 'band', 'variation', 'maxHyph']) $(id).addEventListener('input', schedule);
-for (const id of ['phase', 'mode', 'continuous', 'noHyph', 'bands', 'markers']) $(id).addEventListener('change', schedule);
+for (const id of ['phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;
   schedule();
 });
 langSel.addEventListener('change', () => {
   if (!textEdited) textArea.value = sample(langSel.value as SimLanguage);
+  // Sinneinheiten default: on for German, off for English (plan §2A.6).
+  $<HTMLInputElement>('sense').checked = langSel.value.startsWith('de');
   schedule();
 });
 $('reset').addEventListener('click', () => {

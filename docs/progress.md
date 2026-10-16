@@ -2,6 +2,26 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (later): Phase 2 hyphenation module built
+
+**Done**
+- `packages/hyphenation`: TeX patterns as stand-in authority, an independent second opinion, consensus classes A/B/C/X, hard rules, curated exceptions per variety (de, en-US, en-GB) that also cover inflected forms, ambiguous words, misleading English splits, a never-hyphenate token check, and Sinneinheiten break costs for German and English. An InDesign probe can later replace the authority through the `authority` option.
+- German second opinion: rule syllabifier after the Regelwerk 2006 (ck/ch kept, last consonant to the new line, § 112 options, no single vowel at word or part edges) plus a compound and prefix splitter over a curated stem lexicon with umlaut variants. Ambiguous parses are detected automatically.
+- English second opinion: the other variety's patterns, so only breaks both US and UK practice accept are trusted. British English also keeps short word parts whole (inter-, after-, paper-).
+- Golden corpora: German 482 words, US English 430, British English 426. All pass: no Safe point outside the acceptable divisions, no wrong class A. Safe mode can use 91 % (de), 73 % (en-US) and 80 % (en-GB) of acceptable breaks.
+- Pattern licences checked (ADR-008); notices in `THIRD_PARTY_NOTICES.md`.
+- The simulator and playground now use the module, with switches for Sinneinheiten (default on for German, off for English) and Safe/Normal hyphenation. The playground artifact is republished at the same link.
+- 89 tests pass.
+
+**Results**
+- Reference texts at 60 characters: still 5/5 paragraphs in strict alternation in German and English. German now breaks at joints (ent-stehen, Feier-abend, voll-ständig) where it used to break at syllables.
+- MVP target at 55–70 characters: English 98.8 %. German 93.8 % (75 of 80), just under the 95 % target. The five misses are at 55–58 characters: three long lines short of their band by 1.4–4.5 pt, two paragraphs that would need three hyphens in a row. A 10 % wider band, or the optional tracking assist (Laufweite), fixes all five. The test records the German baseline until the designer decides.
+
+**Waiting on the user (new)**
+- Tracking assist (Laufweite): the user asked whether the solver uses it. It does not (ADR-002 set it off). Ask whether to add it as an opt-in rescue for near-miss lines, and the maximum (plan §4.3, §11.5).
+- Review of the golden corpora. They were written from the rules and dictionary practice, not checked against Duden, Merriam-Webster or Oxford directly. British entries left out because the division is uncertain: particular, serious, violence. Debatable German points currently withheld (class C): In-stinkt / Ins-tinkt, Pro-gramm / Prog-ramm (§ 112).
+- Optional improvement: the "Freie Wortlisten und Trennmuster" word list (marks compound joints explicitly) would give far better class A detection than the hand-made stem lexicon. Downloading it needs the user's go-ahead; check its licence first.
+
 ## 2026-10-16: repository set up, Phase 1 core solver and simulator built
 
 **Done**

@@ -25,6 +25,7 @@ npm test                # vitest: unit, scenario, property and simulator snapsho
 npm run typecheck       # tsc for core, simulator and playground
 npm run sim -- --help   # simulator CLI: text -> SVG + report (default: German reference text, 60 chars)
 npm run playground      # bundles the live playground to packages/simulator/out/playground.html
+npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 ```
 
 To view the playground locally, start the `playground` entry in `.claude/launch.json` (a tiny Node static server, `packages/simulator/serve.mjs`). The published copy for the user is the private artifact https://claude.ai/artifact/SvGpvN2649PeRYDPECqJkp; republish it from `packages/simulator/out/playground-artifact.html` after `npm run playground` so the link stays the same.
@@ -35,9 +36,13 @@ Snapshot tests pin the line breaks of the reference texts. When a solver change 
 
 ```
 packages/core/        solver: item model, metrics, DP, checker, text builder. Pure TS, no InDesign or DOM APIs.
+packages/hyphenation/ hyphenation: TeX patterns + second opinion -> classes A/B/C/X, hard rules, exceptions,
+                      ambiguous words, Sinneinheiten break costs. German second opinion = 2006 rule syllabifier
+                      with a stem lexicon (src/lexicon-de.ts); English = US and UK patterns must agree.
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
                       CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs)
 test/fixtures/texts/  German and English reference texts (written for this project, seeded with hard hyphenation cases)
+test/hyphenation/     golden corpora de.tsv, en-US.tsv, en-GB.tsv ("=" main joint, "-" acceptable break)
 docs/plan.md          architecture and implementation plan (source of truth for intent)
 docs/progress.md      status log and next steps
 docs/decisions.md     ADRs and the designer's answers to plan §11
@@ -45,7 +50,7 @@ docs/spike-results.md InDesign spike findings (Phase 0)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
-Planned but not created yet: `packages/hyphenation`, `packages/indesign-adapter`, `packages/panel`, `test/hyphenation/*.tsv`.
+Planned but not created yet: `packages/indesign-adapter`, `packages/panel`.
 
 ## Conventions
 
@@ -53,6 +58,7 @@ Planned but not created yet: `packages/hyphenation`, `packages/indesign-adapter`
 - `packages/core` must stay free of InDesign APIs and of `DOM` types (plan §0.3).
 - Tests live in `packages/*/test/*.test.ts`. Use Vitest; property tests use fast-check.
 - Hyphenation correctness rules are never relaxed, not even in Soft mode: class X is never used, class C only in Normal mode (plan §5.3).
+- Golden corpora are precision tests: every Safe point (A/B) must be listed as acceptable, every A must be a listed main joint. When the report flags a point, decide whether the corpus or the engine is wrong; never add a division you are not sure of. Fix a wrong engine result with the lexicon, the rules or `src/lists.ts` (exceptions per variety, ambiguous words, misleading English splits).
 - Units are points throughout. "gap" means available width minus line width (distance from the right edge of the measure).
 
 ## Solver in one paragraph

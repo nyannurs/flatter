@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@flatter/core": "0.1.0",
+    "@flatter/hyphenation": "0.1.0",
     "@fontsource/source-serif-4": "^5.3.1",
-    "hyphen": "^1.14.1",
     "opentype.js": "^2.0.0"
   }
 }
