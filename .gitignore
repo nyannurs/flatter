@@ -32,3 +32,9 @@ packages/simulator/out/
 
 # Built UXP spike scripts
 tools/indesign/spikes/dist/
+
+# Built panel bundle
+packages/panel/plugin/index.js
+
+# Local UXP plugin session (tools/indesign/uxp-load.mjs)
+packages/panel/.uxp-session.json

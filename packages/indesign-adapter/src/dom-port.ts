@@ -166,31 +166,76 @@ export class DomPort implements Port {
     return out;
   }
 
+  /** Teeth of this story with the bounds last written; filled on first use (one label scan). */
+  private teethCache: { rect: Any; bounds: number[]; page: number; label: string }[] | undefined;
+
+  /** Counters for performance diagnosis (spike S4). */
+  teethStats = { created: 0, moved: 0, parked: 0, relabelled: 0 };
+
   setTeeth(teeth: readonly ToothSpec[]): void {
     const id = this.id;
-    const existing = this.existingTeeth();
+    if (!this.teethCache) {
+      this.teethCache = this.existingTeeth().map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), label: '' }));
+    }
+    const cache = this.teethCache;
     const none = this.doc.swatches.itemByName('None');
     teeth.forEach((t, i) => {
-      const page = this.doc.pages.item(t.page);
-      let r: Any = existing[i];
-      if (r && r.parentPage && r.parentPage.documentOffset === t.page) {
-        // Assigning r.geometricBounds directly can silently do nothing in UXP (like strokeWeight, spike S1).
-        r.properties = { geometricBounds: t.bounds };
-        const b = r.geometricBounds.map(Number);
-        if (Math.abs(b[1] - t.bounds[1]) > 0.001 || Math.abs(b[0] - t.bounds[0]) > 0.001) {
-          r.remove();
-          r = undefined;
+      const label = `${t.paragraph}:${t.line}`;
+      const have = cache[i];
+      if (have && have.page === t.page) {
+        // Only write what changed: each DOM call costs about a millisecond (spike S4).
+        if (have.bounds.some((v, k) => Math.abs(v - t.bounds[k]!) > 1e-4)) {
+          have.rect.geometricBounds = t.bounds;
+          have.bounds = [...t.bounds];
+          this.teethStats.moved++;
         }
+        if (have.label !== label) {
+          have.rect.insertLabel('flatter-line', label);
+          have.label = label;
+          this.teethStats.relabelled++;
+        }
+        return;
       }
-      if (!r || !r.isValid) {
-        if (r) r.remove();
-        r = page.rectangles.add({ geometricBounds: t.bounds, strokeWeight: 0, strokeColor: none, fillColor: none, itemLayer: this.layer, nonprinting: true });
-        r.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
-        r.insertLabel(TOOTH_LABEL, this.storyKey());
-      }
-      r.insertLabel('flatter-line', `${t.paragraph}:${t.line}`);
+      if (have) have.rect.remove();
+      const rect = this.doc.pages.item(t.page).rectangles.add({ geometricBounds: t.bounds, strokeWeight: 0, strokeColor: none, fillColor: none, itemLayer: this.layer, nonprinting: true });
+      rect.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
+      rect.insertLabel(TOOTH_LABEL, this.storyKey());
+      rect.insertLabel('flatter-line', label);
+      cache[i] = { rect, bounds: [...t.bounds], page: t.page, label };
+      this.teethStats.created++;
     });
-    for (let i = teeth.length; i < existing.length; i++) existing[i].remove();
+    // Park surplus teeth on the pasteboard instead of deleting them: creating a tooth costs far more
+    // than moving one, and the line count changes often while a slider moves (spike S4).
+    for (let i = teeth.length; i < cache.length; i++) {
+      const c = cache[i]!;
+      const parked = this.parkingBounds(c.page, i);
+      if (c.bounds.some((v, k) => Math.abs(v - parked[k]!) > 1e-4)) {
+        c.rect.geometricBounds = parked;
+        c.bounds = parked;
+        this.teethStats.parked++;
+      }
+      if (c.label !== 'parked') {
+        c.rect.insertLabel('flatter-line', 'parked');
+        c.label = 'parked';
+      }
+    }
+  }
+
+  /** Remove parked teeth (end of a session). */
+  dropParkedTeeth(): void {
+    if (!this.teethCache) return;
+    this.teethCache = this.teethCache.filter((c) => {
+      if (c.label !== 'parked') return true;
+      c.rect.remove();
+      return false;
+    });
+  }
+
+  private parkingBounds(page: number, i: number): number[] {
+    const b = this.doc.pages.item(Math.max(0, page)).bounds.map(Number);
+    const x = b[3]! + 3000;
+    const y = b[0]! + i * 0.5;
+    return [y, x, y + 0.1, x + 1];
   }
 
   /** Base tracking per paragraph, recorded the first time Flatter touches its tracking. */

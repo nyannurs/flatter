@@ -79,3 +79,23 @@ describe('tracking rescue in the apply loop', () => {
     expect(tracked).toBeGreaterThan(0);
   });
 });
+
+describe('live session (panel)', () => {
+  it('takes many slider ticks without reading back, then verifies to every line as planned', async () => {
+    const { FlatterSession } = await import('../src/index.ts');
+    const fake = new FakeInDesign(DE, { measure: 260, accepts: ourSafe });
+    const s = new FlatterSession(fake);
+    s.prepare({});
+    s.plan({ zoneShare: 0.2, bandShare: 0.5 });
+    s.steer();
+    s.verify();
+    const reads = fake.compositions;
+    for (let k = 0; k < 20; k++) {
+      s.plan({ zoneShare: 0.12 + (0.13 * k) / 19, bandShare: 0.5 });
+      s.steer();
+    }
+    expect(fake.compositions).toBe(reads); // no read-back during the drag
+    const r = s.verify();
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+  });
+});

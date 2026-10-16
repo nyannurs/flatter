@@ -125,3 +125,12 @@ The designer asked whether the solver uses Laufweite, then decided: add tracking
 - **Tracking rescue**: planned tracking is applied to the tracked lines' characters relative to the paragraph's base tracking, reset before measuring on re-apply, and restored on Remove.
 - **Undo**: Apply and Remove each run inside `app.doScript(…, UndoModes.ENTIRE_SCRIPT)`: one undo step.
 - **Not yet handled**: paragraphs with mixed fonts or languages inside a word (the probe uses the paragraph's first character), tabs and anchored objects (reported as unsupported), threaded frames of different widths, live updates on edit (needs the panel).
+
+## ADR-012: Panel and live loop (2026-10-16)
+
+- **UI**: plain HTML with InDesign's built-in Spectrum UXP widgets (sp-slider, sp-picker, sp-checkbox, sp-button); no framework. Colours from the host's CSS variables, so the panel follows InDesign's theme.
+- **Sliders in relative units**: Flatterzone in % of each paragraph's measure (8–25 %, default 20 %), band in % of the zone (default 50 %), so paragraphs with different indents share one setting (`zoneShare`, `bandShare` in ApplySettings).
+- **Live loop**: input → 30 ms debounce → `liveUpdate` (re-plan + move teeth, no read-back) → 250 ms after the last tick `liveVerify` (read back, re-plan refused points, move misplaced teeth, drop parked teeth). The first tick of a drag opens the undo step "Flatter: Adjust"; later ticks and the verify merge into it (AUTO_UNDO).
+- **Target**: the story of the current selection (text frame or text cursor). Stored settings are loaded into the panel when the selection moves to a story Flatter has been applied to.
+- **Dev builds** poll the application label `flatter-dev-command` every 300 ms and answer in `flatter-dev-result`, so terminal scripts can drive tests inside the loaded panel. Release builds (`npm run panel:release`) leave this out.
+- **Loading for development**: `tools/indesign/uxp-load.mjs` talks to the UXP Developer Tool service directly (Adobe's CLI does not run on Node 24).

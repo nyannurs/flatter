@@ -7,7 +7,7 @@ Findings for spikes S1–S7 (plan §8), run on 2026-10-16 in InDesign 2026 (21.6
 | S1 | Do per-line wrap teeth reproduce planned breaks? | **Pass.** 867/867 lines without hyphenation, 858/858 with hyphenation after re-planning (≤ 2 rounds). |
 | S2 | Can we measure widths accurately in bulk? | **Pass for unhyphenated lines** (exact to 0.001 pt). Hyphenated lines ±0.16 pt (kerning against the hyphen). |
 | S3 | Can we get InDesign's hyphenation points? | **Yes, by probing.** No API exists. About 8 ms and 3 compositions per word. |
-| S4 | Live loop latency in the panel | Not run: needs the panel (UXP Developer Tool). |
+| S4 | Live loop latency in the panel | **Pass.** 42-line frame: 27–32 ms mean, ≤ 95 ms max from slider value to recomposed text. |
 | S5 | Events that detect text edits | No text-edit event exists. Listeners must live in a loaded plugin; see below. |
 | S6 | Layout interactions | Works with columns, threading, baseline grid, hidden or non-printing teeth. Breaks with optical margin alignment, "ignore text wrap", and teeth below the text when "wrap only affects text beneath" is on. |
 | S7 | Duden availability and style | **Yes.** Duden is the default German vendor; the Duden style is a scriptable paragraph attribute. |
@@ -93,6 +93,20 @@ One German and one English paragraph, 280 pt measure, no hyphenation, 13 lines i
 - In UXP, `itemByName()` results cannot be assigned to text attributes; assign the name string (`appliedLanguage = 'German: 2006 Reform'`).
 - Single-line Composer, left aligned, hyphenation zone 0, `firstBaselineOffset = LEADING_OFFSET` and fixed leading give fully predictable composition for steering.
 
+## S4: live latency (2026-10-16, panel loaded in InDesign 2026)
+
+Run by the dev panel itself (`tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'`): a 42-line German frame (Minion Pro 10/13, 300 pt), Flatterzone moved 30 times between 12 % and 25 %, each tick = plan + move teeth + `story.recompose()`.
+
+| Document | Mean | Max | Ticks ≥ 100 ms | Lines as planned after verify |
+|---|---|---|---|---|
+| Hidden | 27 ms | 70 ms | 0/30 | 42/42 |
+| Visible | 32 ms | 95 ms | 0/30 | 42/42 |
+
+- Solving all six paragraphs takes about 1 ms; the rest is InDesign DOM calls (about 1 ms each).
+- What made it fast: teeth cached in the port (no label scan per tick), only changed bounds written, surplus teeth parked on the pasteboard instead of deleted and re-created (creating a tooth costs tens of ms), no read-back during the drag (verify 250 ms after the last tick).
+- The first DOM call right after a heavy Apply can wait 0.6–0.9 s for InDesign to finish composing and redrawing; in use there is always a pause between Apply and the first drag, so the test pauses 0.5 s too.
+- Undo: `UndoModes.AUTO_UNDO` merges a script into the previous undo step (spike S9), so a whole drag is one "Flatter: Adjust" step.
+
 ## Integration findings (Phase 3, 2026-10-16)
 
 - **Do not measure in place.** In the composed story, a space at a line end has a shortened advance (0–2.3 pt) and a letter before a break loses its kerning. Plans built from such widths missed by one word (17/21 lines). Measuring a duplicate of the paragraph on one wide line in the probe frame fixed it (all lines as planned) and makes plans independent of the current breaks.
@@ -109,4 +123,4 @@ One German and one English paragraph, 280 pt measure, no hyphenation, 13 lines i
 5. **Steering margin** ε = 0.05 pt. The solver's tight-steering check should compare slack with ε plus InDesign's fitting tolerance (about 0.03 em) rather than 2ε. To do in Phase 3.
 6. **Hyphenated line widths** are known to about ±0.16 pt (kerning against the hyphen); the margin and the read-back absorb this.
 7. **Edit detection** must live in the panel: `afterSelectionChanged` to note the active story, an idle task comparing content hashes, manual Recompute as fallback.
-8. **S4 (live latency)** still open; it needs the panel loaded through the UXP Developer Tool.
+8. **S4 (live latency)** passed with the panel (see above). If larger stories get slow, the plan's single-polygon teeth (one `entirePath` write per frame) remain the next optimisation.

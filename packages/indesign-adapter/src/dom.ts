@@ -2,7 +2,7 @@
  * Public InDesign operations: check and fix settings, apply, remove. Each runs
  * as one undo step ("Flatter: …") through app.doScript (spike S8).
  */
-import { applyToPort, type ApplyResult, type ApplySettings } from './apply.ts';
+import { FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
 import { asArray, controlLayer, DomPort, indesign, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
@@ -145,10 +145,43 @@ export interface ApplyReport extends ApplyResult {
   check: Check;
 }
 
-/** Set a story in strict alternating rag. One undo step. */
-export function applyFlatter(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): ApplyReport {
+/** A story Flatter is working on, kept alive by the panel between slider ticks. */
+export interface LiveSession {
+  story: Any;
+  port: DomPort;
+  session: FlatterSession;
+  state: StoryState;
+}
+
+function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T {
+  const id = indesign();
+  let result: T | undefined;
+  let error: unknown;
+  id.app.doScript(
+    () => {
+      try {
+        result = fn();
+      } catch (e) {
+        error = e;
+      }
+    },
+    id.ScriptLanguage.UXPSCRIPT,
+    [],
+    // AUTO_UNDO merges into the previous undo step (spike S9): a whole slider drag is one step.
+    mode === 'entire' ? id.UndoModes.ENTIRE_SCRIPT : id.UndoModes.AUTO_UNDO,
+    name,
+  );
+  if (error) throw error;
+  return result as T;
+}
+
+/**
+ * Fix settings, measure and probe, plan, steer and verify: one undo step "Flatter: Apply".
+ * Returns a live session the panel can keep adjusting.
+ */
+export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): { live: LiveSession; report: ApplyReport } {
   const t0 = Date.now();
-  return undoable('Flatter: Apply', () => {
+  return undoableMode('Flatter: Apply', 'entire', () => {
     const doc = story.parent;
     const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
     state.settings = settings;
@@ -157,17 +190,57 @@ export function applyFlatter(story: Any, settings: ApplySettings = {}, opts: { f
     const port = new DomPort(doc, story, layer);
     // Measure without the tracking an earlier Apply added.
     if (state.tracking) port.resetTracking(state.tracking);
-    let result: ApplyResult;
+    const session = new FlatterSession(port);
     try {
-      result = applyToPort(port, settings);
+      session.prepare(settings);
     } finally {
       port.dispose();
     }
-    if (Object.keys(port.baseTracking).length) state.tracking = { ...port.baseTracking };
-    state.appliedAt = new Date().toISOString();
-    story.insertLabel(STORY_LABEL, JSON.stringify(state));
-    return { ...result, ms: Date.now() - t0, probes: port.probes, check: checkSettings(story) };
+    session.plan(settings);
+    session.steer();
+    const result = session.verify(settings.maxRounds ?? 6);
+    port.dropParkedTeeth();
+    saveState(story, state, port);
+    return { live: { story, port, session, state }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check: checkSettings(story) } };
   });
+}
+
+/**
+ * A slider tick: re-plan with new settings and move the teeth, without reading back.
+ * The first tick of a drag opens the undo step "Flatter: Adjust"; later ticks merge into it.
+ */
+export function liveUpdate(live: LiveSession, settings: ApplySettings, firstOfDrag: boolean): void {
+  undoableMode('Flatter: Adjust', firstOfDrag ? 'entire' : 'merge', () => {
+    live.session.plan(settings);
+    live.session.steer();
+    live.state.settings = settings;
+  });
+}
+
+/** After a pause: read back, re-plan refused points, move misplaced teeth. Merges into the current step. */
+export function liveVerify(live: LiveSession): ApplyResult {
+  return undoableMode('Flatter: Adjust', 'merge', () => {
+    const r = live.session.verify(live.state.settings.maxRounds ?? 6);
+    live.port.dropParkedTeeth();
+    saveState(live.story, live.state, live.port);
+    return r;
+  });
+}
+
+function saveState(story: Any, state: StoryState, port: DomPort): void {
+  if (Object.keys(port.baseTracking).length) state.tracking = { ...state.tracking, ...port.baseTracking };
+  state.appliedAt = new Date().toISOString();
+  story.insertLabel(STORY_LABEL, JSON.stringify(state));
+}
+
+/** Set a story in strict alternating rag. One undo step. */
+export function applyFlatter(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): ApplyReport {
+  return openSession(story, settings, opts).report;
+}
+
+/** The story Flatter last stored settings for, if any. */
+export function storedSettings(story: Any): ApplySettings | undefined {
+  return readState(story)?.settings;
 }
 
 /** Remove Flatter from a story: teeth, label, and every setting it changed. One undo step. */

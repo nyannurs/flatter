@@ -27,7 +27,13 @@ npm run sim -- --help   # simulator CLI: text -> SVG + report (default: German r
 npm run playground      # bundles the live playground to packages/simulator/out/playground.html
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
+npm run panel           # build the panel (dev build) into packages/panel/plugin/index.js
+node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)
+node tools/indesign/uxp-load.mjs reload   # after every panel build
+tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4)
 ```
+
+The UXP Developer Tool must be open (its window may stay hidden; the service on port 14001 is what matters). Adobe's `uxp` CLI does not run on Node 24 (native helper missing); `uxp-load.mjs` speaks its WebSocket protocol directly.
 
 To view the playground locally, start the `playground` entry in `.claude/launch.json` (a tiny Node static server, `packages/simulator/serve.mjs`). The published copy for the user is the private artifact https://claude.ai/artifact/SvGpvN2649PeRYDPECqJkp; republish it from `packages/simulator/out/playground-artifact.html` after `npm run playground` so the link stays the same.
 
@@ -44,6 +50,8 @@ packages/indesign-adapter/  InDesign side. Pure, Node-tested: items.ts (items fr
                       points), geometry.ts (teeth), settings.ts (required settings), apply.ts (plan → steer → read back →
                       re-plan loop against the Port interface). UXP only: dom-port.ts (Port with the DOM), dom.ts
                       (applyFlatter / removeFlatter / checkSettings, one undo step each). Tests use a fake greedy composer.
+packages/panel/       UXP panel: plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
+                      loop: debounce 30 ms, verify after 250 ms), src/dev.ts (dev-build command channel and the S4 test).
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
                       CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs)
 test/fixtures/texts/  German and English reference texts (written for this project, seeded with hard hyphenation cases)
@@ -55,7 +63,7 @@ docs/spike-results.md InDesign spike findings (Phase 0)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
-Planned but not created yet: `packages/panel` (needs the UXP Developer Tool).
+Planned but not created yet: Freeze/Unfreeze, review list (Phase 5), packaging (Phase 7).
 
 ## Conventions
 

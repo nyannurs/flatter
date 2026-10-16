@@ -1,0 +1,12 @@
+{
+  "name": "@flatter/panel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flatter's InDesign panel (UXP).",
+  "type": "module",
+  "dependencies": {
+    "@flatter/core": "0.1.0",
+    "@flatter/hyphenation": "0.1.0",
+    "@flatter/indesign-adapter": "0.1.0"
+  }
+}

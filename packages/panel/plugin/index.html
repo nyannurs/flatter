@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { color: var(--uxp-host-text-color); background-color: var(--uxp-host-background-color); font-size: var(--uxp-host-font-size); padding: 10px 12px 16px; margin: 0; }
+  h1 { font-size: 13px; font-weight: bold; margin: 0; }
+  .head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .tag { font-size: 10px; padding: 1px 6px; border: 1px solid var(--uxp-host-border-color); border-radius: 9px; color: var(--uxp-host-text-color-secondary); }
+  .target { color: var(--uxp-host-text-color-secondary); font-size: 11px; margin: 0 0 8px; }
+  .section { border-top: 1px solid var(--uxp-host-border-color); padding-top: 8px; margin-top: 8px; }
+  .legend { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--uxp-host-text-color-secondary); margin-bottom: 4px; }
+  sp-slider { width: 100%; margin-bottom: 2px; }
+  .row { display: flex; flex-direction: row; }
+  .row > * { flex: 1; margin-right: 6px; }
+  .row > *:last-child { margin-right: 0; }
+  sp-picker { width: 100%; }
+  sp-checkbox { display: flex; margin: 2px 0; }
+  .buttons { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 10px; }
+  .buttons sp-button, .buttons sp-action-button { margin: 0 6px 6px 0; }
+  .status { margin-top: 8px; font-size: 12px; font-weight: bold; }
+  .status.ok { color: #2d9d4f; }
+  .status.bad { color: #d7a015; }
+  .status.err { color: #e34850; }
+  .meta { font-size: 10px; color: var(--uxp-host-text-color-secondary); margin-top: 2px; }
+  .report { margin-top: 8px; font-size: 11px; }
+  .report div { margin: 2px 0; }
+  .sev-error { color: #e34850; }
+  .sev-warning { color: #d7a015; }
+  .sev-info { color: var(--uxp-host-text-color-secondary); }
+</style>
+</head>
+<body>
+  <div class="head"><h1>Flatter</h1><span class="tag" id="modeTag">Flattersatz</span></div>
+  <p class="target" id="target">Select a text frame or put the cursor in text.</p>
+
+  <div class="section">
+    <div class="legend">Rag</div>
+    <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone (% of measure)</sp-label></sp-slider>
+    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label">Band (% of zone)</sp-label></sp-slider>
+    <sp-slider id="variation" min="0" max="100" step="5" value="0" show-value="true"><sp-label slot="label">Variation (%)</sp-label></sp-slider>
+    <div class="row">
+      <sp-picker id="phase" size="s" label="Phase">
+        <sp-menu slot="options">
+          <sp-menu-item value="long" selected>Start long</sp-menu-item>
+          <sp-menu-item value="short">Start short</sp-menu-item>
+          <sp-menu-item value="auto">Auto</sp-menu-item>
+        </sp-menu>
+      </sp-picker>
+      <sp-picker id="mode" size="s" label="Mode">
+        <sp-menu slot="options">
+          <sp-menu-item value="strict" selected>Strict</sp-menu-item>
+          <sp-menu-item value="soft">Soft</sp-menu-item>
+        </sp-menu>
+      </sp-picker>
+    </div>
+    <sp-checkbox id="continuous">Continue rhythm across paragraphs</sp-checkbox>
+  </div>
+
+  <div class="section">
+    <div class="legend">Hyphenation</div>
+    <sp-picker id="hyphenation" size="s" label="Hyphenation">
+      <sp-menu slot="options">
+        <sp-menu-item value="safe" selected>Safe (classes A and B)</sp-menu-item>
+        <sp-menu-item value="normal">Normal (also class C)</sp-menu-item>
+      </sp-menu>
+    </sp-picker>
+    <sp-slider id="maxHyph" min="1" max="3" step="1" value="2" show-value="true"><sp-label slot="label">Hyphens in a row</sp-label></sp-slider>
+    <sp-checkbox id="sense" checked>Sinneinheiten</sp-checkbox>
+  </div>
+
+  <div class="section">
+    <div class="legend">Laufweite</div>
+    <sp-checkbox id="tracking">Tracking rescue for near-miss lines</sp-checkbox>
+    <sp-slider id="trackMax" min="1" max="15" step="1" value="3" show-value="true" disabled><sp-label slot="label">Largest tracking (1/1000 em)</sp-label></sp-slider>
+  </div>
+
+  <div class="buttons">
+    <sp-button id="apply" variant="cta">Apply</sp-button>
+    <sp-action-button id="recompute">Recompute</sp-action-button>
+    <sp-action-button id="remove">Remove</sp-action-button>
+  </div>
+  <sp-checkbox id="live" checked>Live: sliders reset the text as you move them</sp-checkbox>
+
+  <div class="status" id="status"></div>
+  <div class="meta" id="meta"></div>
+  <div class="report" id="report"></div>
+  <script src="index.js"></script>
+</body>
+</html>

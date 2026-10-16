@@ -2,6 +2,21 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (night, cont.): Phase 4 panel built and loaded in InDesign
+
+**Done**
+- `packages/panel` (ADR-012): Flatterzone, band and variation sliders; phase, mode and hyphenation pickers; Sinneinheiten, continuous rhythm and tracking rescue; Apply, Recompute, Remove; Live mode; status line and report list. Loaded in the user's InDesign 2026 through the UXP Developer Tool service.
+- The adapter's loop is now a session (prepare / plan / steer / verify) so slider ticks re-plan in about 1 ms and only move teeth.
+- Spike S4 passed: 42-line frame, 27–32 ms mean and ≤ 95 ms max per tick from slider to recomposed text; every line verified as planned afterwards.
+- Teeth are cached, only changed bounds are written, surplus teeth are parked instead of deleted.
+- 122 Node tests, both InDesign integration tests pass.
+
+**Next**
+- The user tries the panel on their own documents and gives feedback.
+- Phase 5: hyphenation review list (approve/forbid points, write InDesign exceptions), violation navigator.
+- Phase 6: edit tracking in the panel (afterSelectionChanged + idle hash), Freeze/Unfreeze, document-open checks.
+- Phase 7: packaging (.ccx), licences (THIRD_PARTY_NOTICES), user guide.
+
 ## 2026-10-16 (later still): Phase 3 InDesign adapter built
 
 **Done**
