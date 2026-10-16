@@ -117,6 +117,25 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
     prevStart = startWord;
     prevEnd = endWord;
 
+    if (line.tracking !== 0) {
+      const allowed = P.tracking.enabled && Math.abs(line.tracking) <= P.tracking.max && Number.isInteger(line.tracking);
+      out.push(
+        allowed
+          ? {
+              kind: 'tracking',
+              severity: 'info',
+              line: i,
+              message: `Tracking ${line.tracking > 0 ? '+' : ''}${line.tracking}/1000 em (Laufweite) brings this line into its band.`,
+            }
+          : {
+              kind: 'tracking-limit',
+              severity: 'error',
+              line: i,
+              message: `Tracking ${line.tracking}/1000 em is outside the allowed ±${P.tracking.enabled ? P.tracking.max : 0}.`,
+            },
+      );
+    }
+
     if (line.kind === 'band' && Number.isFinite(line.slack) && line.slack < 2 * P.epsilon) {
       out.push({
         kind: 'tight-steering',
@@ -221,6 +240,7 @@ export function planStats(lines: readonly PlannedLine[]): Omit<PlanStats, 'state
     lines: lines.length,
     bandLines: band.length,
     hyphens: lines.filter((l) => l.hyphenClass !== undefined).length,
+    trackedLines: lines.filter((l) => l.tracking !== 0).length,
     longGapSpread: spread(band.filter((l) => l.role === 'long').map((l) => l.gap)),
     shortGapSpread: spread(band.filter((l) => l.role === 'short').map((l) => l.gap)),
   };

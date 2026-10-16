@@ -59,6 +59,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
       phase: fc.constantFrom<'long' | 'short' | 'auto'>('long', 'short', 'auto'),
       variation: fc.constantFrom(0, 0.5, 1),
       hanging: fc.boolean(),
+      tracking: fc.option(fc.integer({ min: 0, max: 10 }), { nil: undefined }),
     })
     .map(
       (r): FlatterSettings => ({
@@ -71,6 +72,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
         phase: r.phase,
         variation: r.variation,
         hyphenCountsTowardWidth: !r.hanging,
+        ...(r.tracking !== undefined ? { tracking: { enabled: true, max: r.tracking, emSize: 10 } } : {}),
       }),
     );
 
@@ -137,6 +139,18 @@ describe('solver invariants for any paragraph', () => {
           if (line.slack > 0) expect(line.steerWidth).toBeLessThan(line.inkWidth + line.slack);
         }
 
+        // Tracking: whole units within the maximum, only on band lines, and only as a rescue.
+        for (const line of plan.lines) {
+          expect(Number.isInteger(line.tracking)).toBe(true);
+          if (!P.tracking.enabled) expect(line.tracking).toBe(0);
+          expect(Math.abs(line.tracking)).toBeLessThanOrEqual(P.tracking.enabled ? P.tracking.max : 0);
+          if (line.kind !== 'band') expect(line.tracking).toBe(0);
+        }
+        if (P.tracking.enabled && P.mode === 'strict') {
+          const untracked = solveParagraph(items, { ...settings, tracking: { enabled: false } });
+          if (untracked.solvedAs === 'strict' && !untracked.phaseFlipped) expect(plan.stats.trackedLines).toBe(0);
+        }
+
         // Deterministic.
         expect(solveParagraph(items, settings).lines).toEqual(plan.lines);
       }),
@@ -150,7 +164,8 @@ describe('strict mode is exact', () => {
     fc.assert(
       fc.property(
         fc.array(wordArb, { minLength: 2, maxLength: 7 }),
-        settingsArb(40, 140).map((s) => ({ ...s, mode: 'strict' as const, phase: 'long' as const })),
+        // The brute force below knows nothing about tracking, so it stays off here.
+        settingsArb(40, 140).map((s) => ({ ...s, mode: 'strict' as const, phase: 'long' as const, tracking: { enabled: false } })),
         (ws, settings) => {
           const items = toItems(ws);
           const P = resolveParams(settings, items);
@@ -183,7 +198,7 @@ describe('strict mode is exact', () => {
         const items = toItems(ws);
         const plan = solveParagraph(items, settings);
         const breaks = plan.lines.slice(0, -1).map((l) => l.breakAt);
-        const ev = evaluateBreaks(items, settings, breaks, plan.startRole);
+        const ev = evaluateBreaks(items, settings, breaks, plan.startRole, plan.lines.map((l) => l.tracking));
         expect(ev.lines).toEqual(plan.lines);
         expect(ev.feasible).toBe(plan.feasible);
       }),

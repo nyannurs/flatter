@@ -32,7 +32,27 @@ export interface Weights {
   lastLineTooLong: number;
   /** Ausgangszeile shorter than lastLine.minWidth. */
   lastLineTooShort: number;
+  /** Fixed cost of tracking a line (only used when tracking is enabled). */
+  trackingBase: number;
+  /** Extra cost growing with the square of the tracking, at the maximum. */
+  trackingSlope: number;
 }
+
+/**
+ * Tracking assist (Laufweite, plan §4.3): an opt-in rescue for lines that just
+ * miss their band. Off by default (ADR-002). It is only tried when the
+ * paragraph cannot be set strictly without it, and every tracked line is reported.
+ */
+export interface TrackingRules {
+  enabled: boolean;
+  /** Largest tracking on one line, in 1/1000 em, tighter or looser. */
+  max: number;
+  /** The em in points (the font size). Needed to turn units into width. */
+  emSize: number;
+}
+
+/** Suggested maximum when tracking is enabled (ADR-010). */
+export const DEFAULT_TRACKING_MAX = 3;
 
 export interface LastLineRules {
   /** Never a single word with fewer letters than this (Bringhurst §2.4.2). */
@@ -76,6 +96,8 @@ export interface FlatterSettings {
   weights?: Partial<Weights>;
   /** Advanced: states kept per break in Soft mode (default 48). Strict mode is always exact. */
   softBeam?: number;
+  /** Tracking assist (Laufweite). Off unless enabled. */
+  tracking?: Partial<TrackingRules>;
 }
 
 export interface ResolvedParams {
@@ -100,6 +122,7 @@ export interface ResolvedParams {
   lastLine: LastLineRules;
   weights: Weights;
   softBeam: number;
+  tracking: TrackingRules;
 }
 
 const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
@@ -116,6 +139,8 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     sameEnd: 15,
     lastLineTooLong: 1e5,
     lastLineTooShort: 1e4,
+    trackingBase: 400,
+    trackingSlope: 600,
   },
   // English hyphenates less (Hochuli, plan §2A.5).
   en: {
@@ -131,6 +156,8 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     sameEnd: 15,
     lastLineTooLong: 1e5,
     lastLineTooShort: 1e4,
+    trackingBase: 400,
+    trackingSlope: 600,
   },
 };
 
@@ -195,6 +222,13 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
   const variation = settings.variation ?? 0;
   if (variation < 0 || variation > 1) throw new RangeError(`variation must be within 0…1, got ${variation}`);
   const widthFactor = Math.min(2, Math.max(0.6, charsPerLine / 60));
+  const tracking: TrackingRules = {
+    enabled: settings.tracking?.enabled ?? false,
+    max: settings.tracking?.max ?? DEFAULT_TRACKING_MAX,
+    emSize: settings.tracking?.emSize ?? 0,
+  };
+  if (tracking.enabled && !(tracking.emSize > 0)) throw new RangeError('tracking.emSize (the font size in points) is required when tracking is enabled');
+  if (!(tracking.max >= 0)) throw new RangeError(`tracking.max must be zero or more, got ${tracking.max}`);
   return {
     measure,
     flatterzone,
@@ -216,6 +250,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     lastLine: { ...DEFAULT_LAST_LINE, ...settings.lastLine },
     weights: { ...LANGUAGE_WEIGHTS[language], ...settings.weights },
     softBeam: settings.softBeam ?? 48,
+    tracking,
   };
 }
 

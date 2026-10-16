@@ -63,7 +63,7 @@ Planned but not created yet: `packages/indesign-adapter`, `packages/panel`.
 
 ## Solver in one paragraph
 
-Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
+Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
 
 ## Environment gotchas
 

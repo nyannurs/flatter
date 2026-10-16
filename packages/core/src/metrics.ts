@@ -31,6 +31,8 @@ export class ParagraphMetrics {
   private readonly letterPrefix: Int32Array;
   /** Glue items in items[0..k). */
   private readonly gluePrefix: Int32Array;
+  /** Characters in items[0..k): box text plus one per space. Tracking applies to each. */
+  private readonly charPrefix: Int32Array;
   /** Breaks the solver may choose, ascending, ending with n. */
   readonly candidates: number[];
   /** Breaks a composer might take regardless of our vetoes, ascending, ending with n. */
@@ -47,6 +49,7 @@ export class ParagraphMetrics {
     this.prefix = new Float64Array(this.n + 1);
     this.letterPrefix = new Int32Array(this.n + 1);
     this.gluePrefix = new Int32Array(this.n + 1);
+    this.charPrefix = new Int32Array(this.n + 1);
     this.candidates = [];
     this.potential = [];
     for (let k = 0; k < this.n; k++) {
@@ -57,6 +60,8 @@ export class ParagraphMetrics {
       this.letterPrefix[k + 1] =
         this.letterPrefix[k]! + (it.type === 'box' && it.text ? (it.text.match(LETTER)?.length ?? 0) : 0);
       this.gluePrefix[k + 1] = this.gluePrefix[k]! + (it.type === 'glue' ? 1 : 0);
+      this.charPrefix[k + 1] =
+        this.charPrefix[k]! + (it.type === 'glue' ? 1 : it.type === 'box' && it.text ? [...it.text].length : 0);
       if (this.isPotentialBreak(k)) this.potential.push(k);
       if (this.isCandidateBreak(k, opts.hyphenation)) this.candidates.push(k);
     }
@@ -135,6 +140,13 @@ export class ParagraphMetrics {
 
   letters(start: number, end: number): number {
     return end > start ? this.letterPrefix[end]! - this.letterPrefix[start]! : 0;
+  }
+
+  /** Characters a tracking value applies to on a line from start to end ending at break b (the hyphen counts). */
+  trackedChars(start: number, end: number, b: number): number {
+    const base = end > start ? this.charPrefix[end]! - this.charPrefix[start]! : 0;
+    const pen = b < this.n ? this.penaltyAt(b) : undefined;
+    return base + (pen?.flagged && pen.width > 0 ? 1 : 0);
   }
 
   glueCount(start: number, end: number): number {

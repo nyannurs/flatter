@@ -16,7 +16,7 @@ The user approved these defaults on 2026-10-16. They may be revisited after real
 | 2. Definition of length | Bands are measured to the frame edge (not the optical edge). |
 | 3. Phase across paragraphs | Every paragraph starts long. Continuous rhythm stays available as an option. |
 | 4. Ausgangszeile | No single word under 4 letters, never a hyphen stub; after a long line it must not reach past the short target (strong penalty). No minimum width by default. |
-| 5. Tracking assist | Off. |
+| 5. Tracking assist | Off by default. Revised 2026-10-16: available as an opt-in rescue, see ADR-010. |
 | 6. Line-end word rules | Use the plan's default: on for German, optional for English. |
 | 7. Duden style | Preferred Aesthetic. |
 | 8. Regularity | Variation 0 (pure alternation). |
@@ -90,3 +90,26 @@ All may be bundled in the plugin as long as the notices ship with it. `THIRD_PAR
 - **Hard rules** (always class X): fewer than 2 letters before or 3 after, words shorter than 6 letters, ck and ch in German, a single vowel at the start or end of a word or word part, misleading English splits, capitalised English words.
 - **Golden corpora are precision tests**, not recall tests: the plugin may hyphenate less than allowed, never wrongly.
 - **Sinneinheiten** costs: article 30, preposition 20, one-letter word 30, pronoun 10 (English), abbreviation, initials and dates 120, number + unit 300. For scale, a German class B hyphen costs about 120. On by default for German, off for English (plan §2A.6).
+
+## ADR-010: Tracking (Laufweite) as an opt-in rescue (2026-10-16)
+
+The designer asked whether the solver uses Laufweite, then decided: add tracking as an opt-in rescue for lines that just miss their band, off by default, shown in the report, with a suggested maximum.
+
+- **Setting**: `tracking: { enabled, max, emSize }`. Units are 1/1000 em, as in InDesign's Tracking field; `emSize` is the font size in points. Whole units only.
+- **When it applies**: only to band lines (never the last line or a forced line), and only when the paragraph cannot be set strictly without it. Fallback order: strict; strict with tracking; strict in the other phase; the other phase with tracking; soft (with tracking if enabled). Tracking comes before a phase flip because the designer chose "start long".
+- **Which value**: the smallest whole value that brings the line into its band, tighter or looser. Tightening also lets a line that is slightly too wide fit the measure.
+- **Cost**: 400 plus 600 × (t / max)², above hyphens and Sinneinheiten, far below a band violation.
+- **Reporting**: each tracked line is an info entry ("Tracking −1/1000 em (Laufweite) brings this line into its band."), a margin mark in the simulator and a count in the summary. Tracking outside the limit is an error.
+- **Suggested maximum: ±3/1000 em.** At 10 pt that is 0.03 pt per character. Sweep over the reference texts, 55–70 characters, Safe hyphenation:
+
+| Max | German strict | US/UK English strict | Tracked lines per 100 (40–90 chars) |
+|---|---|---|---|
+| 0 | 93.8 % | 98.8 % | 0 |
+| 1 | 97.5 % | 98.8 % | 1 |
+| 3 | 97.5 % | 100 % | 2–2.5 |
+| 4 | 100 % | 100 % | 3 |
+| 5 | 100 % | 100 % | 3.3 |
+| 10 | 100 % | 100 % | 5–6 |
+
+±3 meets the 95 % target in all languages with very few tracked lines. ±4 or ±5 fixes the last near misses. Larger values help narrow columns (below 55 characters) but start to change the grey value of a line. Bringhurst warns against letterspacing lowercase, which is why the rescue stays opt-in and small.
+- **InDesign (Phase 3)**: the adapter applies tracking as a character attribute on that line's text, records it in the story label, and Remove resets it. Steering widths already include the tracked width.

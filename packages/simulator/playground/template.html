@@ -121,6 +121,12 @@
     </fieldset>
 
     <fieldset>
+      <legend>Laufweite</legend>
+      <label class="check"><input id="tracking" type="checkbox"> Tracking rescue for lines that just miss their band</label>
+      <div class="ctl"><label for="trackMax"><span>Largest tracking</span><span id="trackMaxOut"></span></label><input id="trackMax" type="range" min="1" max="15" step="1" value="3"></div>
+    </fieldset>
+
+    <fieldset>
       <legend>View</legend>
       <label class="check"><input id="bands" type="checkbox" checked> Show bands</label>
       <label class="check"><input id="markers" type="checkbox" checked> Show markers</label>
@@ -135,6 +141,7 @@
       <span><span class="sw err"></span>Breaks a strict rule</span>
       <span><span class="sw warn"></span>Typographic warning</span>
       <span>A/B/C: hyphenation class</span>
+      <span>±n: tracking in 1/1000 em</span>
     </div>
     <div class="preview" id="preview"></div>
     <div class="issues" id="issues"></div>

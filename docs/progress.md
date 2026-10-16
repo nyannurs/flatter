@@ -2,6 +2,20 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-16 (evening): tracking rescue (Laufweite) added
+
+**Done**
+- Core: opt-in tracking assist (`tracking: { enabled, max, emSize }`), off by default. Used only when a paragraph cannot be set strictly without it, on band lines only, smallest whole value in 1/1000 em, tighter or looser. Reported per line; `PlannedLine.tracking` carries the value for the InDesign adapter. `evaluateBreaks` accepts read-back tracking per line.
+- Suggested maximum ±3/1000 em, chosen from a sweep (ADR-010).
+- Simulator, CLI (`--tracking <max>`) and playground (Laufweite switch and slider) support it; tracked lines are drawn with the extra spacing and marked in the margin. The playground artifact is republished at the same link.
+- Tests: 98 passing, including tracking scenarios, property checks (whole units, within the limit, band lines only, never used when not needed) and the MVP target with tracking.
+
+**Results**
+- With tracking at ±3: German reaches 97.5 % strict alternation at 55–70 characters (93.8 % without), English 100 %. About 2 lines in 100 are tracked.
+
+**Waiting on the user (resolved)**
+- Tracking question: answered by ADR-010.
+
 ## 2026-10-16 (later): Phase 2 hyphenation module built
 
 **Done**

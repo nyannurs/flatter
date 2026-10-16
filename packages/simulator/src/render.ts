@@ -46,7 +46,7 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
   const left = 24;
   const top = 24;
   const markerX = left + measure + 14;
-  const width = left + measure + 60;
+  const width = left + measure + 72;
   const parts: string[] = [];
   let y = top;
 
@@ -72,7 +72,8 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
     for (const line of plan.lines) {
       const baseline = y + leading * 0.5 + size * font.xHeight * 0.5;
       const x = left + line.indent;
-      parts.push(`<path d="${font.pathData(line.text, x, baseline, size)}" fill="${c.ink}"><title>${esc(line.text)}</title></path>`);
+      const d = line.tracking ? trackedPath(font, line.text, x, baseline, size, line.tracking) : font.pathData(line.text, x, baseline, size);
+      parts.push(`<path d="${d}" fill="${c.ink}"><title>${esc(line.text)}</title></path>`);
       const vs = byLine.get(line.index) ?? [];
       if (opts.showMarkers !== false) {
         const worst = vs.find((v) => v.severity === 'error') ?? vs.find((v) => v.severity === 'warning');
@@ -80,6 +81,11 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
           const color = worst.severity === 'error' ? c.error : c.warning;
           const title = vs.map((v) => `${v.kind}: ${v.message}`).join('\n');
           parts.push(`<circle cx="${markerX}" cy="${baseline - size * font.xHeight * 0.5}" r="3" fill="${color}"><title>${esc(title)}</title></circle>`);
+        }
+        if (line.tracking) {
+          parts.push(
+            `<text x="${markerX + 18}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${Math.max(6, size * 0.6)}" fill="${c.note}"><title>Tracking ${line.tracking}/1000 em</title>${line.tracking > 0 ? '+' : '−'}${Math.abs(line.tracking)}</text>`,
+          );
         }
         if (line.hyphenClass) {
           parts.push(
@@ -98,4 +104,16 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
     ...parts,
     '</svg>',
   ].join('\n');
+}
+
+/** Glyphs placed one by one with tracking added after each character (1/1000 em). */
+function trackedPath(font: SimFont, text: string, x: number, y: number, size: number, tracking: number): string {
+  let d = '';
+  let pos = x;
+  const extra = (tracking * size) / 1000;
+  for (const ch of text) {
+    d += font.pathData(ch, pos, y, size);
+    pos += font.measure(ch, size) + extra;
+  }
+  return d;
 }

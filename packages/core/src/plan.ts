@@ -33,6 +33,8 @@ export interface PlannedLine {
   steerWidth: number;
   /** Extra width the composer would need to take one more fragment. Infinity on the last line. */
   slack: number;
+  /** Tracking (Laufweite) applied to this line in 1/1000 em; 0 when untouched. */
+  tracking: number;
   text: string;
 }
 
@@ -55,7 +57,9 @@ export type ViolationKind =
   | 'staircase'
   | 'mechanical-pattern'
   | 'phase-flipped'
-  | 'tight-steering';
+  | 'tight-steering'
+  | 'tracking'
+  | 'tracking-limit';
 
 /**
  * error: breaks a Strict-mode rule. warning: a typographic fault the designer
@@ -78,6 +82,8 @@ export interface PlanStats {
   /** Spread of long-line right edges (standard deviation of gaps, pt). Band drift, plan §2A.4. */
   longGapSpread: number;
   shortGapSpread: number;
+  /** Lines with tracking (Laufweite) applied. */
+  trackedLines: number;
   /** DP states explored, for performance tracking. */
   states: number;
 }

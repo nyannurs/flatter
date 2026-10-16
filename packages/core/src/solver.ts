@@ -41,6 +41,8 @@ interface Node {
   startWord: string | undefined;
   endWord: string | undefined;
   startRun: number;
+  /** Tracking applied to this line, in 1/1000 em (0 = none). */
+  tracking: number;
 }
 
 interface DPResult {
@@ -69,7 +71,7 @@ export function targetGap(P: ResolvedParams, role: Role, startItem: number): num
   return lo + P.variation * P.band * unitHash(P.variationSeed, startItem);
 }
 
-function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean): DPResult | null {
+function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean): DPResult | null {
   const { items, n, candidates } = M;
   const Z = P.flatterzone;
   const band = P.band;
@@ -110,22 +112,39 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       const content = M.contentWidth(g.start, g.end);
       const final = b === n;
       const forced = !final && M.isForced(b);
+      const exempt = final || forced;
+      // Width one unit of tracking adds to this line (1/1000 em per character).
+      const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end, b) : 0;
+      const shrink = trackUnit * P.tracking.max;
       let overfull = 0;
-      if (content > avail + TOL || g.width > avail + TOL) {
+      if (content - shrink > avail + TOL || g.width - shrink > avail + TOL) {
         // Too wide. Soft mode may keep the shortest possible line when nothing fits.
-        if (hard || i !== fromIdx) return content > avail + TOL ? 'stop' : 'next';
+        if (hard || i !== fromIdx) return content - shrink > avail + TOL ? 'stop' : 'next';
         overfull = g.width - avail;
       }
 
-      const exempt = final || forced;
-      const gap = avail - g.width;
+      let gap = avail - g.width;
       let cost = node.cost;
       if (overfull > 0) cost += SOFT_COST.overfull * (1 + overfull);
+      let tracking = 0;
 
       if (!exempt) {
         const lo = role === 'long' ? 0 : Z;
         const hi = lo + band;
-        const dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
+        let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
+        if (dist > TOL && trackUnit > 0) {
+          // Tracking rescue: the smallest whole value that brings the line into its band.
+          const tMin = Math.max(-P.tracking.max, Math.ceil((gap - hi) / trackUnit - 1e-9));
+          const tMax = Math.min(P.tracking.max, Math.floor((gap - lo) / trackUnit + 1e-9));
+          if (tMin <= tMax) {
+            tracking = tMin > 0 ? tMin : tMax < 0 ? tMax : 0;
+            gap -= tracking * trackUnit;
+            dist = 0;
+            overfull = 0;
+            cost = node.cost + W.trackingBase + W.trackingSlope * (tracking / Math.max(1, P.tracking.max)) ** 2;
+          }
+        }
+        if (overfull > 0 && hard) return 'next';
         if (dist > TOL) {
           if (hard) return 'next';
           // A line far shorter than any band is only worth keeping when nothing longer fits.
@@ -216,6 +235,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         startWord,
         endWord,
         startRun,
+        tracking,
       });
 
       return forced ? 'stop' : 'added';
@@ -248,6 +268,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
     startWord: undefined,
     endWord: undefined,
     startRun: 0,
+    tracking: 0,
   };
   extend(start, 0);
   for (let ci = 0; ci < candidates.length - 1; ci++) {
@@ -273,11 +294,15 @@ interface LineSpec {
   a: number;
   b: number;
   role: Role;
+  /** Tracking in 1/1000 em (0 = none). */
+  tracking: number;
 }
 
 function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly LineSpec[]): PlannedLine[] {
   return specs.map((spec, index) => {
-    const g = M.geometry(spec.a, spec.b);
+    const g0 = M.geometry(spec.a, spec.b);
+    const trackWidth = spec.tracking ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 : 0;
+    const g = { ...g0, width: g0.width + trackWidth, ink: g0.ink + trackWidth };
     const first = spec.a < 0;
     const indent = first ? P.firstLineIndent : 0;
     const available = P.measure - indent;
@@ -285,7 +310,8 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
     const kind = final ? 'last' : M.isForced(spec.b) ? 'forced' : 'band';
     const pen = final ? undefined : M.penaltyAt(spec.b);
     const endsWithHyphen = pen?.flagged === true;
-    const slack = M.nextInk(spec.a, spec.b) - g.ink;
+    // The next fragment would carry the same tracking, so the slack is the untracked one.
+    const slack = M.nextInk(spec.a, spec.b) - g0.ink;
     const steerWidth =
       kind === 'band'
         ? Math.max(g.ink, Math.min(g.ink + Math.min(P.epsilon, slack / 2), Math.max(available, g.ink)))
@@ -307,6 +333,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
       targetWidth,
       steerWidth,
       slack,
+      tracking: spec.tracking,
       text: M.text(g.start, g.end, spec.b),
     };
     if (pen?.quality) line.hyphenClass = pen.quality;
@@ -317,7 +344,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
 function specsFromNode(last: Node): LineSpec[] {
   const chain: LineSpec[] = [];
   for (let node: Node | null = last; node && !node.virtual; node = node.prev) {
-    chain.push({ a: node.a, b: node.b, role: node.role });
+    chain.push({ a: node.a, b: node.b, role: node.role, tracking: node.tracking });
   }
   return chain.reverse();
 }
@@ -338,6 +365,8 @@ export function evaluateBreaks(
   settings: FlatterSettings,
   breaks: readonly number[],
   startRole: Role = 'long',
+  /** Tracking per line in 1/1000 em, as applied in the document. */
+  tracking: readonly number[] = [],
 ): Evaluation {
   const P = resolveParams(settings, items);
   const M = new ParagraphMetrics(items, P);
@@ -347,7 +376,7 @@ export function evaluateBreaks(
   let role = startRole;
   for (const b of ends) {
     if (b <= a) throw new RangeError(`breaks must be strictly ascending, got ${b} after ${a}`);
-    specs.push({ a, b, role });
+    specs.push({ a, b, role, tracking: tracking[specs.length] ?? 0 });
     a = b;
     role = opposite(role);
   }
@@ -380,26 +409,34 @@ export function solveParagraph(items: readonly Item[], settings: FlatterSettings
       ? ['long', 'short']
       : [P.phase];
 
-  const pick = (roles: Role[], hard: boolean): { res: DPResult; role: Role } | null => {
+  const pick = (roles: Role[], hard: boolean, tracking: boolean): { res: DPResult; role: Role } | null => {
     let best: { res: DPResult; role: Role } | null = null;
     for (const role of roles) {
-      const res = runDP(M, P, role, hard);
+      const res = runDP(M, P, role, hard, tracking);
       if (res && (!best || res.node.cost < best.res.node.cost)) best = { res, role };
     }
     return best;
   };
 
+  // Fallback order (plan §4.3, ADR-010): strict; strict with tracking; strict in the other
+  // phase (then with tracking); soft. Tracking is a rescue, so it is never used when a
+  // strict setting exists without it, and the designer's phase wins over an untracked flip.
+  const track = P.tracking.enabled;
   let solvedAs: 'strict' | 'soft' = 'strict';
   let phaseFlipped = false;
-  let found = P.mode === 'strict' ? pick(requested, true) : null;
-  if (!found && P.mode === 'strict' && requested.length === 1) {
-    // Plan §4.3 step 1: try the other phase.
-    found = pick([opposite(requested[0]!)], true);
-    phaseFlipped = found !== null;
+  let found: { res: DPResult; role: Role } | null = null;
+  if (P.mode === 'strict') {
+    found = pick(requested, true, false) ?? (track ? pick(requested, true, true) : null);
+    if (!found && requested.length === 1) {
+      // Plan §4.3 step 1: try the other phase.
+      const other = [opposite(requested[0]!)];
+      found = pick(other, true, false) ?? (track ? pick(other, true, true) : null);
+      phaseFlipped = found !== null;
+    }
   }
   if (!found) {
     solvedAs = 'soft';
-    found = pick(requested, false);
+    found = pick(requested, false, track);
   }
   if (!found) throw new Error('solver found no path; this is a bug (soft mode always has one)');
 

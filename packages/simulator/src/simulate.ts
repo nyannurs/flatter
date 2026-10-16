@@ -67,7 +67,9 @@ export function simulate(text: string, opts: SimulateOptions): SimResult {
   );
   const t1 = performance.now();
   const { font: _f, fontSize: _s, language: _l, measure: _m, chars: _c, noHyphenation: _n, sense: _se, ...settings } = opts;
-  const plans = solveStory(itemsList, { ...settings, measure, language });
+  // Tracking units are 1/1000 em: the em is the font size.
+  const tracking = settings.tracking?.enabled ? { ...settings.tracking, emSize: settings.tracking.emSize ?? size } : settings.tracking;
+  const plans = solveStory(itemsList, { ...settings, ...(tracking ? { tracking } : {}), measure, language });
   const t2 = performance.now();
   return {
     paragraphs: paragraphs.map((text, i) => ({ text, items: itemsList[i]!, plan: plans[i]! })),
@@ -84,18 +86,21 @@ export interface Summary {
   bandLines: number;
   inRhythm: number;
   hyphens: number;
+  /** Lines with tracking (Laufweite) applied. */
+  tracked: number;
   errors: number;
   warnings: number;
 }
 
 export function summarise(result: SimResult): Summary {
-  const s: Summary = { paragraphs: 0, perfect: 0, lines: 0, bandLines: 0, inRhythm: 0, hyphens: 0, errors: 0, warnings: 0 };
+  const s: Summary = { paragraphs: 0, perfect: 0, lines: 0, bandLines: 0, inRhythm: 0, hyphens: 0, tracked: 0, errors: 0, warnings: 0 };
   for (const { plan } of result.paragraphs) {
     s.paragraphs++;
     if (plan.feasible) s.perfect++;
     s.lines += plan.lines.length;
     s.bandLines += plan.stats.bandLines;
     s.hyphens += plan.stats.hyphens;
+    s.tracked += plan.stats.trackedLines;
     const broken = new Set(plan.violations.filter((v) => v.kind === 'band' || v.kind === 'contrast').map((v) => v.line));
     s.inRhythm += plan.lines.filter((l) => l.kind === 'band' && !broken.has(l.index)).length;
     s.errors += plan.violations.filter((v) => v.severity === 'error').length;
@@ -108,7 +113,7 @@ export function formatReport(result: SimResult): string {
   const s = summarise(result);
   const out: string[] = [];
   out.push(
-    `${s.perfect}/${s.paragraphs} paragraphs in perfect alternation, ${s.inRhythm}/${s.bandLines} lines in rhythm, ${s.hyphens} hyphens, ` +
+    `${s.perfect}/${s.paragraphs} paragraphs in perfect alternation, ${s.inRhythm}/${s.bandLines} lines in rhythm, ${s.hyphens} hyphens, ${s.tracked} tracked lines, ` +
       `${s.errors} errors, ${s.warnings} warnings. Measure ${result.measure.toFixed(1)} pt. Solve ${result.solveMs.toFixed(1)} ms.`,
   );
   result.paragraphs.forEach(({ plan }, pi) => {
@@ -120,7 +125,8 @@ export function formatReport(result: SimResult): string {
     );
     for (const l of plan.lines) {
       const tag = l.kind === 'band' ? (l.role === 'long' ? 'L' : 'S') : l.kind === 'last' ? '·' : 'F';
-      out.push(`  ${tag} ${l.width.toFixed(1).padStart(6)} ${l.hyphenClass ?? ' '} ${l.text}`);
+      const tr = l.tracking ? `  [tracking ${l.tracking > 0 ? '+' : ''}${l.tracking}]` : '';
+      out.push(`  ${tag} ${l.width.toFixed(1).padStart(6)} ${l.hyphenClass ?? ' '} ${l.text}${tr}`);
     }
     for (const v of plan.violations) out.push(`    ${v.severity.padEnd(7)} ${v.kind}${v.line >= 0 ? ` (line ${v.line + 1})` : ''}: ${v.message}`);
   });
