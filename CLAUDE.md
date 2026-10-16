@@ -67,5 +67,5 @@ Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths a
 - The Browser pane pauses `requestAnimationFrame` while hidden. Show the pane before driving the playground with scripts.
 - Python's `http.server` cannot read the working directory from the preview launcher here; use `serve.mjs`.
 - This repo commits with the user's GitHub no-reply email (set in the repo's local git config) because GitHub blocks pushes that expose their private address. Do not change it.
-- Commit or push only when the user asks. Work on a branch, not `main`.
+- Git workflow (user's instruction, 2026-10-16): commit directly to `main` and push. No pull requests, no long-lived feature branches. Still commit only when the user asks or the task clearly includes it.
 - The user is a designer, not a developer. When they need to do something in an app or terminal, tell them exactly where to click or what to paste.

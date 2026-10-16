@@ -6,7 +6,7 @@ Newest entry first. Each entry says what changed, where things stand, and what c
 
 **Done**
 - Private GitHub repo `nyannurs/rag-indesign-plugin`; `main` holds the plan, README and doc stubs.
-- All Phase 1 work is committed on branch `phase-1-core-solver` and pushed to GitHub. It is not merged into `main` yet.
+- All Phase 1 work is on `main` and pushed to GitHub. The user wants commits directly on `main`, without pull requests.
 - npm workspace with TypeScript 7, Vitest 5, fast-check, esbuild.
 - `packages/core`: item model, parameters and defaults (§2), line metrics, DP solver with strict and soft modes, phase handling and phase flip, Ausgangszeile rules, Variation, first-line indent, forced breaks, steering widths, independent plan checker with pattern analysis (staircase, hole, mechanical sawtooth), story solving with continuous phase, `evaluateBreaks` for read-back checks, plain-text builder with hyphenation and Sinneinheiten hooks.
 - `packages/simulator`: Source Serif 4 metrics, TeX-pattern hyphenation (de-1996, en-US, en-GB), SVG renderer, CLI, live playground.
@@ -24,7 +24,7 @@ Newest entry first. Each entry says what changed, where things stand, and what c
 **Next**
 - Ask the user to try the playground and react to the rhythm, band width and hyphenation. Their answers may change defaults.
 - Phase 0 spikes need InDesign (see "Waiting on the user"). Pre-spike notes are in `docs/spike-results.md`.
-- Phase 2: `packages/hyphenation` with consensus classes A/B/C/X, golden corpora (at least 300 words per language), the hard-rule classifier and Sinneinheiten word lists. The simulator currently labels every pattern point class B. Examples it should fix: "Fei-erabend" (prefer "Feier-abend"), a line ending on "ob".
+- Phase 2: `packages/hyphenation` (a separate session was proposed for it; it needs the repository trusted in Claude Desktop before it can start) with consensus classes A/B/C/X, golden corpora (at least 300 words per language), the hard-rule classifier and Sinneinheiten word lists. The simulator currently labels every pattern point class B. Examples it should fix: "Fei-erabend" (prefer "Feier-abend"), a line ending on "ob".
 
 **Waiting on the user**
 - Feedback on the playground.
@@ -33,4 +33,3 @@ Newest entry first. Each entry says what changed, where things stand, and what c
 - Who runs the InDesign spikes: the user, or Claude via computer use.
 - Distribution plan (affects which hyphenation pattern licences may be bundled).
 - Who acts as the typographer for the final side-by-side review.
-- Whether to merge `phase-1-core-solver` into `main` (no pull request opened yet).
