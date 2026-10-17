@@ -100,6 +100,38 @@ describe('precise tracking with word spaces in the apply loop (ADR-015)', () => 
   });
 });
 
+describe('typed hyphens InDesign will not break after', () => {
+  // Like "master-builder" with hyphenation on: the composer never breaks after "master-".
+  // Long compounds: breaking at the typed hyphen is often the only good break.
+  const text = Array.from({ length: 10 }, () => 'Der Schifffahrtsgesellschafts-Vorsitzende und die Donaudampfschiffahrts-Kapitäne trafen sich').join(' ');
+  const refuses = (c: string) => c.startsWith('Schifffahrtsgesellschafts') || c.startsWith('Donaudampfschiffahrts');
+
+  it('probes compounds and never plans the refused break', () => {
+    const fake = new FakeInDesign([text], { measure: 260, accepts: ourSafe, probing: true, refusesAfterHyphen: refuses });
+    const r = applyToPort(fake, {});
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+    expect(r.paragraphs[0]!.plan.lines.some((l) => /(gesellschafts|schiffahrts)-$/.test(l.text))).toBe(false);
+    expect(r.paragraphs[0]!.refused).toEqual([]);
+  });
+
+  it('without probing, refuses a point in every occurrence of the word at once', () => {
+    // The same text four times: a refused point costs one round, not one round per occurrence.
+    const repeated = [Array.from({ length: 4 }, () => DE[0]).join(' ')];
+    const accepts = (w: string) => ourSafe(w).filter((_, i) => i % 2 === 1);
+    let refused = 0;
+    for (const measure of [200, 220, 240, 260, 280, 300]) {
+      const fake = new FakeInDesign(repeated, { measure, accepts, probing: false });
+      const r = applyToPort(fake, { maxRounds: 10 });
+      expect(r.linesAsPlanned, `measure ${measure}`).toBe(r.linesPlanned);
+      const words = r.paragraphs[0]!.refused;
+      // Each refused word once, although every word occurs four times.
+      expect(new Set(words).size).toBe(words.length);
+      refused += words.length;
+    }
+    expect(refused).toBeGreaterThan(0);
+  });
+});
+
 describe('band view', () => {
   it('shows the bands when asked and removes them when switched off', () => {
     const fake = new FakeInDesign(DE, { measure: 220, accepts: ourSafe });

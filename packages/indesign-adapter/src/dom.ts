@@ -51,6 +51,24 @@ function rollBack(name: string): void {
   }
 }
 
+/**
+ * Run with every measurement in points, whatever the document's units, and restore the user's setting.
+ * Flatter's widths, teeth and tracking are all in points; in a millimetre document InDesign otherwise
+ * reports positions in millimetres (found in the user's TestFile, 2026-10-17).
+ */
+export function inPoints<T>(fn: () => T): T {
+  const id = indesign();
+  const prefs = id.app.scriptPreferences;
+  const before = prefs.measurementUnit;
+  if (before === id.MeasurementUnits.POINTS) return fn();
+  prefs.measurementUnit = id.MeasurementUnits.POINTS;
+  try {
+    return fn();
+  } finally {
+    prefs.measurementUnit = before;
+  }
+}
+
 function undoable<T>(name: string, fn: () => T): T {
   const id = indesign();
   let result: T | undefined;
@@ -58,7 +76,7 @@ function undoable<T>(name: string, fn: () => T): T {
   id.app.doScript(
     () => {
       try {
-        result = fn();
+        result = inPoints(fn);
       } catch (e) {
         error = e;
       }
@@ -76,6 +94,10 @@ function undoable<T>(name: string, fn: () => T): T {
 }
 
 export function checkSettings(story: Any): Check {
+  return inPoints(() => readSettings(story));
+}
+
+function readSettings(story: Any): Check {
   const doc = story.parent;
   const paras = story.paragraphs;
   const issues: SettingIssue[] = [];
@@ -178,7 +200,7 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
   id.app.doScript(
     () => {
       try {
-        result = fn();
+        result = inPoints(fn);
       } catch (e) {
         error = e;
       }

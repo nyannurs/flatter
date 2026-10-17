@@ -27,6 +27,12 @@ export interface ApplySettings extends Omit<FlatterSettings, 'measure' | 'langua
   wordSpaceShare?: number;
   /** Show the Flatterzone and band behind the text (panel switch). */
   showBands?: boolean;
+  /**
+   * Draft while a slider moves: word spaces are left out (letter tracking only), because writing every
+   * word space costs about 0.3 ms each (1,700 per tick in a 100-line story). The panel applies the full
+   * settings once the slider stops.
+   */
+  draft?: boolean;
 }
 
 export interface ParagraphResult {
@@ -105,13 +111,17 @@ export class FlatterSession {
     for (const data of this.port.paragraphs()) {
       const lang = hyphenLanguage(data.language);
       const h = this.hyphenator(lang);
-      const words = [...new Set(data.chars.join('').match(/\p{L}+/gu) ?? [])].filter((w) => w.length >= 5);
-      const probed = this.port.probe(words, data);
+      const text = data.chars.join('');
+      const words = [...new Set(text.match(/\p{L}+/gu) ?? [])].filter((w) => w.length >= 5);
+      // Compounds with typed hyphens: InDesign decides per word whether it breaks after the hyphen.
+      const compounds = [...new Set(text.match(/\p{L}+(?:-\p{L}+)+/gu) ?? [])];
+      const probed = this.port.probe([...words, ...compounds], data);
       const sense = settings.sense ?? lang.startsWith('de');
       const measured = itemsFromMeasured(data.chars, data.advances, {
         hyphenWidth: data.hyphenWidth,
         ...(data.trackedAdvances?.length === data.advances.length ? { trackedAdvances: data.trackedAdvances } : {}),
         points: (w) => mergePoints(h.points(w), probed ? (probed.get(w) ?? []) : undefined),
+        hardBreaks: (c) => probed?.get(c),
         ...(sense ? { breakCost: createSenseRule(lang) } : {}),
       });
       this.work.push({ data, measured, items: measured.items, plan: undefined as unknown as Plan, refused: [] });
@@ -145,8 +155,9 @@ export class FlatterSession {
     }
     // Overset lines get neither teeth nor tracking: they are not visible, and writing their tracking
     // took most of a slider tick in a long overset story (2026-10-17).
-    for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
+    // Teeth first: moving a wrap object after the text changed made InDesign recompose on every move.
     this.port.setTeeth(this.teeth);
+    for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
     if (this.port.setBands) {
       const bands: BandSpec[] = this.settings.showBands
         ? this.work.flatMap((w) => bandsFor(w.plan, this.usedSlots.get(w.data.index) ?? [], w.data.leading))
@@ -178,8 +189,11 @@ export class FlatterSession {
           const pen = w.items[line.breakAt]!;
           if (pen.type === 'penalty') {
             const e = w.measured.charRange[line.endItem - 1]![1];
-            w.refused.push((w.data.chars.slice(0, e).join('').split(/\s/).pop() ?? '') + '-');
-            w.items = w.items.map((it, k) => (k === line.breakAt ? { ...pen, quality: 'X' as HyphenClass } : it));
+            w.refused.push((w.data.chars.slice(0, e).join('').split(/\s/).pop() ?? '') + (pen.width > 0 ? '-' : ''));
+            // InDesign decides per word: refuse the same point in every occurrence of the word, so a
+            // repeated word costs one round, not one round per occurrence (2026-10-17).
+            const same = new Set(sameWordPoints(w.items, line.breakAt));
+            w.items = w.items.map((it, k) => (same.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
             w.plan = solve(w.items, w.data, this.settings, w.plan.startRole);
           }
         }
@@ -243,7 +257,7 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
 
 function solve(items: Item[], data: ParagraphData, settings: ApplySettings, startRole: Role | undefined): Plan {
   const lang = hyphenLanguage(data.language);
-  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, showBands: _b, ...rest } = settings;
+  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, showBands: _b, draft, ...rest } = settings;
   const flatterzone = zoneShare !== undefined ? zoneShare * data.measure : rest.flatterzone;
   const band = bandShare !== undefined && flatterzone !== undefined ? bandShare * flatterzone : rest.band;
   return solveParagraph(items, {
@@ -259,7 +273,7 @@ function solve(items: Item[], data: ParagraphData, settings: ApplySettings, star
           tracking: {
             ...rest.tracking,
             emSize: rest.tracking.emSize ?? data.size,
-            ...(wordSpaceShare !== undefined && rest.tracking.mode === 'precise'
+            ...(wordSpaceShare !== undefined && rest.tracking.mode === 'precise' && !draft
               ? { wordSpaceMax: (wordSpaceShare * spaceWidthOf(data) * 1000) / data.size }
               : {}),
           },
@@ -302,6 +316,33 @@ function trackingSpans(w: Working, slots: readonly (LineSlot | undefined)[]): Tr
     }
   });
   return spans;
+}
+
+/**
+ * Penalties at the same place in the same word as the penalty at index k: same word (wordKey) and the
+ * same text of the word before the point.
+ */
+export function sameWordPoints(items: readonly Item[], k: number): number[] {
+  const where = (p: number): string | undefined => {
+    let prefix = '';
+    let key: string | undefined;
+    for (let j = p - 1; j >= 0; j--) {
+      const it = items[j]!;
+      if (it.type === 'glue') return undefined;
+      if (it.type !== 'box') continue;
+      prefix = (it.text ?? '') + prefix;
+      key = it.wordKey;
+      if (it.wordStart) return key === undefined ? undefined : `${key}\u0000${prefix}`;
+    }
+    return undefined;
+  };
+  const target = where(k);
+  if (target === undefined) return [k];
+  const out: number[] = [];
+  items.forEach((it, p) => {
+    if (it.type === 'penalty' && !it.forced && where(p) === target) out.push(p);
+  });
+  return out.length ? out : [k];
 }
 
 function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {

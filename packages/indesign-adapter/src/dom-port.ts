@@ -221,7 +221,7 @@ export class DomPort implements Port {
     const missing = words.filter((w) => !(w in cache));
     if (missing.length) {
       const frame = this.scratchFrame(para);
-      for (const w of missing) cache[w] = this.probeWord(frame, w);
+      for (const w of missing) cache[w] = w.includes('-') ? this.probeCompound(frame, w) : this.probeWord(frame, w);
       this.doc.insertLabel(PROBE_LABEL, JSON.stringify(this.probeCache));
     }
     return new Map(words.map((w) => [w, cache[w] ?? []]));
@@ -684,6 +684,29 @@ export class DomPort implements Port {
     const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
     const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
     return xe[1]! - xs[1]!;
+  }
+
+  /**
+   * A compound with typed hyphens: for each hyphen, set the frame just wide enough for "x <part>-" and
+   * see whether InDesign ends line 1 there. Returns the accepted positions (after the hyphen).
+   */
+  private probeCompound(frame: Any, word: string): number[] {
+    this.probes++;
+    const story = frame.parentStory;
+    story.texts.item(0).contents = 'x ' + word;
+    const left = Number(frame.geometricBounds[1]);
+    frame.geometricBounds = [0, left, 100, left + 2000];
+    const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
+    const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
+    const x0 = xs[0]!;
+    const out: number[] = [];
+    Array.from(word).forEach((ch, i) => {
+      if (ch !== '-' || i === 0 || i === word.length - 1) return;
+      frame.geometricBounds = [0, left, 100, left + (xe[i + 2]! - x0) + 1];
+      const n = Array.from(String(story.lines.item(0).contents)).length - 2;
+      if (n === i + 1) out.push(i + 1);
+    });
+    return out;
   }
 
   /** Spike S3: "x <word>" so line 1 always has a legal break; narrow until no point fits. */

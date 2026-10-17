@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlannedLine } from '@flatter/core';
-import { bandsFor, checkParagraph, checkStory, itemsFromMeasured, mergePoints, toothFor, type LineSlot } from '../src/index.ts';
+import { bandsFor, checkParagraph, checkStory, itemsFromMeasured, mergePoints, sameWordPoints, toothFor, type LineSlot } from '../src/index.ts';
 
 const adv = (s: string) => [...s].map((c) => (c === ' ' ? 2.5 : 5));
 
@@ -101,10 +101,16 @@ describe('toothFor', () => {
     expect(toothFor(line('band', 250), { ...slot, gutter: 2 }, 0, 0)!.bounds[3]).toBeCloseTo(320.9);
   });
 
-  it('skips last lines, forced lines and lines steered to the full measure', () => {
+  it('skips last lines and forced lines', () => {
     expect(toothFor(line('last', 100), slot, 0, 0)).toBeUndefined();
     expect(toothFor(line('forced', 100), slot, 0, 0)).toBeUndefined();
-    expect(toothFor(line('band', 300), slot, 0, 0)).toBeUndefined();
+  });
+
+  it('parks the tooth of a line steered to the full measure just outside the column', () => {
+    const t = toothFor(line('band', 300), slot, 0, 0)!;
+    expect(t.bounds[1]).toBeGreaterThan(slot.columnRight);
+    // Columns that touch leave no room outside: no tooth.
+    expect(toothFor(line('band', 300), { ...slot, gutter: 0 }, 0, 0)).toBeUndefined();
   });
 });
 
@@ -153,5 +159,26 @@ describe('bandsFor', () => {
     // First line indented by 10: starts at 50 with 190 available; the measure still ends at 240.
     const bands = bandsFor(plan([190, 200]), [slot(0, 100, 50), slot(0, 112, 40)], 12);
     expect(bands[0]!.bounds[3]).toBeCloseTo(240);
+  });
+});
+
+describe('typed hyphens in compounds', () => {
+  const text = 'the master-builder and a long-term plan';
+  it('keeps every hyphen break when InDesign was not asked', () => {
+    const m = itemsFromMeasured([...text], adv(text), { hyphenWidth: 3 });
+    expect(m.items.filter((i) => i.type === 'penalty')).toHaveLength(2);
+  });
+  it('keeps only the hyphen breaks InDesign accepts', () => {
+    const m = itemsFromMeasured([...text], adv(text), { hyphenWidth: 3, hardBreaks: (c) => (c === 'master-builder' ? [] : [5]) });
+    const boxes = m.items.filter((i) => i.type === 'box').map((b) => (b as { text?: string }).text);
+    expect(boxes).toContain('master-builder');
+    expect(boxes).toContain('long-');
+  });
+  it('finds the same point in every occurrence of a word', () => {
+    const t = 'a master-builder, the master-builder and long-term';
+    const m = itemsFromMeasured([...t], adv(t), { hyphenWidth: 3 });
+    const pens = m.items.map((it, k) => (it.type === 'penalty' ? k : -1)).filter((k) => k >= 0);
+    expect(sameWordPoints(m.items, pens[0]!)).toEqual([pens[0], pens[1]]);
+    expect(sameWordPoints(m.items, pens[2]!)).toEqual([pens[2]]);
   });
 });

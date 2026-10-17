@@ -145,6 +145,13 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 - Teeth matched by list position across pages were recreated on many ticks (71 created for 38 lines in 7 ticks); pooled per page, only lines that newly need a tooth on a page create one.
 - Writing one space with `characters.item(k)` is cheaper than `itemByRange(k, k)`.
 
+## Units, typed hyphens, write costs (2026-10-17, `i10`–`i13`)
+
+- **Document units leak into scripting**: `geometricBounds`, `horizontalOffset` and friends come back in the document's ruler units (TestFile: millimetres). `app.scriptPreferences.measurementUnit = POINTS` makes scripting use points regardless; it is an application setting, so restore it.
+- **Typed hyphens with hyphenation on** (Minion Pro 12 pt, frame just wide enough for "x <part>-", also with 3 pt extra): InDesign breaks after "long-", "well-", "mother-", "state-", "Max-", "Hamburg-", "Ost-", "Schiller-", "E-", but not after "master-" (takes "mas-"), "self-", "twenty-" ("twen-"), "pre-". With hyphenation off it breaks after all of these except "E-". Not predictable: probe.
+- **Line width model at full size is exact**: the line that failed in the user's story ("…the master-", letters −12.23, spaces −19.59) measures 522.0876 pt in InDesign, model 522.0876 pt.
+- **Write costs**: tracking a whole line costs about 0.36 ms; one space about 0.3 ms in isolation, about 1 ms in a long live story; overwriting a line whose spaces still carry their own values about 2 ms. Undo mode and wrap objects next to the text make little difference. Merging ticks into one undo step (AUTO_UNDO) does not slow down over a drag.
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

@@ -17,6 +17,13 @@ export interface BuildFromMeasuredOptions {
   breakCost?: BreakCostRule;
   /** Advances with ligatures broken up (tracked text); boxes get the difference as trackedExtra. */
   trackedAdvances?: readonly number[];
+  /**
+   * For a compound with typed hyphens (letters only around them, e.g. "master-builder"): the positions
+   * after a hyphen where InDesign will break, or undefined when unknown (then every hyphen is a break).
+   * With hyphenation on, InDesign refuses some of them and hyphenates a part instead ("mas-ter-builder",
+   * measured 2026-10-17).
+   */
+  hardBreaks?: (compound: string) => number[] | undefined;
 }
 
 export interface MeasuredParagraph {
@@ -112,6 +119,12 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
           cuts.set(i + 1, { type: 'penalty', width: 0, flagged: ch === '-' });
         }
       });
+      if (cuts.size && opts.hardBreaks) {
+        const lead = word.match(/^[^\p{L}]*/u)![0].length;
+        const trail = word.match(/[^\p{L}]*$/u)![0].length;
+        const accepted = opts.hardBreaks(word.slice(lead, word.length - trail));
+        if (accepted) for (const at of [...cuts.keys()]) if (!accepted.includes(at - lead)) cuts.delete(at);
+      }
       if (cuts.size === 0 && opts.points) {
         const lead = word.match(/^[^\p{L}]*/u)![0].length;
         const trail = word.match(/[^\p{L}]*$/u)![0].length;

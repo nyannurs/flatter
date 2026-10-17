@@ -44,10 +44,17 @@ export const TOOTH_OVERSHOOT = 2;
 export function toothFor(line: PlannedLine, slot: LineSlot, paragraph: number, lineIndex: number): ToothSpec | undefined {
   if (line.kind !== 'band') return undefined;
   const cy = slot.baseline - (slot.size * X_HEIGHT_SHARE) / 2;
-  const left = slot.startX + line.steerWidth;
-  const right = slot.columnRight + Math.min(TOOTH_OVERSHOOT, Math.max(0, slot.gutter / 2 - 0.1));
-  // A long line steered to the full measure needs no tooth.
-  if (left >= slot.columnRight - 1e-6) return undefined;
+  const overshoot = Math.min(TOOTH_OVERSHOOT, Math.max(0, slot.gutter / 2 - 0.1));
+  const right = slot.columnRight + overshoot;
+  let left = slot.startX + line.steerWidth;
+  // A long line steered to the full measure needs no limit: its tooth waits just outside the column,
+  // where it touches no text. Every band line keeping a tooth keeps the count per page stable, so a
+  // slider drag only moves teeth (creating one costs far more, 2026-10-17).
+  if (left >= slot.columnRight - 1e-6) {
+    // Columns that touch leave no room outside: then no tooth, as before.
+    if (overshoot < 0.2) return undefined;
+    left = slot.columnRight + overshoot / 2;
+  }
   return {
     page: slot.page,
     bounds: [cy - TOOTH_HEIGHT / 2, left, cy + TOOTH_HEIGHT / 2, Math.max(right, left + 0.5)],

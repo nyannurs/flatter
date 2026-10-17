@@ -47,6 +47,8 @@ interface PanelState {
   verifyTimer?: ReturnType<typeof setTimeout>;
   lastTickMs?: number;
   lastResult?: ApplyResult;
+  /** The last tick was a draft (no word spaces): verify applies the full settings first. */
+  draft?: boolean;
 }
 const state: PanelState = { dragging: false, busy: false, pending: false };
 
@@ -258,7 +260,11 @@ function tick(): void {
       return;
     }
     const t0 = Date.now();
-    liveUpdate(state.live, settingsFromUI(), !state.dragging);
+    const settings = settingsFromUI();
+    // While a slider moves, word spaces wait: they are applied once the slider stops (see verify).
+    const draft = !!settings.tracking?.enabled && (settings.wordSpaceShare ?? 0) > 0;
+    liveUpdate(state.live, draft ? { ...settings, draft: true } : settings, !state.dragging);
+    state.draft = draft;
     state.dragging = true;
     state.lastTickMs = Date.now() - t0;
     if (state.verifyTimer) clearTimeout(state.verifyTimer);
@@ -270,6 +276,22 @@ function tick(): void {
 
 function verify(): void {
   if (!state.live) return;
+  if (state.draft) {
+    // Show that something is happening, then set the word spaces (about a second in a long story).
+    setStatus('Setting word spaces…', '', '');
+    setTimeout(() => {
+      if (!state.live) return;
+      try {
+        if (state.draft) liveUpdate(state.live, settingsFromUI(), false);
+        state.draft = false;
+      } catch (e) {
+        fail(e);
+        return;
+      }
+      verify();
+    }, 20);
+    return;
+  }
   try {
     const t0 = Date.now();
     const r = liveVerify(state.live);

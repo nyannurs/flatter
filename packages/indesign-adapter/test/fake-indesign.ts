@@ -20,6 +20,8 @@ export interface FakeOptions {
   spaceBefore?: number;
   /** Lines that fit in the frame; later lines are overset. */
   maxLines?: number;
+  /** Compounds whose typed hyphen InDesign will not break after (like "master-builder" with hyphenation on). */
+  refusesAfterHyphen?: (compound: string, at: number) => boolean;
 }
 
 const advance = (c: string) => (c === ' ' ? 2.5 : /[il.,:;'’!]/.test(c) ? 2.5 : /[mwMW]/.test(c) ? 7.5 : 5);
@@ -58,7 +60,15 @@ export class FakeInDesign implements Port {
 
   probe(words: readonly string[]): Map<string, number[]> | undefined {
     if (!this.o.probing) return undefined;
-    return new Map(words.map((w) => [w, this.o.accepts(w)]));
+    return new Map(words.map((w) => [w, w.includes('-') ? this.hyphenBreaks(w) : this.o.accepts(w)]));
+  }
+
+  private hyphenBreaks(compound: string): number[] {
+    const out: number[] = [];
+    Array.from(compound).forEach((c, i) => {
+      if (c === '-' && i > 0 && !this.o.refusesAfterHyphen?.(compound, i + 1)) out.push(i + 1);
+    });
+    return out;
   }
 
   bands: BandSpec[] = [];
@@ -95,7 +105,7 @@ export class FakeInDesign implements Port {
         const baseline = y + this.o.leading;
         const slot: LineSlot = { page: 0, baseline, startX: 0, columnRight: this.o.measure, gutter: 10, size: this.o.size, ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : {}) };
         const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size);
-        const max = tooth ? tooth.bounds[1] - slot.startX : this.o.measure;
+        const max = tooth ? Math.min(tooth.bounds[1] - slot.startX, this.o.measure) : this.o.measure;
         const track = this.tracking.get(paragraph) ?? [];
         const { end, hyphenated } = this.breakLine(chars, start, max, (k) => advance(chars[k]!) + ((track[k] ?? 0) * this.o.size) / 1000);
         let last = end - 1;
@@ -127,6 +137,14 @@ export class FakeInDesign implements Port {
         if (width <= limit) best = { end: k, hyphenated: false };
         else break;
         wordStart = k + 1;
+      } else if (k > wordStart && chars[k - 1] === '-' && /\p{L}/u.test(c) && /\p{L}/u.test(chars[k - 2] ?? '')) {
+        // After a typed hyphen in a compound, unless this compound refuses it.
+        let a = wordStart;
+        let e = k;
+        while (e < chars.length && /[\p{L}-]/u.test(chars[e]!)) e++;
+        while (a < k && !/\p{L}/u.test(chars[a]!)) a++;
+        const compound = chars.slice(a, e).join('');
+        if (width <= limit && !this.o.refusesAfterHyphen?.(compound, k - a)) best = { end: k, hyphenated: false };
       } else if (k > wordStart) {
         // Hyphenation point before chars[k]?
         const wordEnd = (() => { let e = k; while (e < chars.length && /\p{L}/u.test(chars[e]!)) e++; return e; })();

@@ -2,6 +2,29 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-17 (night) — Regression in millimetre documents fixed; typed hyphens; draft ticks (ADR-017)
+
+The designer reported a regression in TestFile ("results aren't as good anymore", many band errors). Causes and fixes:
+
+- **Units.** Flatter never fixed its measurement units, and TestFile is in millimetres: InDesign reported positions in mm. Before today everything was measured in the same document, so it mostly cancelled out (but tracking was computed in points against mm widths, 2.8× too strong). The new bench document measured in points while the frame width stayed in mm, so every line looked 2.8× too long. Now every Flatter operation runs with `app.scriptPreferences.measurementUnit = POINTS` and restores the user's setting (`inPoints` in dom.ts). Integration tests gained two millimetre cases (they fail without the fix: 0/54 lines).
+- **My copies of the user's story were three times too narrow** (frame sizes read in mm, used as points), which is why earlier tests passed. `i3-user-copy.ts` now reads sizes in points; at the real 523 pt width all 106 visible lines are steered.
+- **Typed hyphens.** With hyphenation on, InDesign refuses to break after the typed hyphen in some compounds ("master-builder" becomes "mas-ter-builder", also "self-", "twenty-", "pre-"; with hyphenation off it refuses "E-"), but accepts others ("long-term", "Max-Planck"). Compounds are now probed like words (`probeCompound`) and only accepted hyphen breaks are planned (`hardBreaks` in items.ts).
+- **Refusals apply to every occurrence of the word** (`sameWordPoints`): the repeated test text needed one round per occurrence and never converged within six rounds, re-planning the whole paragraph each time.
+- **Draft ticks.** While a slider moves with word spaces on, the panel plans letter tracking only (`ApplySettings.draft`); word spaces are written once when the slider stops ("Setting word spaces…"). Teeth are moved before tracking is written, and lines steered to the full measure keep an idle tooth just outside the column, so the tooth count per page stays stable and a drag only moves teeth.
+
+Measured on a full-size copy of the user's story (523 pt, 106 visible lines, letters ±30, word spaces ±25 %):
+
+| | before tonight | now |
+|---|---|---|
+| Lines as planned | 27/106 (did not converge) | 106/106 in 2 rounds |
+| Band lines within 0.5 pt of their edge | – | 117/117 |
+| Slider tick | 1.5–2.7 s | 0.25–0.75 s, then about 2 s once when the slider stops |
+| Apply | 3.5–4.5 s | 3.5 s |
+
+With the designer's current settings (zone 10 %, band 49 %, no tracking) both stories set 106/106 lines as planned; 11–22 lines cannot reach a band that narrow without tracking (reported as band misses), ticks 70–490 ms.
+
+Next: the designer tries again (press Recompute once). Remaining cost: each word space is one write (about 1 ms in a long story); batching them would need Find/Change, which would overwrite the user's Find/Change settings.
+
 ## 2026-10-17 (evening) — Performance and band view (ADR-016)
 
 The designer asked for the Flatterzone and band to be visible in the document, as in the playground, and for better performance.

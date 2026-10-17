@@ -4,7 +4,7 @@
  * restores the original composition, one Undo reverts Apply, re-apply uses the cache.
  */
 import { applyFlatter, BAND_LAYER, checkSettings, removeFlatter, TOOTH_LABEL } from '@flatter/indesign-adapter';
-import { asArray, DE_TEXT, EN_TEXT, id, inNewDocument, type Any } from './lib.ts';
+import { app, asArray, DE_TEXT, EN_TEXT, id, inNewDocument, type Any } from './lib.ts';
 
 function frameWithDefaults(doc: Any, bounds: number[], text: string, language: string, extra: Any = {}): Any {
   const f = doc.pages.item(0).textFrames.add({ geometricBounds: bounds });
@@ -138,6 +138,21 @@ inNewDocument((doc: Any) => {
     });
   }
 
+  // A document in millimetres (the user's TestFile): Flatter must work in points and restore the setting.
+  const unitBefore = String(app.scriptPreferences.measurementUnit);
+  for (const [name, settings] of [
+    ['plain', {}],
+    ['precise ±10 with word spaces ±25 %', { tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 }],
+  ] as const) {
+    run(`German, document in millimetres, ${name}`, () => {
+      const frame = frameWithDefaults(doc, [40, 40, 500, 340], DE_TEXT.join('\r'), 'German: 2006 Reform');
+      doc.viewPreferences.properties = { horizontalMeasurementUnits: id.MeasurementUnits.MILLIMETERS, verticalMeasurementUnits: id.MeasurementUnits.MILLIMETERS };
+      return frame;
+    }, settings);
+    doc.viewPreferences.properties = { horizontalMeasurementUnits: id.MeasurementUnits.POINTS, verticalMeasurementUnits: id.MeasurementUnits.POINTS };
+  }
+  const unitsRestored = String(app.scriptPreferences.measurementUnit) === unitBefore;
+
   // Undo: one undo step reverts Apply completely.
   const f = frameWithDefaults(doc, [40, 40, 400, 340], DE_TEXT.join('\r'), 'German: 2006 Reform');
   const story = f.parentStory;
@@ -146,7 +161,6 @@ inNewDocument((doc: Any) => {
   const teethAfterApply = teethOf(doc, story);
   doc.undo();
   const undo = { teethAfterApply, teethAfterUndo: teethOf(doc, story), restoredExactly: JSON.stringify(linesOf(story)) === JSON.stringify(original), label: story.extractLabel('flatter') };
-  void id;
-  const pass = cases.every((c) => c.pass) && undo.teethAfterUndo === 0 && undo.restoredExactly && undo.label === '';
-  return { pass, cases, undo };
+  const pass = cases.every((c) => c.pass) && undo.teethAfterUndo === 0 && undo.restoredExactly && undo.label === '' && unitsRestored;
+  return { pass, cases, undo, unitsRestored };
 });
