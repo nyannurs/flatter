@@ -13,6 +13,9 @@ import {
   storedSettings,
   setStoryLanguage,
   storyLanguage,
+  freezeFlatter,
+  unfreezeFlatter,
+  isFrozen,
   LANGUAGES,
   type ApplyResult,
   type ApplySettings,
@@ -103,6 +106,65 @@ export function targetStory(): Any | undefined {
     /* no usable selection */
   }
   return undefined;
+}
+
+const FROZEN_HINT = 'This story is frozen: its line breaks are fixed in the text.';
+
+/** Freeze / Unfreeze button: label for the target story; off when Flatter is not on the story. */
+function updateFreezeButton(story: Any | undefined): void {
+  const frozen = !!story && isFrozen(story);
+  $('freeze').textContent = frozen ? 'Unfreeze' : 'Freeze';
+  $('freeze').disabled = !story || (!frozen && !storedSettings(story));
+}
+
+let freezeArmed: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Freeze fixes the current line breaks in the text (forced line breaks and hyphens, tagged with the
+ * condition "Flatter frozen") for hand-off; Unfreeze takes them out and applies the live rag again.
+ * Freezing asks for a second click, because editing frozen text needs Unfreeze first.
+ */
+function freezeToggle(): void {
+  const story = targetStory();
+  if (!story || state.busy) return;
+  if (isFrozen(story)) {
+    try {
+      const n = unfreezeFlatter(story);
+      updateFreezeButton(story);
+      setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Applying the rag again…');
+      state.live = undefined;
+      state.failed = undefined;
+      apply();
+    } catch (e) {
+      fail(e);
+    }
+    return;
+  }
+  if (!freezeArmed) {
+    setStatus('Freeze fixes every line break in the text.', 'bad', 'For hand-off of the InDesign file. Afterwards the text cannot reflow: to edit it, press Unfreeze first. Click Freeze again to confirm.');
+    $('freeze').textContent = 'Confirm Freeze';
+    freezeArmed = setTimeout(() => {
+      freezeArmed = undefined;
+      updateFreezeButton(targetStory());
+    }, 6000);
+    return;
+  }
+  clearTimeout(freezeArmed);
+  freezeArmed = undefined;
+  try {
+    const r = freezeFlatter(story);
+    state.live = undefined;
+    updateFreezeButton(story);
+    $('report').innerHTML = '';
+    const ok = r.linesAfter === r.linesBefore;
+    setStatus(
+      ok ? `Frozen: ${r.breaks} line breaks fixed${r.hyphens ? `, ${r.hyphens} hyphens` : ''}.` : `Frozen, but the line count changed (${r.linesBefore} → ${r.linesAfter}).`,
+      ok ? 'ok' : 'bad',
+      'The teeth and strips are gone; the breaks are characters with the condition "Flatter frozen" (Window → Type & Tables → Conditional Text). Press Unfreeze to change the rag again.',
+    );
+  } catch (e) {
+    fail(e);
+  }
 }
 
 /** Every story in the selection (selected frames, or the story the text cursor is in), once each. */
@@ -293,6 +355,10 @@ function apply(): void {
     setStatus('Select a text frame first.', 'bad');
     return;
   }
+  if (isFrozen(story)) {
+    setStatus(FROZEN_HINT, 'bad', 'Press Unfreeze to change the rag.');
+    return;
+  }
   if (state.busy) return;
   state.busy = true;
   state.failed = undefined;
@@ -305,6 +371,7 @@ function apply(): void {
       state.live = live;
       state.storyId = story.id;
       render(report, report.ms);
+      updateFreezeButton(story);
     } catch (e) {
       state.live = undefined;
       state.failed = { storyId: story.id, message: String((e as Error)?.message ?? e) };
@@ -325,6 +392,7 @@ function remove(): void {
   try {
     const r = removeFlatter(story);
     state.live = undefined;
+    updateFreezeButton(story);
     setStatus('Removed', '', `${r.teethRemoved} teeth removed, ${r.settingsRestored} settings restored.`);
     $('report').innerHTML = '';
   } catch (e) {
@@ -349,6 +417,10 @@ function tick(): void {
   }
   // After a failed Apply, sliders do not retry (each retry would freeze InDesign again).
   if (state.failed && state.failed.storyId === story.id) return;
+  if (isFrozen(story)) {
+    setStatus(FROZEN_HINT, 'bad', 'Press Unfreeze to change the rag.');
+    return;
+  }
   try {
     if (!state.live || state.storyId !== story.id || !state.live.story.isValid) {
       apply();
@@ -404,17 +476,22 @@ function onSelectionChanged(): void {
   if (!story) {
     $('target').textContent = 'Select a text frame or put the cursor in text.';
     showLanguage(undefined);
+    updateFreezeButton(undefined);
     return;
   }
   const words = String(story.contents).replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
   $('target').textContent = `Story: ${words}…`;
   showLanguage(story);
+  updateFreezeButton(story);
   if (state.storyId !== story.id) {
     state.live = undefined;
     state.failed = undefined;
     state.storyId = story.id;
     const stored = storedSettings(story);
-    if (stored) {
+    if (stored && isFrozen(story)) {
+      settingsToUI(stored);
+      setStatus(FROZEN_HINT, '', 'Press Unfreeze to change the rag.');
+    } else if (stored) {
       settingsToUI(stored);
       setStatus('Flatter is applied to this story.', '', 'Move a slider or press Recompute to work on it.');
     } else {
@@ -442,6 +519,7 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  $('freeze').addEventListener('click', freezeToggle);
   $('langDe').addEventListener('click', () => setLanguage('de'));
   $('langEn').addEventListener('click', () => setLanguage('en'));
   $('report').addEventListener('click', (e: Any) => {

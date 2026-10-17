@@ -2,7 +2,7 @@
 
 A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in a strict **long, short, long, short** rhythm. It can also pull every line end onto its target edge with per-line letter tracking and word-space adjustment.
 
-**Status: version 0.2.0, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.3.0, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
 
 ## What it does
 
@@ -11,6 +11,7 @@ A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flatte
 - **Exact line ends (optional).** Per-line letter tracking and word-space adjustment move each line end onto its edge, within limits you set. Lines are measured the way InDesign sets tracked text, with ligatures broken up.
 - **Careful hyphenation.** German (2006 reform) and English, from TeX patterns plus a second opinion: a German syllable and word-joint analyser, and US and UK English patterns that must agree. Every point gets a class, and only safe points are used by default. Each point is also checked against InDesign's own hyphenation, including typed hyphens in compounds. A Sinneinheiten option keeps an article or preposition with its word, a number with its unit, and dates and initials together.
 - **Live panel.** Sliders for Flatterzone and band, as a percentage of the measure, plus hyphens in a row and the tracking and word-space limits. Results update while you drag. An optional band view shows where long lines (blue) and short lines (orange) should end, on a non-printing layer. The report lists one entry per visible line, and clicking an entry selects that line in the document.
+- **Freeze for hand-off.** Freeze fixes the current line breaks in the text: forced line breaks, plus real hyphens where InDesign hyphenated, all tagged with the condition "Flatter frozen". The file then keeps its rag on any computer, whatever its hyphenation dictionary. Unfreeze removes exactly those characters and brings the live rag back. You don't need Freeze for PDF output.
 - **Real layouts.** Stories threaded through frames of different widths, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
 
 ## Install (for testing)
@@ -28,7 +29,8 @@ To update, install a newer `.ccx` the same way.
 3. Press **Apply**. Flatter fixes the settings it needs, for example the Single-line Composer and fixed leading, then measures, plans and steers.
 4. Adjust **Flatterzone** and **Band**. Turn on **Align line ends exactly** for geometric line ends.
 5. Read the report. Each entry names a line; click it to jump there.
-6. **Remove** takes Flatter off the story and restores the original settings.
+6. Optional, before handing the InDesign file to someone else: **Freeze**. Press **Unfreeze** to change the rag again.
+7. **Remove** takes Flatter off the story and restores the original settings, including a frozen one.
 
 Each story keeps its own Flatter settings. Selecting a story loads them into the panel.
 
@@ -45,7 +47,7 @@ Each story keeps its own Flatter settings. Selecting a story loads them into the
 | 6 Robustness | partly: overset text, frames of different widths, any document unit |
 | 7 Packaging | partly: installable `.ccx`; not signed, licence texts not yet bundled |
 
-Not built yet: Freeze/Unfreeze (bake the result into the text for hand-off), a review list across a whole document, and tabs and anchored objects inside planned paragraphs.
+Not built yet: a review list across a whole document, tabs and anchored objects inside planned paragraphs, and automatic updates while you edit (press Recompute after edits).
 
 The day-by-day log is in [docs/progress.md](docs/progress.md), and decisions with their reasons are in [docs/decisions.md](docs/decisions.md). InDesign behaviour found by testing is in [docs/spike-results.md](docs/spike-results.md).
 

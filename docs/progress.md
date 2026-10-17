@@ -2,9 +2,17 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (night) — Freeze / Unfreeze; release 0.3.0 installed (ADR-019)
+
+- **Freeze** (`freezeFlatter` in dom.ts): every visible line that does not already end a paragraph gets a forced line break; lines InDesign hyphenated, or broke at a discretionary hyphen (which shows no hyphen before a forced break, spike `s10-freeze`), also get a real hyphen. Inserted characters carry the condition "Flatter frozen" and the paragraph's base tracking (no tracking after a line's last glyph). Teeth and band strips are removed; tracking stays; overset lines are left alone. The story label records `frozen`.
+- **Unfreeze** removes exactly the conditioned characters; the panel then applies the live rag again. **Remove** unfreezes first. `openSession` refuses a frozen story; the panel blocks sliders, Apply and Recompute with a message.
+- Panel: **Freeze** button (second click confirms) that becomes **Unfreeze** on a frozen story.
+- Integration test `i19-freeze`: 33/33 lines identical after Freeze (28 breaks, 2 hyphens), no teeth, Apply refused, Undo, Unfreeze gives the original text back (30 characters removed), Apply again, Remove of a frozen story.
+- Release 0.3.0 packaged (`dist/Flatter-0.3.0.ccx`) and installed (Creative Cloud lists 0.3.0, enabled). Test checklist artifact updated with a Freeze section (52 tests in 13 sections).
+
 ## 2026-10-18 (evening, later) — Test checklist; Freeze explained
 
-- Test checklist for the designer (52 tests in 12 sections, pass/problem/skip with notes and a "Copy results" button): private artifact https://claude.ai/artifact/XWivt51EVhH8awxaPFDm4s. Results will come back as pasted text.
+- Test checklist for the designer (45 tests in 12 sections, pass/problem/skip with notes and a "Copy results" button): private artifact https://claude.ai/artifact/XWivt51EVhH8awxaPFDm4s. Results will come back as pasted text.
 - The designer asked whether the rag is only a preview and wanted a "render" button. Answer given: Apply already sets the rag for real (InDesign composes the lines; it prints, exports and survives without the plugin). Freeze (plan §6.6, not built) would bake the breaks into the text as forced line breaks for final hand-off. Not built unless the designer asks.
 
 ## 2026-10-18 (evening) — README and GitHub About updated

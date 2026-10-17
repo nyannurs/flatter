@@ -70,7 +70,7 @@ InDesign Test File/   the user's local InDesign test document; git-ignored on pu
 
 Threaded frames of different widths are supported (per-line measures, ADR-018); the panel has German / English language buttons.
 
-Planned but not created yet: Freeze/Unfreeze, review list (Phase 5), packaging (Phase 7).
+Planned but not created yet: review list (Phase 5), signing and licence texts in the package (Phase 7). Freeze/Unfreeze exists (ADR-019).
 
 ## Conventions
 

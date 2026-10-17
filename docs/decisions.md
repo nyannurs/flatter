@@ -187,3 +187,9 @@ The designer asked for per-line word-space adjustment alongside tracking so line
 
 - **`lineMeasures`** (core): a measure per line; Flatterzone, band and contrast scale with it (they are set relative to the paragraph's measure, and the panel sets them as percentages). The DP keys states by line number only when measures vary, so single-width paragraphs cost nothing extra. The adapter reads each line's column from the frames (line k of a paragraph sits at the k-th line position after the paragraph's start, which does not depend on the paragraph's own breaks) and re-plans when verify sees other widths; lines beyond the visible ones take the last frame's width.
 - **Language buttons** set whole stories (all linked frames) to German: 2006 Reform or English: USA and re-apply Flatter to the story it works on, because the language changes hyphenation and required settings. For a bilingual publication each story keeps its own Flatter settings (loaded into the panel when it is selected).
+
+## ADR-019: Freeze with forced line breaks under a condition (2026-10-18)
+
+- Freeze inserts a forced line break at every visible line end (and a real hyphen where the line was hyphenated) instead of, for example, converting the rag to fixed tracking or outlines: the text stays text, searchable and editable after Unfreeze.
+- The inserted characters carry the condition "Flatter frozen", so Unfreeze and Remove find exactly them (by checking the conditions of every forced break and hyphen in the story; no Find/Change, which would overwrite the user's Find/Change settings).
+- Teeth are removed at Freeze: forced breaks hold every line, and the frozen file no longer depends on wrap objects or the hyphenation dictionary. A frozen story cannot be re-planned until it is unfrozen.

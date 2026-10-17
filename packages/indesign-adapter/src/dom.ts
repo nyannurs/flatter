@@ -18,6 +18,8 @@ export interface StoryState {
   /** Base tracking per paragraph before the tracking rescue touched it. */
   tracking?: Record<string, number>;
   appliedAt: string;
+  /** Set while the story is frozen (Freeze, plan §6.6): its line breaks are fixed characters. */
+  frozen?: { at: string; breaks: number; hyphens: number };
 }
 
 export interface Check {
@@ -225,6 +227,7 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
  */
 export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): { live: LiveSession; report: ApplyReport } {
   const t0 = Date.now();
+  if (isFrozen(story)) throw new Error('This story is frozen. Unfreeze it to change the rag.');
   return undoableMode('Flatter: Apply', 'entire', () => {
     const doc = story.parent;
     const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
@@ -296,19 +299,27 @@ export function storedSettings(story: Any): ApplySettings | undefined {
 }
 
 /** Remove Flatter from a story: teeth, label, and every setting it changed. One undo step. */
+/** Remove a story's teeth (and the control layer when it is empty). */
+function removeTeeth(doc: Any, story: Any): number {
+  const layer = doc.layers.itemByName('Flatter (Steuerung)');
+  let removed = 0;
+  if (!layer.isValid) return 0;
+  for (const it of asArray(layer.pageItems.everyItem().getElements())) {
+    if (it.extractLabel(TOOTH_LABEL) === String(story.id)) {
+      it.remove();
+      removed++;
+    }
+  }
+  if (Number(layer.pageItems.length) === 0) layer.remove();
+  return removed;
+}
+
 export function removeFlatter(story: Any): { teethRemoved: number; settingsRestored: number } {
   return undoable('Flatter: Remove', () => {
     const doc = story.parent;
-    const layer = doc.layers.itemByName('Flatter (Steuerung)');
-    let teethRemoved = 0;
-    if (layer.isValid) {
-      for (const it of asArray(layer.pageItems.everyItem().getElements())) {
-        if (it.extractLabel(TOOTH_LABEL) === String(story.id)) {
-          it.remove();
-          teethRemoved++;
-        }
-      }
-    }
+    // A frozen story first gets its fixed line breaks back out.
+    unfreezeInPlace(story);
+    const teethRemoved = removeTeeth(doc, story);
     removeBands(doc, String(story.id));
     const state = readState(story);
     let settingsRestored = 0;
@@ -330,9 +341,120 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
       for (const f of asArray(story.textContainers)) if (state.storyOriginals.ignoreWrap?.[String(f.id)]) f.textFramePreferences.ignoreWrap = true;
     }
     story.insertLabel(STORY_LABEL, '');
-    if (layer.isValid && layer.pageItems.length === 0) layer.remove();
     return { teethRemoved, settingsRestored };
   });
+}
+
+/** Condition that marks the characters Freeze inserts, so Unfreeze removes exactly those. */
+export const FROZEN_CONDITION = 'Flatter frozen';
+
+/** The story is frozen: its line breaks are fixed characters (see freezeFlatter). */
+export function isFrozen(story: Any): boolean {
+  return !!readState(story)?.frozen;
+}
+
+/**
+ * Freeze (plan §6.6): fix the current line breaks in the text, for hand-off to a computer whose
+ * InDesign may hyphenate differently. Every visible line that does not already end a paragraph gets a
+ * forced line break; a line InDesign hyphenated (or broke at a discretionary hyphen) also gets a real
+ * hyphen. Both carry the condition "Flatter frozen". Teeth and band strips are removed; tracking stays.
+ * Overset lines are left alone. One undo step.
+ */
+export function freezeFlatter(story: Any): { breaks: number; hyphens: number; linesBefore: number; linesAfter: number } {
+  return undoable('Flatter: Freeze', () => {
+    const doc = story.parent;
+    const id = indesign();
+    const state = readState(story);
+    if (!state) throw new Error('Apply Flatter to this story before freezing it.');
+    if (state.frozen) return { breaks: 0, hyphens: 0, linesBefore: 0, linesAfter: 0 };
+    story.recompose();
+    const text = Array.from(String(story.contents));
+    const paraStarts = [0];
+    text.forEach((c, k) => {
+      if (c === '\r') paraStarts.push(k + 1);
+    });
+    const paragraphOf = (k: number) => {
+      let p = 0;
+      while (p + 1 < paraStarts.length && paraStarts[p + 1]! <= k) p++;
+      return p;
+    };
+    // Where each visible line ends (index of the next line's first character), read per frame.
+    const ends: { at: number; hyphen: boolean }[] = [];
+    let linesBefore = 0;
+    for (const container of asArray(story.textContainers)) {
+      const lines = container.lines;
+      const n = Number(lines.length);
+      if (!n) continue;
+      linesBefore += n;
+      const lengths = asArray(lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
+      let at = Number(lines.item(0).characters.item(0).index);
+      for (let i = 0; i < n; i++) {
+        at += lengths[i]!;
+        const last = text[at - 1] ?? '';
+        const next = text[at];
+        // Story end, paragraph end, or a break that is already there: nothing to fix.
+        if (next === undefined || last === '\r' || last === '\n' || /[\u0003\u0004\u0018\u0019]/.test(last)) continue;
+        const hyphen = last === '\u00AD' || (/\p{L}/u.test(last) && /\p{L}/u.test(next));
+        ends.push({ at, hyphen });
+      }
+    }
+    let cond = doc.conditions.itemByName(FROZEN_CONDITION);
+    if (!cond.isValid) cond = doc.conditions.add({ name: FROZEN_CONDITION });
+    cond.visible = true;
+    let hyphens = 0;
+    // From the end backwards, so earlier positions stay valid.
+    for (const e of ends.reverse()) {
+      const p = paragraphOf(e.at - 1);
+      const base = state.tracking?.[String(p)] ?? Number(story.characters.item(Math.max(0, e.at - 1)).tracking);
+      story.insertionPoints.item(e.at).contents = id.SpecialCharacters.FORCED_LINE_BREAK;
+      if (e.hyphen) {
+        story.insertionPoints.item(e.at).contents = '-';
+        hyphens++;
+      }
+      const inserted = story.characters.itemByRange(e.at, e.at + (e.hyphen ? 1 : 0));
+      inserted.applyConditions([cond], true);
+      // No tracking after the line's last glyph: InDesign counts it when fitting the line.
+      inserted.tracking = base;
+    }
+    // The fixed breaks hold the lines now: teeth and strips go.
+    removeTeeth(doc, story);
+    removeBands(doc, String(story.id));
+    story.recompose();
+    let linesAfter = 0;
+    for (const container of asArray(story.textContainers)) linesAfter += Number(container.lines.length);
+    state.frozen = { at: new Date().toISOString(), breaks: ends.length, hyphens };
+    story.insertLabel(STORY_LABEL, JSON.stringify(state));
+    return { breaks: ends.length, hyphens, linesBefore, linesAfter };
+  });
+}
+
+/** Take the characters Freeze inserted back out (no undo step of its own). */
+function unfreezeInPlace(story: Any): number {
+  const state = readState(story);
+  const cond = story.parent.conditions.itemByName(FROZEN_CONDITION);
+  let removed = 0;
+  if (cond.isValid) {
+    const text = Array.from(String(story.contents));
+    for (let k = text.length - 1; k >= 0; k--) {
+      if (text[k] !== '\n' && text[k] !== '-') continue;
+      const ch = story.characters.item(k);
+      const names = asArray(ch.appliedConditions).map((c: Any) => String(c.name));
+      if (names.includes(FROZEN_CONDITION)) {
+        ch.remove();
+        removed++;
+      }
+    }
+  }
+  if (state?.frozen) {
+    delete state.frozen;
+    story.insertLabel(STORY_LABEL, JSON.stringify(state));
+  }
+  return removed;
+}
+
+/** Unfreeze: remove the fixed line breaks and hyphens Freeze inserted. One undo step. Apply again afterwards. */
+export function unfreezeFlatter(story: Any): number {
+  return undoable('Flatter: Unfreeze', () => unfreezeInPlace(story));
 }
 
 /** The languages the panel's buttons set (InDesign language names). */
