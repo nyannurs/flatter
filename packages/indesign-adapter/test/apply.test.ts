@@ -80,6 +80,26 @@ describe('tracking rescue in the apply loop', () => {
   });
 });
 
+describe('precise tracking with word spaces in the apply loop (ADR-015)', () => {
+  it('tracks letters and word spaces, and every line still breaks as planned', () => {
+    let spaced = 0;
+    for (const measure of [200, 220, 240]) {
+      const fake = new FakeInDesign(DE, { measure, accepts: ourSafe });
+      const r = applyToPort(fake, { tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.3 });
+      spaced += r.spacedLines;
+      expect(r.linesAsPlanned, `measure ${measure}`).toBe(r.linesPlanned);
+      // Each spaced line's word spaces carry its letter tracking plus its word-space tracking.
+      for (const p of r.paragraphs) {
+        const track = fake.tracking.get(p.index) ?? [];
+        const text = [...DE[p.index]!];
+        const spaceValues = new Set(track.filter((_, k) => text[k] === ' ').map((v) => v.toFixed(4)));
+        for (const l of p.plan.lines.filter((x) => x.wordSpace !== 0)) expect(spaceValues.has((l.tracking + l.wordSpace).toFixed(4)), l.text).toBe(true);
+      }
+    }
+    expect(spaced).toBeGreaterThan(0);
+  });
+});
+
 describe('live session (panel)', () => {
   it('takes many slider ticks without reading back, then verifies to every line as planned', async () => {
     const { FlatterSession } = await import('../src/index.ts');

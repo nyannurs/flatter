@@ -136,6 +136,18 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
       );
     }
 
+    if (line.wordSpace !== 0) {
+      const ok = P.tracking.enabled && P.tracking.mode === 'precise' && Math.abs(line.wordSpace) <= P.tracking.wordSpaceMax + 1e-9;
+      if (!ok) {
+        out.push({
+          kind: 'tracking-limit',
+          severity: 'error',
+          line: i,
+          message: `Word spaces tracked ${line.wordSpace}/1000 em, outside the allowed ±${P.tracking.mode === 'precise' ? P.tracking.wordSpaceMax : 0}.`,
+        });
+      }
+    }
+
     if (line.kind === 'band' && Number.isFinite(line.slack) && line.slack < 2 * P.epsilon) {
       out.push({
         kind: 'tight-steering',
@@ -238,6 +250,7 @@ export function planStats(lines: readonly PlannedLine[]): Omit<PlanStats, 'state
     bandLines: band.length,
     hyphens: lines.filter((l) => l.hyphenClass !== undefined).length,
     trackedLines: lines.filter((l) => l.tracking !== 0).length,
+    spacedLines: lines.filter((l) => l.wordSpace !== 0).length,
     longGapSpread: spread(band.filter((l) => l.role === 'long').map((l) => l.gap)),
     shortGapSpread: spread(band.filter((l) => l.role === 'short').map((l) => l.gap)),
   };

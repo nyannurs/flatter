@@ -109,6 +109,19 @@ inNewDocument((doc: Any) => {
     });
   }
 
+  for (const [max, share] of [[10, 0.25], [30, 0.5]] as const) {
+    run(`German, precise Laufweite ±${max} with word spaces ±${share * 100} %`, () => frameWithDefaults(doc, [40, 40, 500, 340], DE_TEXT.join('\r'), 'German: 2006 Reform'), {
+      bandShare: 0.25,
+      zoneShare: 0.2,
+      tracking: { enabled: true, mode: 'precise', max },
+      wordSpaceShare: share,
+    });
+    run(`English, precise Laufweite ±${max} with word spaces ±${share * 100} %`, () => frameWithDefaults(doc, [40, 40, 500, 300], EN_TEXT.join('\r'), 'English: USA'), {
+      tracking: { enabled: true, mode: 'precise', max },
+      wordSpaceShare: share,
+    });
+  }
+
   // Undo: one undo step reverts Apply completely.
   const f = frameWithDefaults(doc, [40, 40, 400, 340], DE_TEXT.join('\r'), 'German: 2006 Reform');
   const story = f.parentStory;

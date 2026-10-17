@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildParagraph, solveParagraph, type FlatterSettings, type Item } from '../src/index.ts';
+import { buildParagraph, solveParagraph, splitAdjustment, type FlatterSettings, type Item } from '../src/index.ts';
 import { every3, GERMAN_SAMPLE, mono, words } from './helpers.ts';
 
 // Measure 100, Flatterzone 30, band 5: long lines 95–100, short lines 65–70.
@@ -141,5 +141,57 @@ describe('precise Laufweite (ADR-013)', () => {
     const plan = solveParagraph(sample, precise(30));
     expect(plan.lines.at(-1)!.tracking).toBe(0);
     expect(plan.violations.filter((v) => v.kind === 'tracking')).toEqual([]);
+  });
+});
+
+describe('word spaces (ADR-015)', () => {
+  const sample = buildParagraph(GERMAN_SAMPLE, { measure: mono, hyphenate: every3() });
+  const precise = (max: number, wordSpaceMax: number): FlatterSettings => ({
+    measure: 300, flatterzone: 60, band: 20, tracking: { enabled: true, mode: 'precise', max, emSize: 10, wordSpaceMax },
+  });
+  const within = (plan: ReturnType<typeof solveParagraph>, pt: number) =>
+    plan.lines.filter((l) => l.kind === 'band' && Math.abs(l.available - l.targetWidth - l.gap) <= pt).length;
+
+  it('shares a correction by reach: equal reach, equal relative use', () => {
+    // Letters: 0.5 pt per unit, max 10 (reach 5 pt). Spaces: 0.05 pt per unit, max 100 (reach 5 pt).
+    expect(splitAdjustment(4, 0.5, 10, 0.05, 100)).toEqual({ t: 4, w: 40 });
+    // One control alone.
+    expect(splitAdjustment(2, 0.5, 10, 0, 0)).toEqual({ t: 4, w: 0 });
+    expect(splitAdjustment(-1, 0, 0, 0.05, 100)).toEqual({ t: 0, w: -20 });
+  });
+
+  it('gives the rest to the other control when one reaches its maximum', () => {
+    // Letters reach 5 pt, spaces 1 pt: letters do more and hit their maximum first; spaces take the rest.
+    const s = splitAdjustment(5.5, 0.5, 10, 0.05, 20);
+    expect(s.t).toBe(10);
+    expect(s.w).toBeCloseTo(10, 1);
+    // Both at their maximum: the line stays short of its target, never past it.
+    expect(splitAdjustment(20, 0.5, 2, 0.05, 100)).toEqual({ t: 2, w: 100 });
+  });
+
+  it('never overshoots: values are cut toward zero', () => {
+    const { t, w } = splitAdjustment(1.234567, 0.37, 30, 0.03, 300);
+    expect(t * 0.37 + w * 0.03).toBeLessThanOrEqual(1.234567 + 1e-9);
+    expect(Number.isInteger(Math.round(t * 100))).toBe(true);
+  });
+
+  it('is off by default and only used in precise mode', () => {
+    expect(solveParagraph(sample, precise(10, 0)).lines.every((l) => l.wordSpace === 0)).toBe(true);
+    const rescue = solveParagraph(sample, { ...base, tracking: { enabled: true, max: 5, emSize: 10, wordSpaceMax: 100 } });
+    expect(rescue.lines.every((l) => l.wordSpace === 0)).toBe(true);
+  });
+
+  it('brings more line ends onto their edges than letter tracking alone', () => {
+    const letters = solveParagraph(sample, precise(5, 0));
+    const both = solveParagraph(sample, precise(5, 100));
+    expect(both.feasible).toBe(true);
+    expect(both.stats.spacedLines).toBeGreaterThan(0);
+    expect(within(both, 0.1)).toBeGreaterThan(within(letters, 0.1));
+    expect(both.stats.edgeMiss).toBeLessThanOrEqual(letters.stats.edgeMiss + 1e-9);
+    for (const l of both.lines) {
+      expect(Math.abs(l.wordSpace)).toBeLessThanOrEqual(100 + 1e-9);
+      expect(l.width).toBeLessThanOrEqual(l.available + 1e-6);
+      if (l.kind !== 'band') expect(l.wordSpace).toBe(0);
+    }
   });
 });

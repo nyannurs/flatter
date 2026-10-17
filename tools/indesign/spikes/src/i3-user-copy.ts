@@ -36,6 +36,7 @@ inNewDocument((doc: Any) => {
     zoneShare: 0.17, bandShare: 0.9, phase: 'long', mode: 'strict', hyphenation: 'safe',
     maxConsecutiveHyphens: 1, sense: true, continuous: false,
     tracking: { enabled: true, mode: 'precise', max: 30 }, ...({ epsilon: Number(app.extractLabel('flatter-i3-eps') || 0.15) } as Any),
+    wordSpaceShare: Number(app.extractLabel('flatter-i3-words') || 0.25),
   };
   const t0 = Date.now();
   // As in the user's test: Apply without tracking, then switch "Align line ends exactly" on in the live session.

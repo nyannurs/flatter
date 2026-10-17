@@ -172,7 +172,7 @@ export class ParagraphMetrics {
    * composer broke at any later potential break than `b`. Steering must stay
    * below this so the composer cannot take one more fragment.
    */
-  nextInk(a: number, b: number, trackPerChar = 0): number {
+  nextInk(a: number, b: number, trackPerChar = 0, trackPerSpace = 0): number {
     if (b >= this.n || this.isForced(b)) return Infinity;
     const start = this.lineStart(a);
     let lo = 0;
@@ -188,7 +188,9 @@ export class ParagraphMetrics {
       const end = this.contentEnd(p);
       const pen = p < this.n ? (this.penaltyAt(p)?.width ?? 0) : 0;
       // The next fragment would carry the line's tracking too.
-      const tracked = trackPerChar !== 0 ? trackPerChar * this.trackedChars(start, end, p) + this.trackedExtra(start, end) : 0;
+      const tracked =
+        (trackPerChar !== 0 ? trackPerChar * this.trackedChars(start, end, p) + this.trackedExtra(start, end) : 0) +
+        trackPerSpace * this.glueCount(start, end);
       best = Math.min(best, this.contentWidth(start, end) + pen + tracked);
       if (p >= this.n || this.items[p]!.type === 'glue' || this.isForced(p)) break;
     }

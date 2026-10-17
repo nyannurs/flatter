@@ -43,6 +43,38 @@ interface Node {
   startRun: number;
   /** Tracking applied to this line, in 1/1000 em (0 = none). */
   tracking: number;
+  /** Tracking added to each word space inside this line, in 1/1000 em (0 = none). */
+  wordSpace: number;
+}
+
+/**
+ * Precise Laufweite with word spaces (ADR-015): how much letter tracking t and word-space tracking w
+ * (both in 1/1000 em, steps of 0.01) widen a line by `need` points. trackUnit and spaceUnit are the
+ * widths one unit of each adds to the line. The split minimises (t/max)² + (w/max)², the precise-mode
+ * cost: each control is used, relative to its maximum, in proportion to its reach (unit × max), so the
+ * maxima set the balance. When one hits its maximum the other takes the rest. Values are cut toward
+ * zero, so the line never overshoots its target.
+ */
+export function splitAdjustment(
+  need: number,
+  trackUnit: number,
+  trackMax: number,
+  spaceUnit: number,
+  spaceMax: number,
+): { t: number; w: number } {
+  const A = (trackUnit * trackMax) ** 2;
+  const B = (spaceUnit * spaceMax) ** 2;
+  if (A + B === 0 || need === 0) return { t: 0, w: 0 };
+  const clamp = (x: number, m: number) => Math.max(-m, Math.min(m, x));
+  let t = A > 0 ? clamp((need * trackUnit * trackMax ** 2) / (A + B), trackMax) : 0;
+  let w = B > 0 ? clamp((need * spaceUnit * spaceMax ** 2) / (A + B), spaceMax) : 0;
+  const rest = need - t * trackUnit - w * spaceUnit;
+  if (Math.abs(rest) > 1e-9) {
+    if (A > 0 && Math.abs(t) < trackMax) t = clamp(t + rest / trackUnit, trackMax);
+    else if (B > 0 && Math.abs(w) < spaceMax) w = clamp(w + rest / spaceUnit, spaceMax);
+  }
+  const cut = (x: number) => Math.trunc(x * 100 + (x > 0 ? 1e-9 : -1e-9)) / 100 || 0; // no -0
+  return { t: cut(t), w: cut(w) };
 }
 
 interface DPResult {
@@ -117,7 +149,9 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       const exempt = final || forced;
       // Width one unit of tracking adds to this line (1/1000 em per character).
       const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end, b) : 0;
-      const shrink = trackUnit * P.tracking.max;
+      // Width one unit of word-space tracking adds (precise mode only: 1/1000 em per space inside the line).
+      const spaceUnit = precise && !exempt && P.tracking.wordSpaceMax > 0 ? (P.tracking.emSize / 1000) * M.glueCount(g.start, g.end) : 0;
+      const shrink = trackUnit * P.tracking.max + spaceUnit * P.tracking.wordSpaceMax;
       // Tracked, the line also takes on the width of its broken-up ligatures.
       const ligExtra = trackUnit > 0 ? M.trackedExtra(g.start, g.end) : 0;
       let overfull = 0;
@@ -131,25 +165,34 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       let cost = node.cost;
       if (overfull > 0) cost += SOFT_COST.overfull * (1 + overfull);
       let tracking = 0;
+      let wordSpace = 0;
 
       if (!exempt) {
         const lo = role === 'long' ? 0 : Z;
         const hi = lo + band;
         let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
-        if (precise && trackUnit > 0) {
-          // Precise Laufweite: track the line so its end lands on its target, within ±max, never closer to
-          // the measure than the safety distance (unless the untracked line already is).
+        if (precise && (trackUnit > 0 || spaceUnit > 0)) {
+          // Precise Laufweite: track letters and word spaces so the line end lands on its target, within
+          // their maxima, never closer to the measure than the safety distance (unless the untracked line
+          // already is). Letter tracking also breaks up ligatures (ligExtra).
           const target = targetGap(P, role, g.start);
-          const gapT = gap - ligExtra;
-          let t = Math.round(((gapT - target) / trackUnit) * 100) / 100;
-          t = Math.max(-P.tracking.max, Math.min(P.tracking.max, t));
+          const T = trackUnit > 0 ? P.tracking.max : 0;
+          let { t, w } = splitAdjustment(gap - ligExtra - target, trackUnit, T, spaceUnit, P.tracking.wordSpaceMax);
+          if (t === 0) w = splitAdjustment(gap - target, 0, 0, spaceUnit, P.tracking.wordSpaceMax).w;
+          const after = (tt: number, ww: number) => gap - (tt !== 0 ? ligExtra : 0) - tt * trackUnit - ww * spaceUnit;
           const floorGap = Math.min(Math.max(gap, 0), P.tracking.safety);
-          if (t > 0 && gapT - t * trackUnit < floorGap - TOL) t = Math.max(0, Math.floor(((gapT - floorGap) / trackUnit) * 100) / 100);
+          // Rounding guard: take back word space first, then letter tracking.
+          if (after(t, w) < floorGap - TOL && w > 0) w = Math.max(0, Math.floor((w - (floorGap - after(t, w)) / spaceUnit) * 100) / 100) || 0;
+          if (after(t, w) < floorGap - TOL && t > 0) t = Math.max(0, Math.floor((t - (floorGap - after(t, w)) / trackUnit) * 100) / 100);
           tracking = t;
-          if (t !== 0) gap = gapT - t * trackUnit;
+          wordSpace = w;
+          gap = after(t, w);
           dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
           if (overfull > 0 && gap >= -TOL) overfull = 0;
-          cost = node.cost + W.trackingPrecise * (t / Math.max(1, P.tracking.max)) ** 2 + (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
+          cost =
+            node.cost +
+            W.trackingPrecise * ((t / Math.max(1, P.tracking.max)) ** 2 + (w / Math.max(1, P.tracking.wordSpaceMax)) ** 2) +
+            (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
         } else if (dist > TOL && trackUnit > 0) {
           // Tracking rescue: the smallest whole value that brings the line into its band.
           const gapT = gap - ligExtra;
@@ -256,6 +299,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         endWord,
         startRun,
         tracking,
+        wordSpace,
       });
 
       return forced ? 'stop' : 'added';
@@ -289,6 +333,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
     endWord: undefined,
     startRun: 0,
     tracking: 0,
+    wordSpace: 0,
   };
   extend(start, 0);
   for (let ci = 0; ci < candidates.length - 1; ci++) {
@@ -316,14 +361,17 @@ interface LineSpec {
   role: Role;
   /** Tracking in 1/1000 em (0 = none). */
   tracking: number;
+  /** Tracking per word space inside the line, in 1/1000 em (0 = none). */
+  wordSpace: number;
 }
 
 function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly LineSpec[]): PlannedLine[] {
   return specs.map((spec, index) => {
     const g0 = M.geometry(spec.a, spec.b);
-    const trackWidth = spec.tracking
-      ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 + M.trackedExtra(g0.start, g0.end)
-      : 0;
+    const trackWidth =
+      (spec.tracking
+        ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 + M.trackedExtra(g0.start, g0.end)
+        : 0) + (spec.wordSpace ? (spec.wordSpace * P.tracking.emSize * M.glueCount(g0.start, g0.end)) / 1000 : 0);
     const g = { ...g0, width: g0.width + trackWidth, ink: g0.ink + trackWidth };
     const first = spec.a < 0;
     const indent = first ? P.firstLineIndent : 0;
@@ -334,11 +382,12 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
     const endsWithHyphen = pen?.flagged === true;
     // Room between this line's end and the next fragment, both with the line's tracking.
     const perChar = spec.tracking ? (spec.tracking * P.tracking.emSize) / 1000 : 0;
-    const slack = M.nextInk(spec.a, spec.b, perChar) - g.ink;
+    const perSpace = spec.wordSpace ? (spec.wordSpace * P.tracking.emSize) / 1000 : 0;
+    const slack = M.nextInk(spec.a, spec.b, perChar, perSpace) - g.ink;
     // Tracked lines put the tooth halfway into that room (up to a quarter em): InDesign sets some tracked
     // lines up to about 1 pt wider than measured, and a tooth 0.15 pt past the line then pushed its last
     // word down (user's text, 2026-10-17). Untracked lines measure exactly and keep the small margin.
-    const margin = spec.tracking ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
+    const margin = spec.tracking || spec.wordSpace ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
     const steerWidth =
       kind === 'band'
         ? Math.max(g.ink, Math.min(g.ink + Math.min(margin, slack / 2), Math.max(available, g.ink)))
@@ -361,6 +410,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
       steerWidth,
       slack,
       tracking: spec.tracking,
+      wordSpace: spec.wordSpace,
       text: M.text(g.start, g.end, spec.b),
     };
     if (pen?.quality) line.hyphenClass = pen.quality;
@@ -371,7 +421,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
 function specsFromNode(last: Node): LineSpec[] {
   const chain: LineSpec[] = [];
   for (let node: Node | null = last; node && !node.virtual; node = node.prev) {
-    chain.push({ a: node.a, b: node.b, role: node.role, tracking: node.tracking });
+    chain.push({ a: node.a, b: node.b, role: node.role, tracking: node.tracking, wordSpace: node.wordSpace });
   }
   return chain.reverse();
 }
@@ -394,6 +444,8 @@ export function evaluateBreaks(
   startRole: Role = 'long',
   /** Tracking per line in 1/1000 em, as applied in the document. */
   tracking: readonly number[] = [],
+  /** Word-space tracking per line in 1/1000 em, as applied in the document. */
+  wordSpace: readonly number[] = [],
 ): Evaluation {
   const P = resolveParams(settings, items);
   const M = new ParagraphMetrics(items, P);
@@ -403,7 +455,7 @@ export function evaluateBreaks(
   let role = startRole;
   for (const b of ends) {
     if (b <= a) throw new RangeError(`breaks must be strictly ascending, got ${b} after ${a}`);
-    specs.push({ a, b, role, tracking: tracking[specs.length] ?? 0 });
+    specs.push({ a, b, role, tracking: tracking[specs.length] ?? 0, wordSpace: wordSpace[specs.length] ?? 0 });
     a = b;
     role = opposite(role);
   }

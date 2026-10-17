@@ -35,6 +35,8 @@ export interface PlannedLine {
   slack: number;
   /** Tracking (Laufweite) applied to this line in 1/1000 em; 0 when untouched. */
   tracking: number;
+  /** Tracking added to each word space inside the line, in 1/1000 em; 0 when untouched (ADR-015). */
+  wordSpace: number;
   text: string;
 }
 
@@ -83,6 +85,8 @@ export interface PlanStats {
   shortGapSpread: number;
   /** Lines with tracking (Laufweite) applied. */
   trackedLines: number;
+  /** Lines whose word spaces were tracked (ADR-015). */
+  spacedLines: number;
   /** Largest distance of a band line's end from its target, in points. */
   edgeMiss: number;
   /** Spread of the long lines' ends and of the short lines' ends (max − min of their gaps), in points. */

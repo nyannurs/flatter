@@ -121,8 +121,9 @@
 
     <fieldset>
       <legend>Laufweite</legend>
-      <label class="check"><input id="tracking" type="checkbox"> Align line ends exactly (tracking per line)</label>
-      <div class="ctl"><label for="trackMax"><span>Largest tracking</span><span id="trackMaxOut"></span></label><input id="trackMax" type="range" min="1" max="30" step="1" value="5"></div>
+      <label class="check"><input id="tracking" type="checkbox"> Align line ends exactly (letter tracking and word spaces per line)</label>
+      <div class="ctl"><label for="trackMax"><span>Largest letter tracking</span><span id="trackMaxOut"></span></label><input id="trackMax" type="range" min="0" max="30" step="1" value="5"></div>
+      <div class="ctl"><label for="wordMax"><span>Largest word-space change</span><span id="wordMaxOut"></span></label><input id="wordMax" type="range" min="0" max="50" step="1" value="25"></div>
     </fieldset>
 
     <fieldset>
@@ -140,7 +141,7 @@
       <span><span class="sw err"></span>Breaks a strict rule</span>
       <span><span class="sw warn"></span>Typographic warning</span>
       <span>A/B/C: hyphenation class</span>
-      <span>±n: tracking in 1/1000 em</span>
+      <span>±n: tracking in 1/1000 em · w±n: word spaces</span>
     </div>
     <div class="preview" id="preview"></div>
     <div class="issues" id="issues"></div>

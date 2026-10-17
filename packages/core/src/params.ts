@@ -67,6 +67,11 @@ export interface TrackingRules {
    * user's text 2026-10-17); a line planned exactly at the measure then loses its last word.
    */
   safety: number;
+  /**
+   * Precise mode: largest tracking added to the word spaces inside a line, in 1/1000 em per space,
+   * wider or narrower (ADR-015). 0 = word spaces stay as set.
+   */
+  wordSpaceMax: number;
 }
 
 /** Suggested maximum when tracking is enabled (ADR-010). */
@@ -250,8 +255,10 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     max: settings.tracking?.max ?? DEFAULT_TRACKING_MAX,
     emSize: settings.tracking?.emSize ?? 0,
     safety: settings.tracking?.safety ?? 0.1 * (settings.tracking?.emSize ?? 0),
+    wordSpaceMax: settings.tracking?.wordSpaceMax ?? 0,
   };
   if (tracking.enabled && !(tracking.emSize > 0)) throw new RangeError('tracking.emSize (the font size in points) is required when tracking is enabled');
+  if (!(tracking.wordSpaceMax >= 0)) throw new RangeError(`tracking.wordSpaceMax must be zero or more, got ${tracking.wordSpaceMax}`);
   if (!(tracking.max >= 0)) throw new RangeError(`tracking.max must be zero or more, got ${tracking.max}`);
   return {
     measure,

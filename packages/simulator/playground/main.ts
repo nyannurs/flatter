@@ -45,6 +45,8 @@ function render(): void {
   $('maxHyphOut').textContent = String(num('maxHyph'));
   $('trackMaxOut').textContent = `±${num('trackMax')}/1000 em`;
   $<HTMLInputElement>('trackMax').disabled = !checked('tracking');
+  $('wordMaxOut').textContent = `±${num('wordMax')} %`;
+  $<HTMLInputElement>('wordMax').disabled = !checked('tracking');
 
   const result = simulate(text, {
     font,
@@ -61,6 +63,7 @@ function render(): void {
     hyphenation: val('hyphMode') as 'safe' | 'normal',
     sense: checked('sense'),
     tracking: { enabled: checked('tracking'), mode: 'precise', max: num('trackMax') },
+    wordSpaceShare: num('wordMax') / 100,
   });
   const s = summarise(result);
   const plans = result.paragraphs.map((p) => p.plan);
@@ -72,7 +75,7 @@ function render(): void {
   const allGood = s.errors === 0;
   $('status').innerHTML =
     `<span class="big ${allGood ? 'ok' : 'bad'}">${allGood ? '✓' : '⚠'} ${s.inRhythm}/${s.bandLines} lines in rhythm</span>` +
-    `<span class="meta">edges: long ±${edge.long.toFixed(1)} pt, short ±${edge.short.toFixed(1)} pt, worst ${edge.worst.toFixed(1)} pt off · ${s.perfect}/${s.paragraphs} paragraphs strict · ${s.hyphens} hyphens · ${s.tracked} tracked lines · ${s.errors} errors · ${s.warnings} warnings · solved in ${result.solveMs.toFixed(1)} ms</span>`;
+    `<span class="meta">edges: long ±${edge.long.toFixed(1)} pt, short ±${edge.short.toFixed(1)} pt, worst ${edge.worst.toFixed(1)} pt off · ${s.perfect}/${s.paragraphs} paragraphs strict · ${s.hyphens} hyphens · ${s.tracked} tracked lines, ${s.spaced} with adjusted word spaces · ${s.errors} errors · ${s.warnings} warnings · solved in ${result.solveMs.toFixed(1)} ms</span>`;
 
   $('preview').innerHTML = renderSvg(
     result.paragraphs.map((p) => p.plan),
@@ -90,7 +93,7 @@ function render(): void {
   $('issues').innerHTML = items.length ? `<h2>Report</h2><ul>${items.join('')}</ul>` : '';
 }
 
-for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'trackMax']) $(id).addEventListener('input', schedule);
+for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'trackMax', 'wordMax']) $(id).addEventListener('input', schedule);
 for (const id of ['phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;

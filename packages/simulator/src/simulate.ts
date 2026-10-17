@@ -18,6 +18,8 @@ export interface SimulateOptions extends Omit<StorySettings, 'measure' | 'langua
   noHyphenation?: boolean;
   /** Sinneinheiten penalties (plan §2A.6). Default: on for German, off for English. */
   sense?: boolean;
+  /** Precise tracking: largest word-space change as a share of the space width (ADR-015). */
+  wordSpaceShare?: number;
 }
 
 export interface SimParagraph {
@@ -66,9 +68,12 @@ export function simulate(text: string, opts: SimulateOptions): SimResult {
     }),
   );
   const t1 = performance.now();
-  const { font: _f, fontSize: _s, language: _l, measure: _m, chars: _c, noHyphenation: _n, sense: _se, ...settings } = opts;
+  const { font: _f, fontSize: _s, language: _l, measure: _m, chars: _c, noHyphenation: _n, sense: _se, wordSpaceShare, ...settings } = opts;
   // Tracking units are 1/1000 em: the em is the font size.
-  const tracking = settings.tracking?.enabled ? { ...settings.tracking, emSize: settings.tracking.emSize ?? size } : settings.tracking;
+  const wordSpaceMax = wordSpaceShare !== undefined ? (wordSpaceShare * opts.font.measure(' ', size) * 1000) / size : undefined;
+  const tracking = settings.tracking?.enabled
+    ? { ...settings.tracking, emSize: settings.tracking.emSize ?? size, ...(wordSpaceMax !== undefined ? { wordSpaceMax } : {}) }
+    : settings.tracking;
   const plans = solveStory(itemsList, { ...settings, ...(tracking ? { tracking } : {}), measure, language });
   const t2 = performance.now();
   return {
@@ -88,12 +93,14 @@ export interface Summary {
   hyphens: number;
   /** Lines with tracking (Laufweite) applied. */
   tracked: number;
+  /** Lines with adjusted word spaces. */
+  spaced: number;
   errors: number;
   warnings: number;
 }
 
 export function summarise(result: SimResult): Summary {
-  const s: Summary = { paragraphs: 0, perfect: 0, lines: 0, bandLines: 0, inRhythm: 0, hyphens: 0, tracked: 0, errors: 0, warnings: 0 };
+  const s: Summary = { paragraphs: 0, perfect: 0, lines: 0, bandLines: 0, inRhythm: 0, hyphens: 0, tracked: 0, spaced: 0, errors: 0, warnings: 0 };
   for (const { plan } of result.paragraphs) {
     s.paragraphs++;
     if (plan.feasible) s.perfect++;
@@ -101,6 +108,7 @@ export function summarise(result: SimResult): Summary {
     s.bandLines += plan.stats.bandLines;
     s.hyphens += plan.stats.hyphens;
     s.tracked += plan.stats.trackedLines;
+    s.spaced += plan.stats.spacedLines;
     const broken = new Set(plan.violations.filter((v) => v.kind === 'band' || v.kind === 'contrast').map((v) => v.line));
     s.inRhythm += plan.lines.filter((l) => l.kind === 'band' && !broken.has(l.index)).length;
     s.errors += plan.violations.filter((v) => v.severity === 'error').length;
@@ -112,9 +120,13 @@ export function summarise(result: SimResult): Summary {
 export function formatReport(result: SimResult): string {
   const s = summarise(result);
   const out: string[] = [];
+  const band = result.paragraphs.flatMap(({ plan }) => plan.lines.filter((l) => l.kind === 'band'));
+  const miss = band.map((l) => Math.abs(l.available - l.targetWidth - l.gap));
+  const onEdge = miss.filter((m) => m <= 0.5).length;
   out.push(
     `${s.perfect}/${s.paragraphs} paragraphs in perfect alternation, ${s.inRhythm}/${s.bandLines} lines in rhythm, ${s.hyphens} hyphens, ${s.tracked} tracked lines, ` +
-      `${s.errors} errors, ${s.warnings} warnings. Measure ${result.measure.toFixed(1)} pt. Solve ${result.solveMs.toFixed(1)} ms.`,
+      `${s.spaced} with adjusted word spaces, ${s.errors} errors, ${s.warnings} warnings. Measure ${result.measure.toFixed(1)} pt. Solve ${result.solveMs.toFixed(1)} ms.`,
+    `Edges: ${onEdge}/${band.length} band lines within 0.5 pt of their edge, worst ${Math.max(0, ...miss).toFixed(1)} pt off.`,
   );
   result.paragraphs.forEach(({ plan }, pi) => {
     const P = plan.params;
@@ -125,7 +137,9 @@ export function formatReport(result: SimResult): string {
     );
     for (const l of plan.lines) {
       const tag = l.kind === 'band' ? (l.role === 'long' ? 'L' : 'S') : l.kind === 'last' ? '·' : 'F';
-      const tr = l.tracking ? `  [tracking ${l.tracking > 0 ? '+' : ''}${l.tracking}]` : '';
+      const tr =
+        (l.tracking ? `  [tracking ${l.tracking > 0 ? '+' : ''}${l.tracking}]` : '') +
+        (l.wordSpace ? `  [word spaces ${l.wordSpace > 0 ? '+' : ''}${l.wordSpace}]` : '');
       out.push(`  ${tag} ${l.width.toFixed(1).padStart(6)} ${l.hyphenClass ?? ' '} ${l.text}${tr}`);
     }
     for (const v of plan.violations) out.push(`    ${v.severity.padEnd(7)} ${v.kind}${v.line >= 0 ? ` (line ${v.line + 1})` : ''}: ${v.message}`);

@@ -158,3 +158,13 @@ Found by reproducing the designer's failed precise-tracking test on a copy of th
 - **Safety distance**: precise tracking never brings a line closer than 0.1 em to the measure (long lines target that distance instead of 0). A line that tracking pulls exactly onto the frame edge has no tolerance at all.
 - **Writes**: only tracking that differs from the document is written, and overset lines are not tracked (their tracking dominated slider ticks).
 - **No "mechanical" warning**: with exact edges as the goal (ADR-013), the warning about even line ends is removed.
+
+## ADR-015: Word spaces as a second precision control (2026-10-17)
+
+The designer asked for per-line word-space adjustment alongside tracking so line ends get more exact (2026-10-17). Letter tracking alone left real text 10–20 pt off its edges.
+
+- **How**: InDesign has no per-line word spacing, so Flatter tracks the word spaces inside a line: the first character of each word space gets the line's letter tracking plus its word-space value `wordSpace` (1/1000 em). Tracking a space widens exactly that gap and leaves ligatures alone (measured: +100 units = +1.2 pt at 12 pt). Writing one value per space is fast (42 lines, 227 spaces: 64 ms).
+- **Limit**: `tracking.wordSpaceMax` in the core (1/1000 em per space, precise mode only). The panel and playground set it as a share of the paragraph's space width ("Largest word-space change", 0–50 %, default 25 %; InDesign's default word-spacing range is 80–133 %).
+- **Split**: the distance to the edge is shared by `splitAdjustment`, which minimises (t/max)² + (w/max)² (the precise-mode cost): each control is used, relative to its maximum, in proportion to its reach. When one control reaches its maximum the other takes the rest. Values are cut toward zero, so lines never overshoot. Letter tracking only counts ligature widening (ADR-014) when it is non-zero.
+- **Reach, German reference text, 60 characters per line, 10 pt**: letters ±10 alone: 14/33 lines within 0.5 pt, worst 16.7 pt off; with ±50 % word spaces: worst 8.6 pt; letters ±30 with ±50 %: 29/32 within 0.5 pt, worst 3.7 pt.
+- Rescue mode (ADR-010) does not use word spaces.

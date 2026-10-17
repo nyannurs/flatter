@@ -20,6 +20,11 @@ export interface ApplySettings extends Omit<FlatterSettings, 'measure' | 'langua
   sense?: boolean;
   /** Read-back rounds before giving up. */
   maxRounds?: number;
+  /**
+   * Precise tracking: largest change of a word space, as a share of the paragraph's space width
+   * (panel slider, e.g. 0.3 = ±30 %). Converted per paragraph into tracking.wordSpaceMax (ADR-015).
+   */
+  wordSpaceShare?: number;
 }
 
 export interface ParagraphResult {
@@ -48,6 +53,8 @@ export interface ApplyResult {
   teeth: number;
   /** Lines given tracking (Laufweite) by the rescue. */
   trackedLines: number;
+  /** Lines whose word spaces were tracked (ADR-015). */
+  spacedLines: number;
   /** Planned lines that fall outside the frames (overset); they cannot be steered. */
   oversetLines: number;
 }
@@ -205,8 +212,9 @@ export class FlatterSession {
       return s + w.plan.lines.filter((line, i) => matches(w, line, got[i])).length;
     }, 0);
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
+    const spacedLines = this.work.reduce((s, w) => s + w.plan.stats.spacedLines, 0);
     const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - visibleCount(this.current, w.data.index)), 0) : 0;
-    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, oversetLines };
+    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines };
   }
 
   private hyphenator(lang: HyphenLanguage): Hyphenator {
@@ -227,7 +235,7 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
 
 function solve(items: Item[], data: ParagraphData, settings: ApplySettings, startRole: Role | undefined): Plan {
   const lang = hyphenLanguage(data.language);
-  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, ...rest } = settings;
+  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, ...rest } = settings;
   const flatterzone = zoneShare !== undefined ? zoneShare * data.measure : rest.flatterzone;
   const band = bandShare !== undefined && flatterzone !== undefined ? bandShare * flatterzone : rest.band;
   return solveParagraph(items, {
@@ -238,16 +246,54 @@ function solve(items: Item[], data: ParagraphData, settings: ApplySettings, star
     firstLineIndent: data.firstLineIndent,
     language: lang.startsWith('de') ? 'de' : 'en',
     ...(startRole ? { startRole } : {}),
-    ...(rest.tracking?.enabled ? { tracking: { ...rest.tracking, emSize: rest.tracking.emSize ?? data.size } } : {}),
+    ...(rest.tracking?.enabled
+      ? {
+          tracking: {
+            ...rest.tracking,
+            emSize: rest.tracking.emSize ?? data.size,
+            ...(wordSpaceShare !== undefined && rest.tracking.mode === 'precise'
+              ? { wordSpaceMax: (wordSpaceShare * spaceWidthOf(data) * 1000) / data.size }
+              : {}),
+          },
+        }
+      : {}),
   });
 }
 
-/** Character spans of the lines the plan tracks: every character but the line's last (see trackedChars). */
+/** The paragraph's word-space width: the most common advance of its plain spaces (a quarter em if none). */
+export function spaceWidthOf(data: ParagraphData): number {
+  const counts = new Map<number, number>();
+  data.chars.forEach((c, i) => {
+    if (c !== ' ') return;
+    const w = Math.round(data.advances[i]! * 1000) / 1000;
+    counts.set(w, (counts.get(w) ?? 0) + 1);
+  });
+  let best = 0.25 * data.size;
+  let most = 0;
+  for (const [w, n] of counts) if (n > most && w > 0) [best, most] = [w, n];
+  return best;
+}
+
+/**
+ * Character spans of the lines the plan tracks: every character but the line's last (see trackedChars),
+ * then the first character of each word space inside the line with the line's word-space tracking on top
+ * (ADR-015). Later spans override earlier ones.
+ */
 function trackingSpans(w: Working, slots: readonly (LineSlot | undefined)[]): TrackingSpan[] {
-  return w.plan.lines
-    .filter((l, i) => l.tracking !== 0 && slots[i] !== undefined)
-    .map((l) => ({ from: w.measured.charRange[l.startItem]![0], to: w.measured.charRange[l.endItem - 1]![1] - 1, units: l.tracking }))
-    .filter((s) => s.to > s.from);
+  const spans: TrackingSpan[] = [];
+  w.plan.lines.forEach((l, i) => {
+    if (slots[i] === undefined || (l.tracking === 0 && l.wordSpace === 0)) return;
+    const from = w.measured.charRange[l.startItem]![0];
+    const to = w.measured.charRange[l.endItem - 1]![1] - 1;
+    if (l.tracking !== 0 && to > from) spans.push({ from, to, units: l.tracking });
+    if (l.wordSpace === 0) return;
+    for (let k = l.startItem; k < l.endItem; k++) {
+      if (w.items[k]!.type !== 'glue') continue;
+      const c = w.measured.charRange[k]![0];
+      spans.push({ from: c, to: c + 1, units: l.tracking + l.wordSpace });
+    }
+  });
+  return spans;
 }
 
 function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {

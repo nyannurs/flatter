@@ -72,7 +72,10 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
     for (const line of plan.lines) {
       const baseline = y + leading * 0.5 + size * font.xHeight * 0.5;
       const x = left + line.indent;
-      const d = line.tracking ? trackedPath(font, line.text, x, baseline, size, line.tracking) : font.pathData(line.text, x, baseline, size);
+      const d =
+        line.tracking || line.wordSpace
+          ? trackedPath(font, line.text, x, baseline, size, line.tracking, line.wordSpace, line.endsWithHyphen ? 2 : 1)
+          : font.pathData(line.text, x, baseline, size);
       parts.push(`<path d="${d}" fill="${c.ink}"><title>${esc(line.text)}</title></path>`);
       const vs = byLine.get(line.index) ?? [];
       if (opts.showMarkers !== false) {
@@ -82,9 +85,11 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
           const title = vs.map((v) => `${v.kind}: ${v.message}`).join('\n');
           parts.push(`<circle cx="${markerX}" cy="${baseline - size * font.xHeight * 0.5}" r="3" fill="${color}"><title>${esc(title)}</title></circle>`);
         }
-        if (line.tracking) {
+        if (line.tracking || line.wordSpace) {
+          const sign = (v: number) => `${v > 0 ? '+' : '−'}${Math.abs(v)}`;
+          const label = [line.tracking ? sign(line.tracking) : '', line.wordSpace ? `w${sign(line.wordSpace)}` : ''].filter(Boolean).join(' ');
           parts.push(
-            `<text x="${markerX + 18}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${Math.max(6, size * 0.6)}" fill="${c.note}"><title>Tracking ${line.tracking}/1000 em</title>${line.tracking > 0 ? '+' : '−'}${Math.abs(line.tracking)}</text>`,
+            `<text x="${markerX + 18}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${Math.max(6, size * 0.6)}" fill="${c.note}"><title>Tracking ${line.tracking}/1000 em, word spaces ${line.wordSpace}/1000 em</title>${label}</text>`,
           );
         }
         if (line.hyphenClass) {
@@ -106,14 +111,18 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
   ].join('\n');
 }
 
-/** Glyphs placed one by one with tracking added after each character (1/1000 em). */
-function trackedPath(font: SimFont, text: string, x: number, y: number, size: number, tracking: number): string {
+/**
+ * Glyphs placed one by one with tracking added after each character (1/1000 em), as in InDesign:
+ * the last letter (and a generated hyphen after it) carries none, and word spaces get the line's word-space tracking on top.
+ */
+function trackedPath(font: SimFont, text: string, x: number, y: number, size: number, tracking: number, wordSpace: number, untrackedTail: number): string {
   let d = '';
   let pos = x;
-  const extra = (tracking * size) / 1000;
-  for (const ch of text) {
+  const chars = [...text];
+  chars.forEach((ch, i) => {
     d += font.pathData(ch, pos, y, size);
-    pos += font.measure(ch, size) + extra;
-  }
+    const extra = i < chars.length - untrackedTail ? tracking + (ch === ' ' ? wordSpace : 0) : 0;
+    pos += font.measure(ch, size) + (extra * size) / 1000;
+  });
   return d;
 }

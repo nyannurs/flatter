@@ -62,7 +62,7 @@ export function settingsFromUI(): ApplySettings {
     sense: checked('sense'),
     continuous: checked('continuous'),
     // Laufweite in precise mode (ADR-013): every line end is pulled onto its edge, within ±max.
-    ...(tracking ? { tracking: { enabled: true, mode: 'precise' as const, max: num('trackMax') } } : {}),
+    ...(tracking ? { tracking: { enabled: true, mode: 'precise' as const, max: num('trackMax') }, wordSpaceShare: num('wordMax') / 100 } : {}),
   };
 }
 
@@ -76,7 +76,8 @@ function settingsToUI(s: ApplySettings): void {
   if (s.sense !== undefined) $('sense').checked = s.sense;
   if (s.continuous !== undefined) $('continuous').checked = s.continuous;
   $('tracking').checked = !!s.tracking?.enabled;
-  if (s.tracking?.max) $('trackMax').value = s.tracking.max;
+  if (s.tracking?.max !== undefined) $('trackMax').value = s.tracking.max;
+  if (s.wordSpaceShare !== undefined) $('wordMax').value = Math.round(s.wordSpaceShare * 100);
   syncLabels();
 }
 
@@ -99,6 +100,7 @@ function syncLabels(): void {
   const share = num('zone') / 100;
   $('modeTag').textContent = modeLabel(share, 1).toUpperCase();
   $('trackMax').disabled = !checked('tracking');
+  $('wordMax').disabled = !checked('tracking');
 }
 
 function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = ''): void {
@@ -145,7 +147,7 @@ function render(r: ApplyResult, ms?: number): void {
     `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} lines in rhythm`,
     allGood ? 'ok' : 'bad',
     `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · ` +
-      `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked` +
+      `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked, ${r.spacedLines} with adjusted word spaces` +
       (r.oversetLines ? ` · ${r.oversetLines} lines overset (not visible, not set)` : '') +
       (ms !== undefined ? ` · ${ms} ms` : '') +
       (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
@@ -300,7 +302,7 @@ function onSelectionChanged(): void {
 }
 
 function init(): void {
-  for (const id of ['zone', 'band', 'maxHyph', 'trackMax']) {
+  for (const id of ['zone', 'band', 'maxHyph', 'trackMax', 'wordMax']) {
     $(id).addEventListener('input', onInput);
     $(id).addEventListener('change', onInput);
   }

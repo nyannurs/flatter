@@ -61,6 +61,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
       hanging: fc.boolean(),
       tracking: fc.option(fc.integer({ min: 0, max: 10 }), { nil: undefined }),
       trackingMode: fc.constantFrom<'rescue' | 'precise'>('rescue', 'precise'),
+      wordSpaceMax: fc.constantFrom(0, 20, 80),
     })
     .map(
       (r): FlatterSettings => ({
@@ -73,7 +74,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
         phase: r.phase,
         variation: r.variation,
         hyphenCountsTowardWidth: !r.hanging,
-        ...(r.tracking !== undefined ? { tracking: { enabled: true, mode: r.trackingMode, max: r.tracking, emSize: 10 } } : {}),
+        ...(r.tracking !== undefined ? { tracking: { enabled: true, mode: r.trackingMode, max: r.tracking, emSize: 10, wordSpaceMax: r.wordSpaceMax } } : {}),
       }),
     );
 
@@ -136,7 +137,7 @@ describe('solver invariants for any paragraph', () => {
         // Steering stays between the planned width and the next possible break.
         for (const line of plan.lines.filter((l) => l.kind === 'band')) {
           expect(line.steerWidth).toBeGreaterThanOrEqual(line.inkWidth - TOL);
-          const margin = line.tracking ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
+          const margin = line.tracking || line.wordSpace ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
           expect(line.steerWidth).toBeLessThanOrEqual(line.inkWidth + margin + TOL);
           if (line.slack > 0) expect(line.steerWidth).toBeLessThan(line.inkWidth + line.slack);
         }
@@ -147,6 +148,9 @@ describe('solver invariants for any paragraph', () => {
           if (!P.tracking.enabled) expect(line.tracking).toBe(0);
           expect(Math.abs(line.tracking)).toBeLessThanOrEqual(P.tracking.enabled ? P.tracking.max : 0);
           if (line.kind !== 'band') expect(line.tracking).toBe(0);
+          // Word spaces: precise mode only, band lines only, within their maximum.
+          if (P.tracking.mode !== 'precise' || !P.tracking.enabled || line.kind !== 'band') expect(line.wordSpace).toBe(0);
+          expect(Math.abs(line.wordSpace)).toBeLessThanOrEqual(P.tracking.wordSpaceMax + 1e-9);
         }
         if (P.tracking.enabled && P.tracking.mode === 'rescue' && P.mode === 'strict') {
           const untracked = solveParagraph(items, { ...settings, tracking: { enabled: false } });
@@ -200,7 +204,7 @@ describe('strict mode is exact', () => {
         const items = toItems(ws);
         const plan = solveParagraph(items, settings);
         const breaks = plan.lines.slice(0, -1).map((l) => l.breakAt);
-        const ev = evaluateBreaks(items, settings, breaks, plan.startRole, plan.lines.map((l) => l.tracking));
+        const ev = evaluateBreaks(items, settings, breaks, plan.startRole, plan.lines.map((l) => l.tracking), plan.lines.map((l) => l.wordSpace));
         expect(ev.lines).toEqual(plan.lines);
         expect(ev.feasible).toBe(plan.feasible);
       }),

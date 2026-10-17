@@ -297,7 +297,7 @@ export class DomPort implements Port {
   baseTracking: Record<string, number> = {};
   /** Paragraphs Flatter has tracked in this session. */
   private trackedNow = new Set<number>();
-  /** Characters whose tracking was written (for timing reports). */
+  /** Tracking writes made (for timing reports). */
   trackingWrites = 0;
 
   /**
@@ -316,13 +316,33 @@ export class DomPort implements Port {
     const want = new Float64Array(n);
     for (const s of spans) want.fill(s.units, Math.max(0, s.from), Math.min(n, s.to));
     const from = this.currentTracking(para, n, base);
+    const write = (a: number, e: number, units: number) => {
+      para.characters.itemByRange(a, e - 1).tracking = base + units;
+      this.trackingWrites++;
+    };
+    // Paint the spans in order (a line, then its word spaces on top): a span is written when any of its
+    // characters differs, or when an earlier span painted over it. One write per line plus one per
+    // space, instead of a write per run between spaces.
+    const covered = new Uint8Array(n);
+    let painted: [number, number] | undefined;
+    for (const s of spans) {
+      const a = Math.max(0, s.from);
+      const e = Math.min(n, s.to);
+      if (e <= a) continue;
+      covered.fill(1, a, e);
+      let dirty = !!painted && a >= painted[0] && e <= painted[1];
+      for (let k = a; !dirty && k < e; k++) dirty = want[k] !== from[k];
+      if (!dirty) continue;
+      write(a, e, s.units);
+      if (!painted || a < painted[0] || e > painted[1]) painted = [a, e];
+    }
+    // Characters no span covers go back to the base where they still carry tracking.
     let k = 0;
     while (k < n) {
-      if (want[k] === from[k]) { k++; continue; }
+      if (covered[k] || from[k] === 0) { k++; continue; }
       let e = k + 1;
-      while (e < n && want[e] === want[k] && want[e] !== from[e]) e++;
-      para.characters.itemByRange(k, e - 1).tracking = base + want[k]!;
-      this.trackingWrites += e - k;
+      while (e < n && !covered[e] && from[e] !== 0) e++;
+      write(k, e, 0);
       k = e;
     }
     if (spans.length) this.trackedNow.add(paragraph);

@@ -2,6 +2,25 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-17 (later) — Word spaces as a second precision control (ADR-015)
+
+The designer said yes to per-line word-space adjustment. Done:
+- Core: `tracking.wordSpaceMax`, `PlannedLine.wordSpace`, `splitAdjustment` (shares each line's distance to its edge between letter tracking and word spaces), `stats.spacedLines`, limits checked by `checkPlan`, `evaluateBreaks` takes word-space values. Tests: split rule, precise-mode gain, property tests with word spaces.
+- Adapter: `ApplySettings.wordSpaceShare` (share of the paragraph's space width, converted per paragraph); word spaces inside a line get letter tracking + word-space tracking; `ApplyResult.spacedLines`.
+- Panel: slider "Largest word-space change (%)" (0–50, default 25) under "Align line ends exactly"; letter tracking can now go down to 0 (word spaces only).
+- Simulator and playground: the same option (`--precise --word-spaces <pct>` on the CLI); the CLI summary now reports how many band lines end within 0.5 pt of their edge.
+- InDesign: integration tests gained four word-space cases (German and English), all lines as planned.
+- On copies of the designer's TestFile stories (letters ±30, zone 17 %, band 90 %), every visible line set as planned. Band lines within 0.5 pt of their edge:
+
+  | Story | Word spaces off | ±25 % | ±50 % |
+  |---|---|---|---|
+  | untouched copy | 218/341 | 258/340 | 279/339 |
+  | story Flatter worked on | 90/377 | 135/377 | 210/361 |
+
+- Tracking writer: each line is written once and its spaces on top (was: one write per run between spaces). Slider ticks with word spaces 220–360 ms (letter tracking alone 50–170 ms).
+
+Next: the designer tries it in the panel. Open: first Apply on a long story is slow because of hyphenation probing (see below); ticks with word spaces could be faster (one write per space).
+
 ## 2026-10-17 — Fixes after the user's precise-tracking test
 
 The user switched on "Align line ends exactly" (precise Laufweite, max 30, zone 17 %, band 90 %, one hyphen in a row) on TestFile and got "0/106 lines set as planned", "¶1, line 1: InDesign did not break where planned", 1.5 s slider ticks, a report they could not scroll, and an outdated "Consider some Variation" note. Reproduced on a copy of their story with `tools/indesign/spikes/src/i3-user-copy.ts` (10/38 lines as planned before, 38/38 after). Details in `docs/spike-results.md`, decision in ADR-014.

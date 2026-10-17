@@ -133,6 +133,11 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 - **Probing cost**: the first Apply on the user's English story probed 72 words, 17–30 s in a fresh document (cached in the document label afterwards).
 - **The user's file**: the story's language is English: USA although the text is German; tracking 1 on most characters there came from their last slider position (max 1), not from a wrong base (the stored base is 0).
 
+## Word spaces (2026-10-17, `i5-space-tracking.ts`)
+
+- Tracking a space character widens exactly that word gap: +100 units moves every following glyph by 1.2 pt at 12 pt, ligatures untouched.
+- Cost: 42 lines written once each plus 227 single spaces took 64 ms in one go. In the live loop (teeth, read-back of style ranges, about 230 writes per tick) a tick takes 220–360 ms on the user's 12,000-character story.
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

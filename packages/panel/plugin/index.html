@@ -68,8 +68,9 @@
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>LAUFWEITE</sp-detail>
-    <sp-checkbox id="tracking">Align line ends exactly (tracking per line)</sp-checkbox>
-    <sp-slider id="trackMax" min="1" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Largest tracking (1/1000 em)</sp-label></sp-slider>
+    <sp-checkbox id="tracking">Align line ends exactly (per line: letter tracking and word spaces)</sp-checkbox>
+    <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Largest letter tracking (1/1000 em)</sp-label></sp-slider>
+    <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true" disabled><sp-label slot="label">Largest word-space change (%)</sp-label></sp-slider>
   </div>
 
   <div class="buttons">

@@ -24,6 +24,7 @@ npm install             # workspace install (npm workspaces)
 npm test                # vitest: unit, scenario, property and simulator snapshot tests
 npm run typecheck       # tsc for core, simulator and playground
 npm run sim -- --help   # simulator CLI: text -> SVG + report (default: German reference text, 60 chars)
+npm run sim -- --tracking 10 --precise --word-spaces 25   # precise Laufweite with word spaces; prints edge precision
 npm run playground      # bundles the live playground to packages/simulator/out/playground.html
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
@@ -76,7 +77,7 @@ Planned but not created yet: Freeze/Unfreeze, review list (Phase 5), packaging (
 
 ## Solver in one paragraph
 
-Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
+Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. In precise mode (ADR-013, what the panel uses) every band line is instead pulled onto its edge by letter tracking and word-space tracking within their maxima (ADR-015), measured without ligatures (ADR-014). `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
 
 ## Running code in InDesign
 
