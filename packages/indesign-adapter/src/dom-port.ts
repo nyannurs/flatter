@@ -16,6 +16,8 @@ export const indesign = (): Any => require('indesign');
 export const CONTROL_LAYER = 'Flatter (Steuerung)';
 export const TOOTH_LABEL = 'flatter-tooth';
 export const PROBE_LABEL = 'flatter-probe';
+/** Probe cache entries from other versions are dropped (see the DomPort constructor). */
+const PROBE_VERSION = 'v2';
 const TOLERANCE = 0.4;
 
 /**
@@ -125,7 +127,10 @@ export class DomPort implements Port {
     this.doc = doc;
     this.story = story;
     this.layer = layer;
-    this.probeCache = parseJson(doc.extractLabel(PROBE_LABEL)) ?? {};
+    // Only keep results of the current probe version: before version 2 probing returned nothing in a
+    // story Fix Settings had touched (Hyphenate Last Word), and those empty results were cached.
+    const stored = parseJson<Record<string, Record<string, number[]>>>(doc.extractLabel(PROBE_LABEL)) ?? {};
+    this.probeCache = Object.fromEntries(Object.entries(stored).filter(([k]) => k.startsWith(PROBE_VERSION)));
   }
 
   storyKey(): string {
@@ -593,7 +598,7 @@ export class DomPort implements Port {
 
   private probeKey(para: Any): string {
     const c = para.characters.item(0);
-    return [c.appliedFont?.name, c.pointSize, para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale].join('|');
+    return [PROBE_VERSION, c.appliedFont?.name, c.pointSize, para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale].join('|');
   }
 
   private scratchFrame(para: Any): Any {
