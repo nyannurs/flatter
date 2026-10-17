@@ -147,3 +147,14 @@ The designer clarified (2026-10-16): the tracking slider is meant to make the lo
 - **Variation** is gone from the panel and playground (it barely changed any break: 0 of 38 German lines at 100 %). The core keeps the option for API compatibility.
 
 **Known limit (measured, German reference text, 60 characters per line, 10 pt):** words are large steps (20–40 pt with their space) compared with what tracking can move a line (about ±0.6 pt per 1/1000 em). With ±10 the worst line still sits 14–19 pt off its edge; truly geometric edges need more flexibility. Options put to the designer: allow larger tracking, adjust word spaces per line (track only the spaces, which Bringhurst prefers over letterspacing), or both.
+
+## ADR-014: Tracked lines are measured without ligatures and steered with room to spare (2026-10-17)
+
+Found by reproducing the designer's failed precise-tracking test on a copy of their story (`i3-user-copy.ts`, `i4-track-kern.ts`).
+
+- **Ligatures**: InDesign breaks ligatures in tracked text. A tracked "The" in Minion Pro 12 pt is 1.0 pt wider than its untracked advance plus the tracking; "fl" 0.55 pt, "ft" 0.13–0.17 pt. Each paragraph is therefore measured a second time with ligatures off; a box's `trackedExtra` is the difference, and the solver adds it to every tracked line (DP, line building and the next-fragment width).
+- **Last letter untracked**: tracking is applied to every character of a line but the last; the width model counts chars − 1 steps and no step for the generated hyphen.
+- **Tooth margin**: an untracked line keeps its tooth ε (0.15 pt) past its ink, since those widths measure exactly. A tracked line puts its tooth halfway into the room before the next fragment, up to 0.25 em, so a small width error cannot push its last word down.
+- **Safety distance**: precise tracking never brings a line closer than 0.1 em to the measure (long lines target that distance instead of 0). A line that tracking pulls exactly onto the frame edge has no tolerance at all.
+- **Writes**: only tracking that differs from the document is written, and overset lines are not tracked (their tracking dominated slider ticks).
+- **No "mechanical" warning**: with exact edges as the goal (ADR-013), the warning about even line ends is removed.

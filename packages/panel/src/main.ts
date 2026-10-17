@@ -128,10 +128,15 @@ function render(r: ApplyResult, ms?: number): void {
     worstMiss = Math.max(worstMiss, p.plan.stats.edgeMiss);
     for (const v of p.plan.violations) {
       if (v.kind === 'tight-steering') continue;
-      const where = v.line >= 0 ? `¶${p.index + 1}, line ${v.line + 1}` : `¶${p.index + 1}`;
-      items.push(`<sp-body size="XS" class="${v.severity === 'error' ? 'err' : v.severity === 'warning' ? 'bad' : ''}">${where}: ${escapeHtml(v.message)}</sp-body>`);
+      items.push(reportItem(p.index, v.line, v.severity === 'error' ? 'err' : v.severity === 'warning' ? 'bad' : '', v.message));
     }
-    if (!p.steered && p.mismatch) items.push(`<sp-body size="XS" class="err">¶${p.index + 1}, line ${p.mismatch.line + 1}: InDesign did not break where planned.</sp-body>`);
+    if (!p.steered && p.mismatch) {
+      const m = p.mismatch;
+      const said = m.got
+        ? `InDesign ended this line at “…${m.got.text.trim()}” instead of the planned “…${m.planned.text.trim()}”.`
+        : 'InDesign did not set this line (it is overset or hidden).';
+      items.push(reportItem(p.index, m.line, 'err', `${said} The lines after it shift too, so they no longer match the plan. Try Recompute; if it stays, the line is too tight for its band.`));
+    }
     for (const w of p.refused) items.push(`<sp-body size="XS">¶${p.index + 1}: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</sp-body>`);
     for (const u of p.unsupported) items.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${u}; Flatter cannot plan around it yet.</sp-body>`);
   }
@@ -146,6 +151,30 @@ function render(r: ApplyResult, ms?: number): void {
       (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
   );
   $('report').innerHTML = items.join('');
+}
+
+/** One report entry. Entries about a line can be clicked to select that line in the document. */
+function reportItem(paragraph: number, line: number, cls: string, message: string): string {
+  const where = line >= 0 ? `¶${paragraph + 1}, line ${line + 1}` : `¶${paragraph + 1}`;
+  const data = line >= 0 ? ` data-p="${paragraph}" data-l="${line}"` : '';
+  return `<sp-body size="XS" class="${cls}${line >= 0 ? ' jump' : ''}"${data}>${where}: ${escapeHtml(message)}</sp-body>`;
+}
+
+/** Select line l of paragraph p in the document and scroll to it. */
+function jumpTo(p: number, l: number): void {
+  const story = state.live?.story ?? targetStory();
+  if (!story) return;
+  try {
+    const line = story.paragraphs.item(p).lines.item(l);
+    if (!line.isValid) {
+      $('meta').textContent = `¶${p + 1}, line ${l + 1} is overset: it is not visible in any frame.`;
+      return;
+    }
+    line.select();
+    line.showText();
+  } catch {
+    // The text changed since the report; nothing to show.
+  }
 }
 
 function escapeHtml(s: string): string {
@@ -288,6 +317,11 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  $('report').addEventListener('click', (e: Any) => {
+    let el = e.target;
+    while (el && el.id !== 'report' && !el.dataset?.l) el = el.parentElement;
+    if (el?.dataset?.l !== undefined) jumpTo(Number(el.dataset.p), Number(el.dataset.l));
+  });
   app.addEventListener('afterSelectionChanged', onSelectionChanged);
   syncLabels();
   onSelectionChanged();

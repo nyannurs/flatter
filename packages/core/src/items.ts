@@ -25,6 +25,12 @@ export interface Box {
   wordStart?: boolean;
   /** True on the last fragment of a word. */
   wordEnd?: boolean;
+  /**
+   * Extra width when the fragment is tracked. InDesign breaks ligatures (Th, fl, ft…) in tracked
+   * text, and the separate letters are wider: a tracked "The" in Minion Pro 12 pt is 1 pt wider than
+   * its untracked advance plus the tracking (measured 2026-10-17).
+   */
+  trackedExtra?: number;
 }
 
 /** Inter-word space. Fixed width: ragged text does not stretch spaces. */

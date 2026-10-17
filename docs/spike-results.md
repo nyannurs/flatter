@@ -125,6 +125,14 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 - **Theme.** The UXP host CSS variables used for text colour are not available in InDesign; text rendered black on the dark theme. The panel now uses Spectrum text elements (sp-heading, sp-body, sp-detail, sp-divider), which follow the theme.
 - **Speed on the long story:** first Apply about 2.4 s (measuring the paragraph and probing 72 words); re-apply 30–50 ms with measurements cached while the plugin is loaded (Recompute clears the cache); slider ticks about 10 ms.
 
+## Findings from the user's precise-tracking test (2026-10-17)
+
+- **Ligatures break under tracking.** Same text, untracked vs tracked 30 (all but the last letter), Minion Pro 12 pt: the advance between two letters grows by exactly the tracking everywhere except at ligatures, where it grows by an extra 1.00 pt (Th), 0.55 pt (fl), 0.13–0.17 pt (ft). Measuring with `ligatures = false` gives the tracked widths to within ±0.3 pt (`i4-track-kern.ts`, `i3-user-copy.ts`).
+- **Measuring cost**: re-reading 12,000 character offsets after turning ligatures off takes about 0.6 s.
+- **Tracking write cost**: rewriting a 12,000-character paragraph's tracking each tick recomposed all of it (about 1.5 s per tick in the user's file). Writing only changed runs, read from `textStyleRanges` (index and tracking), and skipping overset lines: 50–170 ms per tick.
+- **Probing cost**: the first Apply on the user's English story probed 72 words, 17–30 s in a fresh document (cached in the document label afterwards).
+- **The user's file**: the story's language is English: USA although the text is German; tracking 1 on most characters there came from their last slider position (max 1), not from a wrong base (the stored base is 0).
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

@@ -12,6 +12,8 @@ export interface ParagraphData {
   chars: string[];
   /** Advance width of each character in points. */
   advances: number[];
+  /** Advances with ligatures broken up, as InDesign sets tracked text (same length; optional). */
+  trackedAdvances?: number[];
   /** InDesign language name, e.g. "German: 2006 Reform". */
   language: string;
   hyphenWidth: number;

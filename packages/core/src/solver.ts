@@ -66,7 +66,8 @@ function hyphenCost(P: ResolvedParams, quality: string): number {
 
 /** Target gap (distance from the full measure) of a band line. */
 export function targetGap(P: ResolvedParams, role: Role, startItem: number): number {
-  const lo = role === 'long' ? 0 : P.flatterzone;
+  // Precise Laufweite keeps long lines a safety distance from the measure (TrackingRules.safety).
+  const lo = role === 'long' ? (P.tracking.enabled && P.tracking.mode === 'precise' ? P.tracking.safety : 0) : P.flatterzone;
   if (P.variation === 0) return lo;
   return lo + P.variation * P.band * unitHash(P.variationSeed, startItem);
 }
@@ -117,6 +118,8 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       // Width one unit of tracking adds to this line (1/1000 em per character).
       const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end, b) : 0;
       const shrink = trackUnit * P.tracking.max;
+      // Tracked, the line also takes on the width of its broken-up ligatures.
+      const ligExtra = trackUnit > 0 ? M.trackedExtra(g.start, g.end) : 0;
       let overfull = 0;
       if (content - shrink > avail + TOL || g.width - shrink > avail + TOL) {
         // Too wide. Soft mode may keep the shortest possible line when nothing fits.
@@ -134,23 +137,28 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         const hi = lo + band;
         let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
         if (precise && trackUnit > 0) {
-          // Precise Laufweite: track the line so its end lands on its target, within ±max, never past the measure.
+          // Precise Laufweite: track the line so its end lands on its target, within ±max, never closer to
+          // the measure than the safety distance (unless the untracked line already is).
           const target = targetGap(P, role, g.start);
-          let t = Math.round(((gap - target) / trackUnit) * 100) / 100;
+          const gapT = gap - ligExtra;
+          let t = Math.round(((gapT - target) / trackUnit) * 100) / 100;
           t = Math.max(-P.tracking.max, Math.min(P.tracking.max, t));
-          if (gap - t * trackUnit < -TOL) t = Math.floor((gap / trackUnit) * 100) / 100;
+          const floorGap = Math.min(Math.max(gap, 0), P.tracking.safety);
+          if (t > 0 && gapT - t * trackUnit < floorGap - TOL) t = Math.max(0, Math.floor(((gapT - floorGap) / trackUnit) * 100) / 100);
           tracking = t;
-          gap -= t * trackUnit;
+          if (t !== 0) gap = gapT - t * trackUnit;
           dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
           if (overfull > 0 && gap >= -TOL) overfull = 0;
           cost = node.cost + W.trackingPrecise * (t / Math.max(1, P.tracking.max)) ** 2 + (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
         } else if (dist > TOL && trackUnit > 0) {
           // Tracking rescue: the smallest whole value that brings the line into its band.
-          const tMin = Math.max(-P.tracking.max, Math.ceil((gap - hi) / trackUnit - 1e-9));
-          const tMax = Math.min(P.tracking.max, Math.floor((gap - lo) / trackUnit + 1e-9));
-          if (tMin <= tMax) {
-            tracking = tMin > 0 ? tMin : tMax < 0 ? tMax : 0;
-            gap -= tracking * trackUnit;
+          const gapT = gap - ligExtra;
+          const tMin = Math.max(-P.tracking.max, Math.ceil((gapT - hi) / trackUnit - 1e-9));
+          const tMax = Math.min(P.tracking.max, Math.floor((gapT - lo) / trackUnit + 1e-9));
+          const pickT = tMin > 0 ? tMin : tMax < 0 ? tMax : 0;
+          if (tMin <= tMax && pickT !== 0) {
+            tracking = pickT;
+            gap = gapT - tracking * trackUnit;
             dist = 0;
             overfull = 0;
             cost = node.cost + W.trackingBase + W.trackingSlope * (tracking / Math.max(1, P.tracking.max)) ** 2;
@@ -313,7 +321,9 @@ interface LineSpec {
 function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly LineSpec[]): PlannedLine[] {
   return specs.map((spec, index) => {
     const g0 = M.geometry(spec.a, spec.b);
-    const trackWidth = spec.tracking ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 : 0;
+    const trackWidth = spec.tracking
+      ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 + M.trackedExtra(g0.start, g0.end)
+      : 0;
     const g = { ...g0, width: g0.width + trackWidth, ink: g0.ink + trackWidth };
     const first = spec.a < 0;
     const indent = first ? P.firstLineIndent : 0;
@@ -322,11 +332,16 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
     const kind = final ? 'last' : M.isForced(spec.b) ? 'forced' : 'band';
     const pen = final ? undefined : M.penaltyAt(spec.b);
     const endsWithHyphen = pen?.flagged === true;
-    // The next fragment would carry the same tracking, so the slack is the untracked one.
-    const slack = M.nextInk(spec.a, spec.b) - g0.ink;
+    // Room between this line's end and the next fragment, both with the line's tracking.
+    const perChar = spec.tracking ? (spec.tracking * P.tracking.emSize) / 1000 : 0;
+    const slack = M.nextInk(spec.a, spec.b, perChar) - g.ink;
+    // Tracked lines put the tooth halfway into that room (up to a quarter em): InDesign sets some tracked
+    // lines up to about 1 pt wider than measured, and a tooth 0.15 pt past the line then pushed its last
+    // word down (user's text, 2026-10-17). Untracked lines measure exactly and keep the small margin.
+    const margin = spec.tracking ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
     const steerWidth =
       kind === 'band'
-        ? Math.max(g.ink, Math.min(g.ink + Math.min(P.epsilon, slack / 2), Math.max(available, g.ink)))
+        ? Math.max(g.ink, Math.min(g.ink + Math.min(margin, slack / 2), Math.max(available, g.ink)))
         : available;
     const targetWidth = kind === 'band' ? available - targetGap(P, spec.role, g.start) : g.width;
     const line: PlannedLine = {

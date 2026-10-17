@@ -55,7 +55,6 @@ export type ViolationKind =
   | 'same-start'
   | 'same-end'
   | 'staircase'
-  | 'mechanical-pattern'
   | 'phase-flipped'
   | 'tight-steering'
   | 'tracking'

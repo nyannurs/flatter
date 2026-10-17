@@ -18,6 +18,18 @@ export const TOOTH_LABEL = 'flatter-tooth';
 export const PROBE_LABEL = 'flatter-probe';
 const TOLERANCE = 0.4;
 
+/**
+ * The tracking a paragraph had before Flatter, when Flatter has no record of it. An even paragraph
+ * keeps its value. A mixed one (left over from an earlier Flatter run whose record was lost, for
+ * example after the paragraph was split) falls back to its paragraph style's tracking. Reading the
+ * first letter, as before, would turn a tracked first line into the whole paragraph's base.
+ */
+export function baseTrackingOf(para: Any): number {
+  const values = asArray(para.textStyleRanges.everyItem().tracking).map(Number);
+  if (values.every((v) => v === values[0])) return values[0] || 0;
+  return Number(para.appliedParagraphStyle?.tracking) || 0;
+}
+
 export const asArray = <T>(v: T | T[]): T[] => (Array.isArray(v) ? v : [v]);
 
 /**
@@ -123,9 +135,11 @@ export class DomPort implements Port {
         // end has an unreliable width).
         const key = `${this.probeKey(para)}\u0000${chars.join('')}`;
         let advances = measureCache.get(key);
-        if (!advances) {
-          advances = this.measureParagraph(para, chars.length);
+        let trackedAdvances = measureCache.get(`tracked\u0000${key}`);
+        if (!advances || !trackedAdvances) {
+          ({ advances, trackedAdvances } = this.measureParagraph(para, chars.length));
           measureCache.set(key, advances);
+          measureCache.set(`tracked\u0000${key}`, trackedAdvances);
         }
         const size = sizes[p]!;
         const lead = typeof leadings[p] === 'number' ? (leadings[p] as number) : (size * autoLeading[p]!) / 100;
@@ -139,6 +153,7 @@ export class DomPort implements Port {
           index: p,
           chars,
           advances,
+          trackedAdvances,
           language: String(para.appliedLanguage.name),
           hyphenWidth,
           size,
@@ -295,7 +310,7 @@ export class DomPort implements Port {
     if (!spans.length && !this.trackedNow.has(paragraph)) return;
     const para = this.story.paragraphs.item(paragraph);
     const key = String(paragraph);
-    if (!(key in this.baseTracking)) this.baseTracking[key] = Number(para.characters.item(0).tracking) || 0;
+    if (!(key in this.baseTracking)) this.baseTracking[key] = baseTrackingOf(para);
     const base = this.baseTracking[key]!;
     const n = Number(para.characters.length);
     const want = new Float64Array(n);
@@ -422,7 +437,11 @@ export class DomPort implements Port {
    * off. Long paragraphs take several such lines; a space that ends one of them has an unreliable
    * width (spike S2), so it gets the paragraph's normal space width.
    */
-  measureParagraph(para: Any, length: number): number[] {
+  /**
+   * Advances of the paragraph's characters, measured twice: as set, and with ligatures off, which is
+   * how InDesign sets tracked text (it breaks ligatures up when tracking is applied, 2026-10-17).
+   */
+  measureParagraph(para: Any, length: number): { advances: number[]; trackedAdvances: number[] } {
     // Measured first: it reuses the probe frame, so it cannot run while the paragraph sits there.
     const space = this.spaceWidth(para);
     const frame = this.scratchFrame(para);
@@ -434,17 +453,24 @@ export class DomPort implements Port {
     all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0 };
     frame.geometricBounds = [0, left, 20000, left + 9000];
     if (story.overflows) throw new Error('paragraph too long to measure');
-    const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
-    const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
-    if (xs.length < length) throw new Error('paragraph did not copy into the measuring frame');
-    const lineEnds = new Set<number>();
-    let at = -1;
-    for (const len of asArray(story.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length)) {
-      at += len;
-      lineEnds.add(at);
-    }
     const chars = Array.from(String(story.contents));
-    return Array.from({ length }, (_, i) => (lineEnds.has(i) && /^\s$/.test(chars[i] ?? '') ? space : xe[i]! - xs[i]!));
+    const read = (): number[] => {
+      const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
+      const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
+      if (xs.length < length) throw new Error('paragraph did not copy into the measuring frame');
+      const lineEnds = new Set<number>();
+      let at = -1;
+      for (const len of asArray(story.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length)) {
+        at += len;
+        lineEnds.add(at);
+      }
+      return Array.from({ length }, (_, i) => (lineEnds.has(i) && /^\s$/.test(chars[i] ?? '') ? space : xe[i]! - xs[i]!));
+    };
+    const advances = read();
+    all.ligatures = false;
+    if (story.overflows) throw new Error('paragraph too long to measure');
+    const trackedAdvances = read();
+    return { advances, trackedAdvances };
   }
 
   spaceWidth(para: Any): number {

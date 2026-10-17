@@ -61,6 +61,12 @@ export interface TrackingRules {
   max: number;
   /** The em in points (the font size). Needed to turn units into width. */
   emSize: number;
+  /**
+   * Precise mode: no line is tracked closer than this to the measure, in points (default 0.1 em).
+   * InDesign sets some tracked lines up to about 1 pt wider than measured (kerning next to tracking,
+   * user's text 2026-10-17); a line planned exactly at the measure then loses its last word.
+   */
+  safety: number;
 }
 
 /** Suggested maximum when tracking is enabled (ADR-010). */
@@ -243,6 +249,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     mode: settings.tracking?.mode ?? 'rescue',
     max: settings.tracking?.max ?? DEFAULT_TRACKING_MAX,
     emSize: settings.tracking?.emSize ?? 0,
+    safety: settings.tracking?.safety ?? 0.1 * (settings.tracking?.emSize ?? 0),
   };
   if (tracking.enabled && !(tracking.emSize > 0)) throw new RangeError('tracking.emSize (the font size in points) is required when tracking is enabled');
   if (!(tracking.max >= 0)) throw new RangeError(`tracking.max must be zero or more, got ${tracking.max}`);

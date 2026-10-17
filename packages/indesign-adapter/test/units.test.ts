@@ -13,6 +13,16 @@ describe('itemsFromMeasured', () => {
     expect(m.charRange).toEqual([[0, 3], [3, 4], [4, 8]]);
   });
 
+  it('gives boxes the extra width their ligatures gain when tracked', () => {
+    const chars = [...'The fox'];
+    // "Th" set as a ligature is 1 pt narrower than the two letters InDesign sets in tracked text.
+    const set = adv('The fox');
+    set[0] = 4;
+    const m = itemsFromMeasured(chars, set, { hyphenWidth: 3, trackedAdvances: adv('The fox') });
+    expect(m.items[0]).toMatchObject({ text: 'The', width: 14, trackedExtra: 1 });
+    expect(m.items[2]).not.toHaveProperty('trackedExtra');
+  });
+
   it('keeps no-break spaces unbreakable and turns forced line breaks into forced penalties', () => {
     const chars = [...'10\u00a0kg Text\nNeu'];
     const m = itemsFromMeasured(chars, adv('10 kg Text Neu'), { hyphenWidth: 3 });

@@ -136,7 +136,8 @@ describe('solver invariants for any paragraph', () => {
         // Steering stays between the planned width and the next possible break.
         for (const line of plan.lines.filter((l) => l.kind === 'band')) {
           expect(line.steerWidth).toBeGreaterThanOrEqual(line.inkWidth - TOL);
-          expect(line.steerWidth).toBeLessThanOrEqual(line.inkWidth + P.epsilon + TOL);
+          const margin = line.tracking ? Math.max(P.epsilon, 0.25 * P.tracking.emSize) : P.epsilon;
+          expect(line.steerWidth).toBeLessThanOrEqual(line.inkWidth + margin + TOL);
           if (line.slack > 0) expect(line.steerWidth).toBeLessThan(line.inkWidth + line.slack);
         }
 

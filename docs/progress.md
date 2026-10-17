@@ -2,18 +2,24 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
-## 2026-10-17 — Fixes after the user's precise-tracking test (partial, usage limit)
+## 2026-10-17 — Fixes after the user's precise-tracking test
+
+The user switched on "Align line ends exactly" (precise Laufweite, max 30, zone 17 %, band 90 %, one hyphen in a row) on TestFile and got "0/106 lines set as planned", "¶1, line 1: InDesign did not break where planned", 1.5 s slider ticks, a report they could not scroll, and an outdated "Consider some Variation" note. Reproduced on a copy of their story with `tools/indesign/spikes/src/i3-user-copy.ts` (10/38 lines as planned before, 38/38 after). Details in `docs/spike-results.md`, decision in ADR-014.
 
 Done:
-- Tracking no longer touches each line's last letter (InDesign counts the tracking after a line's last glyph when fitting, so lines planned to the edge broke early; likely cause of "0/106 lines set as planned"). Model: trackedChars = chars − 1, generated hyphen adds nothing. Adapter spans end one character early.
-- DomPort.setTracking reads the paragraph's current tracking from its style ranges and writes only changed runs (was: reset whole paragraph each tick, about 1.5 s per tick).
-- Panel content scrolls (#scroll wrapper).
+- **Cause found: ligatures.** InDesign breaks ligatures (Th, fl, ft…) in tracked text, so some tracked lines were up to 1.5 pt wider than planned and lost their last word. Paragraphs are now measured twice (ligatures on and off, +0.6 s on 12,000 characters); boxes carry `trackedExtra`, which the solver adds to tracked lines.
+- **Robust steering for tracked lines:** the tooth sits halfway into the room before the next word (up to a quarter em) instead of 0.15 pt past the line; precise tracking keeps lines at least 0.1 em from the measure (`TrackingRules.safety`).
+- **Tracking writes:** only changed runs are written, read from the document's style ranges (Undo-safe); overset lines get no tracking. Slider ticks went from ~1.5 s to 50–170 ms on the user's text.
+- Each line's last letter is left untracked; the tracking width model is chars − 1 with no hyphen step.
+- Base tracking for a paragraph without a record comes from an even paragraph or its paragraph style, no longer from its first letter.
+- Panel: the content scrolls; report entries about a line are clickable and select that line in the document; the mismatch message now quotes where InDesign ended the line and where it was planned. The "mechanical pattern / Consider some Variation" warning is gone (even edges are the goal now).
 
-Not yet done / next:
-- Verify in InDesign on a throwaway copy of the user's story (zone 17 %, band 90 %, hyphens 1, precise max 30); check lines-as-planned and tick time.
-- Remove or reword the "mechanical … Consider some Variation" warning in precise mode (check.ts analysePattern).
-- Make report items clickable to select the line; explain report messages more plainly.
-- Open question to user: per-line word-space adjustment.
+Status: 131 unit tests and both InDesign integration tests pass; the panel is rebuilt and reloaded but not yet tried by the user after these changes.
+
+Next:
+- User to try the panel again on TestFile (Recompute first so it measures with ligatures off).
+- First Apply on a long story spends most of its time probing InDesign's hyphenation points (72 words ≈ 17–30 s in a fresh document; cached in the document afterwards). Worth speeding up.
+- On the user's copy about half the band lines end within 0.5 pt of their edge; the rest are held back by the tracking limit (short lines up to ~24 pt short at ±30). **Open question to the user:** add per-line word-space adjustment so those lines can reach their edges too.
 
 ## 2026-10-16 (later): precise Laufweite; Variation removed (ADR-013)
 

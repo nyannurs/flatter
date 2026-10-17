@@ -15,6 +15,8 @@ export interface BuildFromMeasuredOptions {
   hyphenWidth: number;
   points?: PointSource;
   breakCost?: BreakCostRule;
+  /** Advances with ligatures broken up (tracked text); boxes get the difference as trackedExtra. */
+  trackedAdvances?: readonly number[];
 }
 
 export interface MeasuredParagraph {
@@ -126,9 +128,16 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
     bounds.push(local.length);
     let from = 0;
     bounds.forEach((to, idx) => {
+      const w = width(start + from, start + to);
+      let extra = 0;
+      if (opts.trackedAdvances) {
+        for (let q = start + from; q < start + to; q++) extra += opts.trackedAdvances[q]!;
+        extra -= w;
+      }
       items.push({
         type: 'box',
-        width: width(start + from, start + to),
+        width: w,
+        ...(Math.abs(extra) > 0.001 ? { trackedExtra: extra } : {}),
         text: local.slice(from, to).join(''),
         ...(key !== undefined ? { wordKey: key } : {}),
         ...(idx === 0 ? { wordStart: true } : {}),

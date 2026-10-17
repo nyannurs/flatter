@@ -101,6 +101,7 @@ export class FlatterSession {
       const sense = settings.sense ?? lang.startsWith('de');
       const measured = itemsFromMeasured(data.chars, data.advances, {
         hyphenWidth: data.hyphenWidth,
+        ...(data.trackedAdvances?.length === data.advances.length ? { trackedAdvances: data.trackedAdvances } : {}),
         points: (w) => mergePoints(h.points(w), probed ? (probed.get(w) ?? []) : undefined),
         ...(sense ? { breakCost: createSenseRule(lang) } : {}),
       });
@@ -133,7 +134,9 @@ export class FlatterSession {
         if (t) this.teeth.push(t);
       });
     }
-    for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w));
+    // Overset lines get neither teeth nor tracking: they are not visible, and writing their tracking
+    // took most of a slider tick in a long overset story (2026-10-17).
+    for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
     this.port.setTeeth(this.teeth);
   }
 
@@ -240,9 +243,9 @@ function solve(items: Item[], data: ParagraphData, settings: ApplySettings, star
 }
 
 /** Character spans of the lines the plan tracks: every character but the line's last (see trackedChars). */
-function trackingSpans(w: Working): TrackingSpan[] {
+function trackingSpans(w: Working, slots: readonly (LineSlot | undefined)[]): TrackingSpan[] {
   return w.plan.lines
-    .filter((l) => l.tracking !== 0)
+    .filter((l, i) => l.tracking !== 0 && slots[i] !== undefined)
     .map((l) => ({ from: w.measured.charRange[l.startItem]![0], to: w.measured.charRange[l.endItem - 1]![1] - 1, units: l.tracking }))
     .filter((s) => s.to > s.from);
 }

@@ -10,9 +10,6 @@ import type { PlannedLine, PlanStats, Violation } from './plan.ts';
 const TOL = 1e-6;
 /** Steps smaller than this do not count as a staircase. */
 const STAIR_STEP = 0.5;
-/** Long (or short) lines all within this many points read as a mechanical sawtooth. */
-const MECHANICAL_SPREAD = 0.5;
-const MECHANICAL_MIN_LINES = 6;
 
 const fmt = (x: number): string => (Math.round(x * 100) / 100).toString();
 const LETTER = /\p{L}/gu;
@@ -205,7 +202,10 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
   return out;
 }
 
-/** Staircases and mechanical sawtooth (plan §2A.3, §2A.4). */
+/**
+ * Staircases (plan §2A.3). The mechanical-sawtooth warning (§2A.4) was removed on 2026-10-17:
+ * the designer wants long and short line ends as exact as possible (ADR-013), so even edges are the goal.
+ */
 export function analysePattern(lines: readonly PlannedLine[]): Violation[] {
   const out: Violation[] = [];
   const edges = lines.map((l) => l.indent + l.width);
@@ -215,17 +215,6 @@ export function analysePattern(lines: readonly PlannedLine[]): Violation[] {
     const d2 = edges[i]! - edges[i - 1]!;
     if ((d1 > STAIR_STEP && d2 > STAIR_STEP) || (d1 < -STAIR_STEP && d2 < -STAIR_STEP)) {
       out.push({ kind: 'staircase', severity: 'warning', line: i, message: 'Three lines in a row get progressively longer or shorter (Treppe).' });
-    }
-  }
-  for (const role of ['long', 'short'] as const) {
-    const gaps = lines.filter((l) => l.kind === 'band' && l.role === role).map((l) => l.gap);
-    if (gaps.length >= MECHANICAL_MIN_LINES && Math.max(...gaps) - Math.min(...gaps) < MECHANICAL_SPREAD) {
-      out.push({
-        kind: 'mechanical-pattern',
-        severity: 'info',
-        line: -1,
-        message: `All ${gaps.length} ${role} lines end within ${MECHANICAL_SPREAD} pt of each other; the rag may look mechanical. Consider some Variation.`,
-      });
     }
   }
   return out;

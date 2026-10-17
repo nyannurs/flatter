@@ -33,6 +33,8 @@ export class ParagraphMetrics {
   private readonly gluePrefix: Int32Array;
   /** Characters in items[0..k): box text plus one per space. Tracking applies to each. */
   private readonly charPrefix: Int32Array;
+  /** Prefix sums of Box.trackedExtra. */
+  private readonly extraPrefix: Float64Array;
   /** Breaks the solver may choose, ascending, ending with n. */
   readonly candidates: number[];
   /** Breaks a composer might take regardless of our vetoes, ascending, ending with n. */
@@ -50,6 +52,7 @@ export class ParagraphMetrics {
     this.letterPrefix = new Int32Array(this.n + 1);
     this.gluePrefix = new Int32Array(this.n + 1);
     this.charPrefix = new Int32Array(this.n + 1);
+    this.extraPrefix = new Float64Array(this.n + 1);
     this.candidates = [];
     this.potential = [];
     for (let k = 0; k < this.n; k++) {
@@ -57,6 +60,7 @@ export class ParagraphMetrics {
       const w = it.type === 'penalty' ? 0 : it.width;
       if (!Number.isFinite(w)) throw new RangeError(`item ${k} has a non-finite width`);
       this.prefix[k + 1] = this.prefix[k]! + w;
+      this.extraPrefix[k + 1] = this.extraPrefix[k]! + (it.type === 'box' ? (it.trackedExtra ?? 0) : 0);
       this.letterPrefix[k + 1] =
         this.letterPrefix[k]! + (it.type === 'box' && it.text ? (it.text.match(LETTER)?.length ?? 0) : 0);
       this.gluePrefix[k + 1] = this.gluePrefix[k]! + (it.type === 'glue' ? 1 : 0);
@@ -149,6 +153,11 @@ export class ParagraphMetrics {
    * (found in the user's test, 2026-10-16). A line of n characters therefore gains n − 1 steps, and the
    * generated hyphen, inheriting the untracked last letter, adds none.
    */
+  /** Extra width items start…end take on when tracked (ligatures break apart, see Box.trackedExtra). */
+  trackedExtra(start: number, end: number): number {
+    return end > start ? this.extraPrefix[end]! - this.extraPrefix[start]! : 0;
+  }
+
   trackedChars(start: number, end: number, _b: number): number {
     const base = end > start ? this.charPrefix[end]! - this.charPrefix[start]! : 0;
     return Math.max(0, base - 1);
@@ -163,7 +172,7 @@ export class ParagraphMetrics {
    * composer broke at any later potential break than `b`. Steering must stay
    * below this so the composer cannot take one more fragment.
    */
-  nextInk(a: number, b: number): number {
+  nextInk(a: number, b: number, trackPerChar = 0): number {
     if (b >= this.n || this.isForced(b)) return Infinity;
     const start = this.lineStart(a);
     let lo = 0;
@@ -178,7 +187,9 @@ export class ParagraphMetrics {
       const p = this.potential[i]!;
       const end = this.contentEnd(p);
       const pen = p < this.n ? (this.penaltyAt(p)?.width ?? 0) : 0;
-      best = Math.min(best, this.contentWidth(start, end) + pen);
+      // The next fragment would carry the line's tracking too.
+      const tracked = trackPerChar !== 0 ? trackPerChar * this.trackedChars(start, end, p) + this.trackedExtra(start, end) : 0;
+      best = Math.min(best, this.contentWidth(start, end) + pen + tracked);
       if (p >= this.n || this.items[p]!.type === 'glue' || this.isForced(p)) break;
     }
     return best;

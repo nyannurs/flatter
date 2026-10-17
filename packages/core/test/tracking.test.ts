@@ -117,6 +117,26 @@ describe('precise Laufweite (ADR-013)', () => {
     expect(with5.stats.edgeMiss).toBeLessThan(without.stats.edgeMiss);
   });
 
+  it('keeps tracked lines a safety distance (0.1 em) from the measure', () => {
+    const plan = solveParagraph(sample, precise(30, 20));
+    const tracked = plan.lines.filter((l) => l.kind === 'band' && l.tracking > 0);
+    expect(tracked.length).toBeGreaterThan(0);
+    for (const l of tracked) expect(l.gap, l.text).toBeGreaterThanOrEqual(1 - 1e-6);
+  });
+
+  it('counts the width ligatures gain when tracked (Box.trackedExtra)', () => {
+    // Every box widens by 0.2 pt when tracked, as broken-up ligatures do in InDesign.
+    const withLigatures = sample.map((it) => (it.type === 'box' ? { ...it, trackedExtra: 0.2 } : it));
+    const plan = solveParagraph(withLigatures, precise(30, 20));
+    const tracked = plan.lines.filter((l) => l.kind === 'band' && l.tracking !== 0 && Math.abs(l.tracking) < 30 - 1e-9);
+    expect(tracked.length).toBeGreaterThan(0);
+    for (const l of tracked) {
+      // The planned width includes the extra, and the line still lands on its edge.
+      // If the solver ignored the extra, these lines would miss by 0.2 pt per box (several points).
+      expect(Math.abs(l.available - l.targetWidth - l.gap), l.text).toBeLessThan(0.05);
+    }
+  });
+
   it('leaves the last line untracked and does not flood the report', () => {
     const plan = solveParagraph(sample, precise(30));
     expect(plan.lines.at(-1)!.tracking).toBe(0);
