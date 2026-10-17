@@ -2,6 +2,11 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (evening, later) — Test checklist; Freeze explained
+
+- Test checklist for the designer (52 tests in 12 sections, pass/problem/skip with notes and a "Copy results" button): private artifact https://claude.ai/artifact/XWivt51EVhH8awxaPFDm4s. Results will come back as pasted text.
+- The designer asked whether the rag is only a preview and wanted a "render" button. Answer given: Apply already sets the rag for real (InDesign composes the lines; it prints, exports and survives without the plugin). Freeze (plan §6.6, not built) would bake the breaks into the text as forced line breaks for final hand-off. Not built unless the designer asks.
+
 ## 2026-10-18 (evening) — README and GitHub About updated
 
 README rewritten for version 0.2.0: what Flatter does, install and use for testing, phase status, development commands, layout. GitHub About: description and topics set. Open items listed there: Freeze/Unfreeze, document-wide review list, tabs and anchored objects, signing and bundling the licence texts in the `.ccx`.
