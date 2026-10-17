@@ -29,10 +29,14 @@ npm run playground      # bundles the live playground to packages/simulator/out/
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
 npm run panel           # build the panel (dev build) into packages/panel/plugin/index.js
+npm run package         # release build → dist/Flatter-<version>.ccx (bump "version" in packages/panel/plugin/manifest.json first)
+"/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install "$PWD/dist/Flatter-<version>.ccx"   # install for the user (InDesign restart needed)
 node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)
 node tools/indesign/uxp-load.mjs reload   # after every panel build
 tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4)
 ```
+
+The user has the release build installed (Creative Cloud, `--list all` shows it). The installed plugin and a dev copy loaded through the UXP Developer Tool share the id com.flatter.panel: for dev work, disable the installed one first (`--disable Flatter`, `--enable Flatter` afterwards) or the two clash.
 
 The UXP Developer Tool must be open (its window may stay hidden; the service on port 14001 is what matters). Adobe's `uxp` CLI does not run on Node 24 (native helper missing); `uxp-load.mjs` speaks its WebSocket protocol directly.
 

@@ -2,6 +2,12 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (later) — Report cleanup; first installable release (0.2.0)
+
+- **Report**: one entry per line (a band miss and the hole it makes are one sentence), problems on overset lines are not listed (a one-line count instead), and hints (Sinneinheiten, same line ends, refused hyphenations) sit in a collapsible "Notes" section. The status counts visible lines only. `ParagraphResult.visibleLines` tells the panel how many plan lines are visible.
+- **Release**: `npm run package` builds the release bundle (no dev command channel) into `dist/ccx-stage` and zips it as `dist/Flatter-0.2.0.ccx`; installed for the designer with Adobe's UnifiedPluginInstallerAgent (listed as enabled, `~/Library/Application Support/Adobe/UXP/Plugins/External/com.flatter.panel_0.2.0`). InDesign needs a restart to load it; it then appears under Plugins → Flatter.
+- Not verified in the panel UI: the new report rendering (the UXP Developer Tool was closed). The designer will see it in the installed build.
+
 ## 2026-10-18 — Frames of different widths; language buttons (ADR-018)
 
 - **Each frame at its own width.** A story threaded through frames of different widths was planned with the first frame's width for every line (the designer's TestFile: 259 pt into 523 pt). The core takes `lineMeasures` (measure per line; later lines take the last entry); Flatterzone, band and contrast scale with each line's measure, so the panel's percentages mean the same in every frame. With per-line measures the line number is part of the DP state. The adapter derives each line's measure from the column it sits in (`LineSlot.columnLeft`, `ParagraphData.columnWidth`, `lineMeasuresFor`) and plans again when verify finds the widths changed. Band strips scale per line; the staircase check compares gaps, not absolute line ends.

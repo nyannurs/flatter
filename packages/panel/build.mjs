@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const dev = process.argv.includes('--dev');
 const watch = process.argv.includes('--watch');
+// --out <file>: write the bundle elsewhere (the release package is staged outside plugin/).
+const outArg = process.argv.indexOf('--out');
+const outfile = outArg > 0 ? resolve(process.argv[outArg + 1]) : resolve(here, 'plugin/index.js');
 const ctx = await context({
   entryPoints: [resolve(here, 'src/main.ts')],
-  outfile: resolve(here, 'plugin/index.js'),
+  outfile,
   bundle: true,
   format: 'iife',
   platform: 'neutral',
@@ -25,5 +28,5 @@ if (watch) {
 } else {
   await ctx.rebuild();
   await ctx.dispose();
-  console.log(`built ${dev ? 'dev' : 'release'} panel → packages/panel/plugin/index.js`);
+  console.log(`built ${dev ? 'dev' : 'release'} panel → ${outfile}`);
 }

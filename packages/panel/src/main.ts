@@ -3,7 +3,7 @@
  * on cached measurements → move teeth (one undo step per drag); after a pause,
  * read back and verify.
  */
-import { modeLabel } from '@flatter/core';
+import { modeLabel, type Violation } from '@flatter/core';
 import {
   clearMeasureCache,
   liveUpdate,
@@ -50,6 +50,8 @@ interface PanelState {
   verifyTimer?: ReturnType<typeof setTimeout>;
   lastTickMs?: number;
   lastResult?: ApplyResult;
+  /** The notes section of the report is open. */
+  showNotes?: boolean;
   /** The last tick was a draft (no word spaces): verify applies the full settings first. */
   draft?: boolean;
 }
@@ -178,33 +180,54 @@ function render(r: ApplyResult, ms?: number): void {
   let longRange = 0;
   let shortRange = 0;
   let worstMiss = 0;
-  const items: string[] = [];
+  let hidden = 0;
+  const problems: string[] = [];
+  const notes: string[] = [];
   for (const p of r.paragraphs) {
+    const visible = (line: number) => line < p.visibleLines;
     const broken = new Set(p.plan.violations.filter((v) => v.kind === 'band' || v.kind === 'contrast').map((v) => v.line));
-    const bandLines = p.plan.lines.filter((l) => l.kind === 'band');
+    // Only the lines you can see count: overset lines are not set.
+    const bandLines = p.plan.lines.filter((l) => l.kind === 'band' && visible(l.index));
     band += bandLines.length;
     inRhythm += bandLines.filter((l) => !broken.has(l.index)).length;
     if (p.plan.feasible) strict++;
     longRange = Math.max(longRange, p.plan.stats.longEdgeRange);
     shortRange = Math.max(shortRange, p.plan.stats.shortEdgeRange);
     worstMiss = Math.max(worstMiss, p.plan.stats.edgeMiss);
+    // One entry per line: its problems merged, worst severity first; hints go to the notes.
+    const byLine = new Map<number, Violation[]>();
     for (const v of p.plan.violations) {
       if (v.kind === 'tight-steering') continue;
-      items.push(reportItem(p.index, v.line, v.severity === 'error' ? 'err' : v.severity === 'warning' ? 'bad' : '', v.message));
+      if (v.line >= 0 && !visible(v.line)) {
+        if (v.severity !== 'info') hidden++;
+        continue;
+      }
+      const list = byLine.get(v.line) ?? [];
+      list.push(v);
+      byLine.set(v.line, list);
+    }
+    for (const [line, vs] of [...byLine.entries()].sort((x, y) => x[0] - y[0])) {
+      const serious = vs.filter((v) => v.severity !== 'info');
+      const hints = vs.filter((v) => v.severity === 'info');
+      if (serious.length) {
+        const cls = serious.some((v) => v.severity === 'error') ? 'err' : 'bad';
+        problems.push(reportItem(p.index, line, cls, mergeMessages(serious)));
+      }
+      for (const h of hints) notes.push(reportItem(p.index, line, '', h.message));
     }
     if (!p.steered && p.mismatch) {
       const m = p.mismatch;
       const said = m.got
         ? `InDesign ended this line at “…${m.got.text.trim()}” instead of the planned “…${m.planned.text.trim()}”.`
         : 'InDesign did not set this line (it is overset or hidden).';
-      items.push(reportItem(p.index, m.line, 'err', `${said} The lines after it shift too, so they no longer match the plan. Try Recompute; if it stays, the line is too tight for its band.`));
+      problems.unshift(reportItem(p.index, m.line, 'err', `${said} The lines after it shift too, so they no longer match the plan. Try Recompute; if it stays, the line is too tight for its band.`));
     }
-    for (const w of p.refused) items.push(`<sp-body size="XS">¶${p.index + 1}: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</sp-body>`);
-    for (const u of p.unsupported) items.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${u}; Flatter cannot plan around it yet.</sp-body>`);
+    for (const w of p.refused) notes.push(`<sp-body size="XS">¶${p.index + 1}: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</sp-body>`);
+    for (const u of p.unsupported) problems.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${u}; Flatter cannot plan around it yet.</sp-body>`);
   }
   const allGood = inRhythm === band && r.linesAsPlanned === r.linesPlanned;
   setStatus(
-    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} lines in rhythm`,
+    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} visible lines in rhythm`,
     allGood ? 'ok' : 'bad',
     `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · ` +
       `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked, ${r.spacedLines} with adjusted word spaces` +
@@ -212,7 +235,23 @@ function render(r: ApplyResult, ms?: number): void {
       (ms !== undefined ? ` · ${ms} ms` : '') +
       (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
   );
-  $('report').innerHTML = items.join('');
+  const parts: string[] = [];
+  if (problems.length) parts.push(`<sp-detail>PROBLEMS (${problems.length})</sp-detail>`, ...problems);
+  if (hidden) parts.push(`<sp-body size="XS" class="dim">${hidden} more in overset lines (not visible, not listed).</sp-body>`);
+  if (notes.length) {
+    parts.push(`<sp-body size="XS" class="toggle" id="notesToggle">${state.showNotes ? '▾' : '▸'} Notes (${notes.length}): line ends, phrases, hyphenation</sp-body>`);
+    if (state.showNotes) parts.push(...notes);
+  }
+  $('report').innerHTML = parts.join('');
+}
+
+/** One sentence for all of a line's problems: a band miss and the hole it makes are one problem. */
+function mergeMessages(vs: readonly Violation[]): string {
+  const kinds = new Set(vs.map((v) => v.kind));
+  return vs
+    .filter((v) => !(v.kind === 'hole' && kinds.has('band')))
+    .map((v) => (v.kind === 'band' && kinds.has('hole') ? `${v.message.replace(/\.$/, '')}: a hole in the rag.` : v.message))
+    .join(' ');
 }
 
 /** One report entry. Entries about a line can be clicked to select that line in the document. */
@@ -407,6 +446,11 @@ function init(): void {
   $('langEn').addEventListener('click', () => setLanguage('en'));
   $('report').addEventListener('click', (e: Any) => {
     let el = e.target;
+    if (el?.id === 'notesToggle' || el?.parentElement?.id === 'notesToggle') {
+      state.showNotes = !state.showNotes;
+      if (state.lastResult) render(state.lastResult);
+      return;
+    }
     while (el && el.id !== 'report' && !el.dataset?.l) el = el.parentElement;
     if (el?.dataset?.l !== undefined) jumpTo(Number(el.dataset.p), Number(el.dataset.l));
   });

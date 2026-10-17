@@ -43,6 +43,8 @@ export interface ParagraphResult {
   /** Hyphenation points InDesign refused during this run (word with hyphen). */
   refused: string[];
   unsupported: string[];
+  /** Lines of the plan that are visible in a frame; the rest are overset. */
+  visibleLines: number;
   /** The first line InDesign did not set as planned, for diagnosis. */
   mismatch?: {
     line: number;
@@ -222,7 +224,8 @@ export class FlatterSession {
     const results: ParagraphResult[] = this.work.map((w) => {
       const got = current.filter((l) => l.paragraph === w.data.index);
       const bad = firstMismatch(w, got, this.overset);
-      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set(w.measured.unsupported)] };
+      const visibleLines = this.overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
+      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set(w.measured.unsupported)], visibleLines };
       if (bad >= 0) {
         const line = w.plan.lines[bad]!;
         const g = got[bad];

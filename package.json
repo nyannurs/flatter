@@ -15,7 +15,8 @@
     "test:indesign": "tools/indesign/integration.sh",
     "panel": "node packages/panel/build.mjs --dev",
     "panel:watch": "node packages/panel/build.mjs --dev --watch",
-    "panel:release": "node packages/panel/build.mjs"
+    "panel:release": "node packages/panel/build.mjs",
+    "package": "node tools/package-panel.mjs"
   },
   "engines": {
     "node": ">=22"
