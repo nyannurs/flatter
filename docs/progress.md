@@ -2,6 +2,10 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (evening) — README and GitHub About updated
+
+README rewritten for version 0.2.0: what Flatter does, install and use for testing, phase status, development commands, layout. GitHub About: description and topics set. Open items listed there: Freeze/Unfreeze, document-wide review list, tabs and anchored objects, signing and bundling the licence texts in the `.ccx`.
+
 ## 2026-10-18 (later) — Report cleanup; first installable release (0.2.0)
 
 - **Report**: one entry per line (a band miss and the hole it makes are one sentence), problems on overset lines are not listed (a one-line count instead), and hints (Sinneinheiten, same line ends, refused hyphenations) sit in a collapsible "Notes" section. The status counts visible lines only. `ParagraphResult.visibleLines` tells the panel how many plan lines are visible.
