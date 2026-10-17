@@ -3,7 +3,7 @@
  * as one undo step ("Flatter: …") through app.doScript (spike S8).
  */
 import { FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
-import { asArray, controlLayer, DomPort, indesign, TOOTH_LABEL, type Any } from './dom-port.ts';
+import { asArray, controlLayer, DomPort, indesign, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
 export const STORY_LABEL = 'flatter';
@@ -287,6 +287,7 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
         }
       }
     }
+    removeBands(doc, String(story.id));
     const state = readState(story);
     let settingsRestored = 0;
     if (state) {

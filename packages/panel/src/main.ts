@@ -61,6 +61,7 @@ export function settingsFromUI(): ApplySettings {
     maxConsecutiveHyphens: num('maxHyph'),
     sense: checked('sense'),
     continuous: checked('continuous'),
+    showBands: checked('showBands'),
     // Laufweite in precise mode (ADR-013): every line end is pulled onto its edge, within ±max.
     ...(tracking ? { tracking: { enabled: true, mode: 'precise' as const, max: num('trackMax') }, wordSpaceShare: num('wordMax') / 100 } : {}),
   };
@@ -75,6 +76,7 @@ function settingsToUI(s: ApplySettings): void {
   if (s.maxConsecutiveHyphens) $('maxHyph').value = s.maxConsecutiveHyphens;
   if (s.sense !== undefined) $('sense').checked = s.sense;
   if (s.continuous !== undefined) $('continuous').checked = s.continuous;
+  if (s.showBands !== undefined) $('showBands').checked = s.showBands;
   $('tracking').checked = !!s.tracking?.enabled;
   if (s.tracking?.max !== undefined) $('trackMax').value = s.tracking.max;
   if (s.wordSpaceShare !== undefined) $('wordMax').value = Math.round(s.wordSpaceShare * 100);
@@ -279,6 +281,8 @@ function verify(): void {
 }
 
 function onSelectionChanged(): void {
+  // Flatter's own hidden measuring document opens and closes while it works.
+  if (state.busy) return;
   const story = targetStory();
   if (!story) {
     $('target').textContent = 'Select a text frame or put the cursor in text.';
@@ -306,7 +310,7 @@ function init(): void {
     $(id).addEventListener('input', onInput);
     $(id).addEventListener('change', onInput);
   }
-  for (const id of ['phase', 'mode', 'hyphenation', 'sense', 'continuous', 'tracking']) $(id).addEventListener('change', onInput);
+  for (const id of ['phase', 'mode', 'hyphenation', 'sense', 'continuous', 'tracking', 'showBands']) $(id).addEventListener('change', onInput);
   $('apply').addEventListener('click', apply);
   $('recompute').addEventListener('click', () => {
     // Recompute measures afresh (for example after formatting changed inside a paragraph).

@@ -3,7 +3,7 @@
  * InDesign's default paragraph settings. Checks: every line as planned, Remove
  * restores the original composition, one Undo reverts Apply, re-apply uses the cache.
  */
-import { applyFlatter, checkSettings, removeFlatter, TOOTH_LABEL } from '@flatter/indesign-adapter';
+import { applyFlatter, BAND_LAYER, checkSettings, removeFlatter, TOOTH_LABEL } from '@flatter/indesign-adapter';
 import { asArray, DE_TEXT, EN_TEXT, id, inNewDocument, type Any } from './lib.ts';
 
 function frameWithDefaults(doc: Any, bounds: number[], text: string, language: string, extra: Any = {}): Any {
@@ -25,6 +25,12 @@ const teethOf = (doc: Any, story: Any) => {
   return asArray(layer.pageItems.everyItem().getElements()).filter((it: Any) => it.extractLabel(TOOTH_LABEL) === String(story.id)).length;
 };
 
+const bandsOf = (doc: Any, story: Any): number => {
+  const layer = doc.layers.itemByName(BAND_LAYER);
+  if (!layer.isValid) return 0;
+  return asArray(layer.pageItems.everyItem().getElements()).filter((it: Any) => it.extractLabel('flatter-band') === String(story.id)).length;
+};
+
 inNewDocument((doc: Any) => {
   const cases: Any[] = [];
   const run = (name: string, make: () => Any, settings: Any = {}) => {
@@ -32,10 +38,12 @@ inNewDocument((doc: Any) => {
     const story = frame.parentStory;
     const before = checkSettings(story);
     const original = linesOf(story);
-    const r = applyFlatter(story, settings);
+    // The panel shows the bands by default: they must not change any line.
+    const r = applyFlatter(story, { showBands: true, ...settings });
     const teeth = teethOf(doc, story);
+    const bands = bandsOf(doc, story);
     // Re-apply with a different Flatterzone: the probe cache should make probing unnecessary.
-    const again = applyFlatter(story, { ...settings, flatterzone: (r.paragraphs[0]?.plan.params.flatterzone ?? 50) * 0.9 });
+    const again = applyFlatter(story, { showBands: true, ...settings, flatterzone: (r.paragraphs[0]?.plan.params.flatterzone ?? 50) * 0.9 });
     const removed = removeFlatter(story);
     const afterRemove = linesOf(story);
     cases.push({
@@ -51,6 +59,7 @@ inNewDocument((doc: Any) => {
       probes: r.probes,
       ms: r.ms,
       teeth,
+      bands,
       reapply: { lines: `${again.linesAsPlanned}/${again.linesPlanned}`, probes: again.probes, ms: again.ms },
       tracked: r.trackedLines,
       oversetLines: r.oversetLines,
@@ -60,6 +69,9 @@ inNewDocument((doc: Any) => {
         restoredExactly: JSON.stringify(afterRemove) === JSON.stringify(original),
         trackingRestored: asArray(story.characters.everyItem().tracking).every((t: Any) => Number(t) === 0),
         teethLeft: teethOf(doc, story),
+        bandsLeft: bandsOf(doc, story),
+        bandLayerLeft: doc.layers.itemByName(BAND_LAYER).isValid,
+        bandColoursLeft: doc.colors.itemByName('Flatter Band lang').isValid || doc.colors.itemByName('Flatter Band kurz').isValid,
         label: story.extractLabel('flatter'),
       },
       pass:
@@ -67,6 +79,10 @@ inNewDocument((doc: Any) => {
         again.linesAsPlanned === again.linesPlanned &&
         JSON.stringify(afterRemove) === JSON.stringify(original) &&
         teethOf(doc, story) === 0 &&
+        bands > 0 &&
+        bandsOf(doc, story) === 0 &&
+        !doc.layers.itemByName(BAND_LAYER).isValid &&
+        !doc.colors.itemByName('Flatter Band lang').isValid &&
         story.extractLabel('flatter') === '',
     });
     frame.remove();

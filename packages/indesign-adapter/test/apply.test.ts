@@ -100,6 +100,17 @@ describe('precise tracking with word spaces in the apply loop (ADR-015)', () => 
   });
 });
 
+describe('band view', () => {
+  it('shows the bands when asked and removes them when switched off', () => {
+    const fake = new FakeInDesign(DE, { measure: 220, accepts: ourSafe });
+    applyToPort(fake, { showBands: true });
+    expect(fake.bands.length).toBeGreaterThanOrEqual(2 * DE.length);
+    expect(fake.bands.filter((b) => b.kind === 'long').length).toBe(fake.bands.filter((b) => b.kind === 'short').length);
+    applyToPort(fake, { showBands: false });
+    expect(fake.bands).toEqual([]);
+  });
+});
+
 describe('live session (panel)', () => {
   it('takes many slider ticks without reading back, then verifies to every line as planned', async () => {
     const { FlatterSession } = await import('../src/index.ts');

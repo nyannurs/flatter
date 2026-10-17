@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PlannedLine } from '@flatter/core';
-import { checkParagraph, checkStory, itemsFromMeasured, mergePoints, toothFor, type LineSlot } from '../src/index.ts';
+import type { Plan, PlannedLine } from '@flatter/core';
+import { bandsFor, checkParagraph, checkStory, itemsFromMeasured, mergePoints, toothFor, type LineSlot } from '../src/index.ts';
 
 const adv = (s: string) => [...s].map((c) => (c === ' ' ? 2.5 : 5));
 
@@ -122,5 +122,36 @@ describe('settings', () => {
   it('reports story conditions found in spike S6', () => {
     expect(checkStory({ opticalMarginAlignment: true, ignoresWrap: true, wrapOnlyBeneath: true, controlLayerNotOnTop: true, overset: false })).toHaveLength(3);
     expect(checkStory({ opticalMarginAlignment: false, ignoresWrap: false, wrapOnlyBeneath: true, controlLayerNotOnTop: false, overset: false })).toEqual([]);
+  });
+});
+
+describe('bandsFor', () => {
+  const slot = (page: number, baseline: number, startX = 40): LineSlot => ({ page, baseline, startX, columnRight: 240, gutter: 12, size: 10 });
+  const plan = (available: number[]) =>
+    ({ params: { band: 10, flatterzone: 30 }, lines: available.map((a) => ({ available: a })) }) as unknown as Plan;
+
+  it('draws a long and a short strip per stretch of lines in one column', () => {
+    const bands = bandsFor(plan([200, 200, 200]), [slot(0, 100), slot(0, 112), slot(0, 124)], 12);
+    expect(bands).toHaveLength(2);
+    expect(bands[0]).toMatchObject({ kind: 'long', page: 0 });
+    // Measure ends at 40 + 200: long band 230–240, short band 200–210.
+    expect(bands[0]!.bounds[1]).toBeCloseTo(230);
+    expect(bands[0]!.bounds[3]).toBeCloseTo(240);
+    expect(bands[1]!.bounds[1]).toBeCloseTo(200);
+    expect(bands[1]!.bounds[3]).toBeCloseTo(210);
+    // From above the first line to below the last.
+    expect(bands[0]!.bounds[0]).toBeLessThan(100 - 8);
+    expect(bands[0]!.bounds[2]).toBeGreaterThan(124);
+  });
+
+  it('starts new strips in the next frame and leaves out overset lines', () => {
+    const bands = bandsFor(plan([200, 200, 200, 200]), [slot(0, 100), slot(0, 112), slot(1, 50), undefined], 12);
+    expect(bands.map((b) => `${b.kind}@${b.page}`)).toEqual(['long@0', 'short@0', 'long@1', 'short@1']);
+  });
+
+  it('uses each line\'s own start, so a first-line indent does not shift the measure', () => {
+    // First line indented by 10: starts at 50 with 190 available; the measure still ends at 240.
+    const bands = bandsFor(plan([190, 200]), [slot(0, 100, 50), slot(0, 112, 40)], 12);
+    expect(bands[0]!.bounds[3]).toBeCloseTo(240);
   });
 });

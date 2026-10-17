@@ -4,7 +4,7 @@
  * bulk reads, teeth without stroke set at creation, the control layer on top,
  * probing with "x <word>" in a scratch frame, settings re-applied in place.
  */
-import type { LineSlot, ToothSpec } from './geometry.ts';
+import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,6 +54,52 @@ export function controlLayer(doc: Any): Any {
   layer.properties = { printable: false, suppressTextWrapWhenLayerHidden: false, locked: false };
   if (layer.index !== 0) layer.move(id.LocationOptions.AT_BEGINNING);
   return layer;
+}
+
+/** Layer for the band view: just below the control layer, never printed, locked against stray clicks. */
+export const BAND_LAYER = 'Flatter (Ansicht)';
+export const BAND_LABEL = 'flatter-band';
+/** Band colours, as in the playground: blue for the long band, orange for the short band. */
+const BAND_COLORS = { long: { name: 'Flatter Band lang', rgb: [37, 99, 235] }, short: { name: 'Flatter Band kurz', rgb: [234, 88, 12] } } as const;
+const BAND_OPACITY = 22;
+
+/** The band layer, created on demand, placed second from the top (under the control layer). */
+export function bandLayer(doc: Any): Any {
+  const id = indesign();
+  let layer = doc.layers.itemByName(BAND_LAYER);
+  if (!layer.isValid) {
+    const active = doc.activeLayer;
+    layer = doc.layers.add({ name: BAND_LAYER });
+    doc.activeLayer = active;
+  }
+  layer.properties = { printable: false, locked: false };
+  const control = doc.layers.itemByName(CONTROL_LAYER);
+  if (control.isValid) {
+    if (Number(layer.index) !== 1) layer.move(id.LocationOptions.AFTER, control);
+  } else if (Number(layer.index) !== 0) layer.move(id.LocationOptions.AT_BEGINNING);
+  return layer;
+}
+
+/** Remove a story's bands; the layer and colours go when no bands are left in the document. */
+export function removeBands(doc: Any, storyKey: string): number {
+  const layer = doc.layers.itemByName(BAND_LAYER);
+  if (!layer.isValid) return 0;
+  layer.locked = false;
+  let removed = 0;
+  for (const it of asArray(layer.pageItems.everyItem().getElements())) {
+    if (it.extractLabel(BAND_LABEL) === storyKey) {
+      it.remove();
+      removed++;
+    }
+  }
+  if (!Number(layer.pageItems.length)) {
+    layer.remove();
+    for (const c of Object.values(BAND_COLORS)) {
+      const sw = doc.colors.itemByName(c.name);
+      if (sw.isValid) sw.remove();
+    }
+  } else layer.locked = true;
+  return removed;
 }
 
 /** Paragraph attributes copied into the probe frame so InDesign hyphenates the same way. */
@@ -233,47 +279,108 @@ export class DomPort implements Port {
       this.teethCache = this.existingTeeth().map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), label: '' }));
     }
     const cache = this.teethCache;
-    const none = this.doc.swatches.itemByName('None');
-    teeth.forEach((t, i) => {
+    // Teeth are reused per page, in order: matching them by list position made a tooth jump pages
+    // whenever the line count on an earlier page changed, and a tooth cannot move between pages, so it
+    // was deleted and created again (2026-10-17).
+    const pools = new Map<number, typeof cache>();
+    for (const c of cache) {
+      const pool = pools.get(c.page) ?? [];
+      pool.push(c);
+      pools.set(c.page, pool);
+    }
+    const next = new Map<number, number>();
+    const used = new Set<(typeof cache)[number]>();
+    let none: Any;
+    for (const t of teeth) {
       const label = `${t.paragraph}:${t.line}`;
-      const have = cache[i];
-      if (have && have.page === t.page) {
+      const pool = pools.get(t.page) ?? [];
+      pools.set(t.page, pool);
+      const k = next.get(t.page) ?? 0;
+      next.set(t.page, k + 1);
+      const have = pool[k];
+      if (have) {
         // Only write what changed: each DOM call costs about a millisecond (spike S4).
-        if (have.bounds.some((v, k) => Math.abs(v - t.bounds[k]!) > 1e-4)) {
+        if (have.bounds.some((v, j) => Math.abs(v - t.bounds[j]!) > 1e-4)) {
           have.rect.geometricBounds = t.bounds;
           have.bounds = [...t.bounds];
           this.teethStats.moved++;
         }
-        if (have.label !== label) {
-          have.rect.insertLabel('flatter-line', label);
-          have.label = label;
-          this.teethStats.relabelled++;
-        }
-        return;
+        have.label = label;
+        used.add(have);
+        continue;
       }
-      if (have) have.rect.remove();
+      none ??= this.doc.swatches.itemByName('None');
       const rect = this.doc.pages.item(t.page).rectangles.add({ geometricBounds: t.bounds, strokeWeight: 0, strokeColor: none, fillColor: none, itemLayer: this.layer, nonprinting: true });
       rect.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
       rect.insertLabel(TOOTH_LABEL, this.storyKey());
-      rect.insertLabel('flatter-line', label);
-      cache[i] = { rect, bounds: [...t.bounds], page: t.page, label };
+      const entry = { rect, bounds: [...t.bounds], page: t.page, label };
+      pool.push(entry);
+      cache.push(entry);
+      used.add(entry);
       this.teethStats.created++;
-    });
+    }
     // Park surplus teeth on the pasteboard instead of deleting them: creating a tooth costs far more
     // than moving one, and the line count changes often while a slider moves (spike S4).
-    for (let i = teeth.length; i < cache.length; i++) {
-      const c = cache[i]!;
+    cache.forEach((c, i) => {
+      if (used.has(c)) return;
       const parked = this.parkingBounds(c.page, i);
-      if (c.bounds.some((v, k) => Math.abs(v - parked[k]!) > 1e-4)) {
+      if (c.bounds.some((v, j) => Math.abs(v - parked[j]!) > 1e-4)) {
         c.rect.geometricBounds = parked;
         c.bounds = parked;
         this.teethStats.parked++;
       }
-      if (c.label !== 'parked') {
-        c.rect.insertLabel('flatter-line', 'parked');
-        c.label = 'parked';
-      }
+      c.label = 'parked';
+    });
+  }
+
+  private bandCache: { rect: Any; bounds: number[]; page: number; kind: 'long' | 'short' }[] | undefined;
+
+  /**
+   * Show the Flatterzone and band as tinted strips behind the text (on their own layer, no text wrap,
+   * partly transparent). Strips are reused and moved; an empty list removes this story's strips.
+   */
+  setBands(bands: readonly BandSpec[]): void {
+    if (!bands.length) {
+      if (this.bandCache?.length || this.bandCache === undefined) removeBands(this.doc, this.storyKey());
+      this.bandCache = [];
+      return;
     }
+    const id = this.id;
+    const layer = bandLayer(this.doc);
+    if (!this.bandCache) {
+      this.bandCache = asArray(layer.pageItems.everyItem().getElements())
+        .filter((it: Any) => it.extractLabel(BAND_LABEL) === this.storyKey())
+        .map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), kind: String(rect.extractLabel('flatter-band-kind')) as 'long' | 'short' }));
+    }
+    const cache = this.bandCache;
+    const colors = { long: this.bandColor('long'), short: this.bandColor('short') };
+    const none = this.doc.swatches.itemByName('None');
+    bands.forEach((b, i) => {
+      const have = cache[i];
+      if (have && have.page === b.page && have.kind === b.kind) {
+        if (have.bounds.some((v, k) => Math.abs(v - b.bounds[k]!) > 1e-3)) {
+          have.rect.geometricBounds = b.bounds;
+          have.bounds = [...b.bounds];
+        }
+        return;
+      }
+      if (have) have.rect.remove();
+      const rect = this.doc.pages.item(b.page).rectangles.add({ geometricBounds: b.bounds, itemLayer: layer, fillColor: colors[b.kind], strokeColor: none, strokeWeight: 0, nonprinting: true });
+      rect.textWrapPreferences.textWrapMode = id.TextWrapModes.NONE;
+      rect.transparencySettings.blendingSettings.properties = { opacity: BAND_OPACITY, blendMode: id.BlendMode.MULTIPLY };
+      rect.insertLabel(BAND_LABEL, this.storyKey());
+      rect.insertLabel('flatter-band-kind', b.kind);
+      cache[i] = { rect, bounds: [...b.bounds], page: b.page, kind: b.kind };
+    });
+    for (const c of cache.splice(bands.length)) c.rect.remove();
+    layer.locked = true;
+  }
+
+  private bandColor(kind: 'long' | 'short'): Any {
+    const c = BAND_COLORS[kind];
+    const sw = this.doc.colors.itemByName(c.name);
+    if (sw.isValid) return sw;
+    return this.doc.colors.add({ name: c.name, model: this.id.ColorModel.PROCESS, space: this.id.ColorSpace.RGB, colorValue: [...c.rgb] });
   }
 
   /** Remove parked teeth (end of a session). */
@@ -286,8 +393,14 @@ export class DomPort implements Port {
     });
   }
 
+  private pageBounds = new Map<number, number[]>();
+
   private parkingBounds(page: number, i: number): number[] {
-    const b = this.doc.pages.item(Math.max(0, page)).bounds.map(Number);
+    let b = this.pageBounds.get(page);
+    if (!b) {
+      b = this.doc.pages.item(Math.max(0, page)).bounds.map(Number) as number[];
+      this.pageBounds.set(page, b);
+    }
     const x = b[3]! + 3000;
     const y = b[0]! + i * 0.5;
     return [y, x, y + 0.1, x + 1];
@@ -299,6 +412,8 @@ export class DomPort implements Port {
   private trackedNow = new Set<number>();
   /** Tracking writes made (for timing reports). */
   trackingWrites = 0;
+  /** Where setTracking spends its time (diagnosis). */
+  trackingStats = { readMs: 0, writeMs: 0, countMs: 0 };
 
   /**
    * Set the paragraph's tracking to base + span units. Only characters whose tracking differs are
@@ -308,6 +423,8 @@ export class DomPort implements Port {
    */
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void {
     if (!spans.length && !this.trackedNow.has(paragraph)) return;
+    const st = this.trackingStats;
+    let t0 = Date.now();
     const para = this.story.paragraphs.item(paragraph);
     const key = String(paragraph);
     if (!(key in this.baseTracking)) this.baseTracking[key] = baseTrackingOf(para);
@@ -315,9 +432,15 @@ export class DomPort implements Port {
     const n = Number(para.characters.length);
     const want = new Float64Array(n);
     for (const s of spans) want.fill(s.units, Math.max(0, s.from), Math.min(n, s.to));
-    const from = this.currentTracking(para, n, base);
+    // What Flatter wrote last time, unless the paragraph changed since (Undo, edits): its count of style
+    // ranges is a cheap check. Reading every range each tick slowed later writes (2026-10-17).
+    const cached = this.written.get(paragraph);
+    const from = cached && cached.want.length === n && Number(para.textStyleRanges.length) === cached.ranges ? cached.want : this.currentTracking(para, n, base);
+    st.readMs += Date.now() - t0;
+    t0 = Date.now();
+    const chars = para.characters;
     const write = (a: number, e: number, units: number) => {
-      para.characters.itemByRange(a, e - 1).tracking = base + units;
+      (e - a === 1 ? chars.item(a) : chars.itemByRange(a, e - 1)).tracking = base + units;
       this.trackingWrites++;
     };
     // Paint the spans in order (a line, then its word spaces on top): a span is written when any of its
@@ -345,9 +468,20 @@ export class DomPort implements Port {
       write(k, e, 0);
       k = e;
     }
-    if (spans.length) this.trackedNow.add(paragraph);
-    else this.trackedNow.delete(paragraph);
+    st.writeMs += Date.now() - t0;
+    t0 = Date.now();
+    if (spans.length) {
+      this.trackedNow.add(paragraph);
+      this.written.set(paragraph, { want, ranges: Number(para.textStyleRanges.length) });
+      st.countMs += Date.now() - t0;
+    } else {
+      this.trackedNow.delete(paragraph);
+      this.written.delete(paragraph);
+    }
   }
+
+  /** Tracking per character as last written, with the paragraph's style-range count after writing. */
+  private written = new Map<number, { want: Float64Array; ranges: number }>();
 
   /** The paragraph's tracking per character, as an offset from base, read from its style ranges. */
   private currentTracking(para: Any, n: number, base: number): Float64Array {
@@ -371,17 +505,57 @@ export class DomPort implements Port {
       if (para.isValid) para.texts.item(0).tracking = t;
     }
     this.baseTracking = { ...base };
+    this.written.clear();
   }
 
-  /** Remove the scratch frame used for probing. */
+  /** Remove the scratch frame used for probing and close the measuring bench. */
   dispose(): void {
     if (this.scratch?.isValid) this.scratch.remove();
     this.scratch = undefined;
+    if (this.bench?.isValid) this.bench.close(this.id.SaveOptions.NO);
+    this.bench = undefined;
+  }
+
+  private bench: Any | undefined;
+  private benchText: Any | undefined;
+
+  /**
+   * A frame in a hidden document for measuring whole paragraphs: 9000 pt wide lines, 15,000 pt tall.
+   * Document text settings that change glyph sizes (super- and subscript, small caps) are copied over.
+   */
+  private benchFrame(): Any {
+    if (this.bench?.isValid && this.benchText?.isValid) return this.benchText;
+    const id = this.id;
+    const bench = id.app.documents.add({ showingWindow: false });
+    bench.viewPreferences.horizontalMeasurementUnits = id.MeasurementUnits.POINTS;
+    bench.viewPreferences.verticalMeasurementUnits = id.MeasurementUnits.POINTS;
+    bench.documentPreferences.properties = { facingPages: false, pageWidth: 9200, pageHeight: 15100 };
+    const prefs: Record<string, unknown> = {};
+    for (const a of ['superscriptSize', 'superscriptPosition', 'subscriptSize', 'subscriptPosition', 'smallCap']) {
+      try {
+        prefs[a] = this.doc.textPreferences[a];
+      } catch {
+        /* not available */
+      }
+    }
+    try {
+      bench.textPreferences.properties = prefs;
+    } catch {
+      /* keep the defaults */
+    }
+    this.bench = bench;
+    this.benchText = bench.pages.item(0).textFrames.add({ geometricBounds: [0, 0, 15000, 9000], contents: 'x' });
+    this.benchText.textFramePreferences.insetSpacing = [0, 0, 0, 0];
+    return this.benchText;
   }
 
   existingTeeth(): Any[] {
-    const items = asArray(this.layer.pageItems.everyItem().getElements());
-    return items.filter((it: Any) => it.extractLabel(TOOTH_LABEL) === this.storyKey());
+    const all = this.layer.pageItems;
+    if (!Number(all.length)) return [];
+    const items = asArray(all.everyItem().getElements());
+    const labels = asArray(all.everyItem().extractLabel(TOOTH_LABEL)).map(String);
+    const key = this.storyKey();
+    return items.filter((_: Any, i: number) => labels[i] === key);
   }
 
   // --- helpers -------------------------------------------------------------
@@ -462,16 +636,16 @@ export class DomPort implements Port {
    * how InDesign sets tracked text (it breaks ligatures up when tracking is applied, 2026-10-17).
    */
   measureParagraph(para: Any, length: number): { advances: number[]; trackedAdvances: number[] } {
-    // Measured first: it reuses the probe frame, so it cannot run while the paragraph sits there.
     const space = this.spaceWidth(para);
-    const frame = this.scratchFrame(para);
+    // Measured in a hidden bench document, closed in dispose(): reading the positions of thousands of
+    // characters in a frame of the user's document made every later change to that frame slow (removing
+    // it took 12 s after a 12,000-character paragraph, probing 140 ms per word; 2026-10-17).
+    const frame = this.benchFrame();
     const story = frame.parentStory;
-    const left = Number(frame.geometricBounds[1]);
     story.texts.item(0).contents = '';
     para.texts.item(0).duplicate(this.id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
     const all = story.texts.item(0);
     all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0 };
-    frame.geometricBounds = [0, left, 20000, left + 9000];
     if (story.overflows) throw new Error('paragraph too long to measure');
     const chars = Array.from(String(story.contents));
     const read = (): number[] => {

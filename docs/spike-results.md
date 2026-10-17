@@ -138,6 +138,13 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 - Tracking a space character widens exactly that word gap: +100 units moves every following glyph by 1.2 pt at 12 pt, ligatures untouched.
 - Cost: 42 lines written once each plus 227 single spaces took 64 ms in one go. In the live loop (teeth, read-back of style ranges, about 230 writes per tick) a tick takes 220–360 ms on the user's 12,000-character story.
 
+## Performance findings (2026-10-17, `i6-perf.ts` … `i9-ref-growth.ts`)
+
+- In isolation every operation is cheap: 70 probes 0.14–0.22 s, creating 38 teeth 35–40 ms, moving them 3 ms, 38 lines + 230 spaces of tracking 45–85 ms (FAST_ENTIRE_SCRIPT is fastest, AUTO_UNDO in between).
+- **Reading many character positions poisons that frame.** After `characters.everyItem().horizontalOffset` on a 12,000-character paragraph, removing its frame took 0.6 s; after a second read 2.7 s; probing in the same frame went from 3 to 140 ms per word. Other objects (a rectangle elsewhere) stay fast. Reading in a hidden document and closing it (about 0.1 s) leaves nothing behind.
+- Teeth matched by list position across pages were recreated on many ticks (71 created for 38 lines in 7 ticks); pooled per page, only lines that newly need a tooth on a page create one.
+- Writing one space with `characters.item(k)` is cheaper than `itemByRange(k, k)`.
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

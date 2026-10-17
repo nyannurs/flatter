@@ -22,6 +22,10 @@
   html, body { height: 100%; margin: 0; }
   #scroll { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 10px 12px 24px; }
   .jump { cursor: pointer; text-decoration: underline dotted; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+  .swatch.long { background: rgba(37, 99, 235, 0.6); }
+  .swatch.short { background: rgba(234, 88, 12, 0.6); }
+  .hint { margin: 0 0 4px 26px; }
 </style>
 </head>
 <body>
@@ -50,6 +54,8 @@
       </sp-picker>
     </div>
     <sp-checkbox id="continuous">Continue rhythm across paragraphs</sp-checkbox>
+    <sp-checkbox id="showBands" checked>Show Flatterzone and band in the document</sp-checkbox>
+    <sp-body size="XS" class="hint"><span class="swatch long"></span> long lines end here · <span class="swatch short"></span> short lines end here (not printed)</sp-body>
   </div>
 
   <sp-divider size="small"></sp-divider>

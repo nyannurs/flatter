@@ -3,7 +3,7 @@
  * talks to this interface: dom-port.ts implements it with the InDesign DOM, and
  * the tests implement it with a small greedy composer.
  */
-import type { LineSlot, ToothSpec } from './geometry.ts';
+import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 
 export interface ParagraphData {
   /** Index of the paragraph in the story. */
@@ -50,6 +50,8 @@ export interface Port {
    * paragraph's base tracking, and reset every other character of the paragraph to the base.
    */
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void;
+  /** Show the Flatterzone and band behind the text (an empty list removes them). Optional. */
+  setBands?(bands: readonly BandSpec[]): void;
 }
 
 export interface TrackingSpan {

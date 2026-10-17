@@ -2,6 +2,30 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-17 (evening) — Performance and band view (ADR-016)
+
+The designer asked for the Flatterzone and band to be visible in the document, as in the playground, and for better performance.
+
+Performance, measured on a copy of the designer's 12,000-character story (`i3-user-copy.ts` now profiles every DomPort method):
+
+| | before | after |
+|---|---|---|
+| Apply | 31 s | 2.4–2.9 s |
+| Slider tick (letters ±30, word spaces ±25 %) | 300–600 ms | 120–380 ms |
+
+- **Cause of the slow Apply:** reading the positions of thousands of characters in a frame of the user's document made every later change to that frame slow (probing 140 ms per word instead of 3 ms; removing the scratch frame 12 s). Paragraphs are now measured in a hidden bench document that is closed afterwards (`i7-scratch.ts`, `i8-measure-aftermath.ts`, `i9-ref-growth.ts`).
+- **Teeth** are reused per page: matching them by list position made teeth jump pages and be deleted and recreated whenever an earlier page's line count changed. The per-tick line label writes are gone (only an in-memory label is used). Page bounds for parking are cached.
+- **Tracking** remembers what it wrote and only re-reads the document when the paragraph's style-range count changed (Undo, edits); single spaces are addressed as characters, not ranges.
+- The panel ignores selection events while it is busy (the bench document opens and closes).
+
+Band view:
+- Tinted strips like the playground: blue where long lines end, orange where short lines end, one pair per stretch of visible lines in a column, following indents and threaded frames (`bandsFor` in geometry.ts, `DomPort.setBands`).
+- Own layer "Flatter (Ansicht)" under the control layer: not printed, locked, no text wrap, 22 % opacity with Multiply. Colours "Flatter Band lang" / "Flatter Band kurz" are added while bands are shown and removed with the last band.
+- Panel: "Show Flatterzone and band in the document" (on by default) with a colour legend. Remove takes the bands, layer and colours away.
+- Integration tests now apply with bands on in every case (lines unchanged) and check that Remove cleans up.
+
+Next: the designer tries it. Remaining cost per tick is mostly one tracking write per word space; further speed would need fewer writes (for example coarser word-space steps that change less often).
+
 ## 2026-10-17 (later) — Word spaces as a second precision control (ADR-015)
 
 The designer said yes to per-line word-space adjustment. Done:

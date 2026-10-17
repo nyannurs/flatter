@@ -6,7 +6,7 @@
  * line's baseline (spike S1). Lines are located on the page by their baseline
  * and the left edge of their column.
  */
-import type { PlannedLine } from '@flatter/core';
+import type { Plan, PlannedLine } from '@flatter/core';
 
 export interface LineSlot {
   /** Page the line sits on (index into document pages). */
@@ -81,4 +81,47 @@ export function slotsForPlan(planned: number, current: readonly LineSlot[], lead
 /** Same position within a tolerance: used to decide whether teeth need moving. */
 export function sameSlot(a: LineSlot, b: LineSlot, tol = 0.01): boolean {
   return a.page === b.page && Math.abs(a.baseline - b.baseline) < tol && Math.abs(a.startX - b.startX) < tol && Math.abs(a.columnRight - b.columnRight) < tol;
+}
+
+/** A tinted strip showing where long or short lines should end (the playground's band view). */
+export interface BandSpec {
+  page: number;
+  /** [top, left, bottom, right] in page coordinates. */
+  bounds: [number, number, number, number];
+  kind: 'long' | 'short';
+}
+
+/**
+ * The long and short bands behind a paragraph's visible lines: one pair per stretch of lines in the
+ * same column. The right edge of the measure is each line's start plus its available width, so first-line
+ * indents and paragraph indents come out right.
+ */
+export function bandsFor(plan: Plan, slots: readonly (LineSlot | undefined)[], leading: number): BandSpec[] {
+  const { band, flatterzone } = plan.params;
+  const out: BandSpec[] = [];
+  const n = Math.min(plan.lines.length, slots.length);
+  let i = 0;
+  while (i < n) {
+    const s = slots[i];
+    if (!s) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < n) {
+      const t = slots[j];
+      const prev = slots[j - 1]!;
+      if (!t || t.page !== s.page || Math.abs(t.columnRight - s.columnRight) > 0.5 || t.baseline <= prev.baseline) break;
+      j++;
+    }
+    const right = s.startX + plan.lines[i]!.available;
+    const top = s.baseline - leading * 0.8;
+    const bottom = slots[j - 1]!.baseline + leading * 0.2;
+    out.push(
+      { page: s.page, bounds: [top, right - band, bottom, right], kind: 'long' },
+      { page: s.page, bounds: [top, right - flatterzone - band, bottom, right - flatterzone], kind: 'short' },
+    );
+    i = j;
+  }
+  return out;
 }

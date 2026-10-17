@@ -1,7 +1,26 @@
 // Reproduce the user's precise-tracking test (2026-10-17) on a copy of their text in a throwaway document.
 // Read-only on the user's file: finds the open TestFile's untouched story (Paragraph Composer, one paragraph),
 // copies its text into two threaded frames of the same size, then applies Flatter with the panel's settings.
-import { liveUpdate, liveVerify, openSession, type ApplySettings } from '@flatter/indesign-adapter';
+import { clearMeasureCache, DomPort, liveUpdate, liveVerify, openSession, type ApplySettings } from '@flatter/indesign-adapter';
+
+// Time every DomPort method (ms and calls), for performance work.
+const profile: Record<string, { ms: number; calls: number }> = {};
+for (const name of ['paragraphs', 'measureParagraph', 'probe', 'probeWord', 'scratchFrame', 'measureSecond', 'readLines', 'overset', 'frames', 'visibleEnd', 'columnWidth', 'setTeeth', 'existingTeeth', 'parkingBounds', 'setTracking', 'currentTracking', 'dropParkedTeeth', 'resetTracking', 'dispose'] as const) {
+  const proto = DomPort.prototype as Any;
+  const orig = proto[name];
+  if (typeof orig !== 'function') continue;
+  proto[name] = function (this: Any, ...args: Any[]) {
+    const t = Date.now();
+    try {
+      return orig.apply(this, args);
+    } finally {
+      const p = (profile[name] ??= { ms: 0, calls: 0 });
+      p.ms += Date.now() - t;
+      p.calls++;
+    }
+  };
+}
+const snapshot = () => Object.fromEntries(Object.entries(profile).map(([k, v]) => [k, { ...v }]));
 import { app, asArray, id, inNewDocument, type Any } from './lib.ts';
 
 function sourceStory(): Any {
@@ -37,12 +56,16 @@ inNewDocument((doc: Any) => {
     maxConsecutiveHyphens: 1, sense: true, continuous: false,
     tracking: { enabled: true, mode: 'precise', max: 30 }, ...({ epsilon: Number(app.extractLabel('flatter-i3-eps') || 0.15) } as Any),
     wordSpaceShare: Number(app.extractLabel('flatter-i3-words') || 0.25),
+    showBands: app.extractLabel('flatter-i3-bands') !== 'off',
   };
+  clearMeasureCache();
   const t0 = Date.now();
   // As in the user's test: Apply without tracking, then switch "Align line ends exactly" on in the live session.
   const { tracking: _t, ...untracked } = settings;
   const { live, report: plain } = openSession(story, untracked);
   const applyMs = Date.now() - t0;
+  const applyProfile = snapshot();
+  for (const k of Object.keys(profile)) delete profile[k];
   liveUpdate(live, settings, true);
   const report = { ...liveVerify(live), timings: plain.timings };
   const summary = (r: Any) => ({
@@ -105,6 +128,7 @@ inNewDocument((doc: Any) => {
     liveUpdate(live, { ...settings, tracking: { enabled: true, mode: 'precise', max } }, i === 0);
     ticks.push(Date.now() - t);
   }
+  const tickProfile = snapshot();
   const tv = Date.now();
   const verified = liveVerify(live);
   const verifyMs = Date.now() - tv;
@@ -112,7 +136,28 @@ inNewDocument((doc: Any) => {
   return {
     source: { ...sourceInfo, chars: Number(src.characters.length), width: w, height: h, frames: sizes },
     apply: { ms: applyMs, timings: report.timings, probes: (plain as Any).probes, ...summary(report) },
-    calib, probe, ticksMs: ticks, spent, writes: live.port.trackingWrites,
+    bands: (() => {
+      const layer = doc.layers.itemByName('Flatter (Ansicht)');
+      if (!layer.isValid) return { layer: false };
+      const items = asArray(layer.pageItems.everyItem().getElements());
+      return {
+        layerIndex: Number(layer.index), controlIndex: Number(doc.layers.itemByName('Flatter (Steuerung)').index), printable: layer.printable, locked: layer.locked,
+        count: items.length, wrap: [...new Set(items.map((it: Any) => String(it.textWrapPreferences.textWrapMode)))],
+        opacity: items[0] ? Number(items[0].transparencySettings.blendingSettings.opacity) : undefined,
+        first: items[0] ? items[0].geometricBounds.map((v: number) => Math.round(v * 10) / 10) : undefined,
+      };
+    })(),
+    exported: (() => {
+      const out = app.extractLabel('flatter-i3-png');
+      if (!out) return undefined;
+      // Make the view layer printable in this throwaway copy only, so it shows in the picture.
+      const view = doc.layers.itemByName('Flatter (Ansicht)');
+      if (view.isValid) { view.locked = false; view.printable = true; asArray(view.pageItems.everyItem().getElements()).forEach((it: Any) => { it.nonprinting = false; }); }
+      app.pngExportPreferences.properties = { pageString: '1', exportResolution: 200, pngExportRange: id.PNGExportRangeEnum.EXPORT_RANGE };
+      doc.exportFile(id.ExportFormat.PNG_FORMAT, out);
+      return out;
+    })(),
+    applyProfile, tickProfile, calib, probe, ticksMs: ticks, spent, writes: live.port.trackingWrites, teethStats: (live.port as Any).teethStats, trackingStats: (live.port as Any).trackingStats,
     afterTicks: { verifyMs, ...summary(verified) },
     distinctTrackingValues: trackingInDoc,
     pass: verified.linesAsPlanned === verified.linesPlanned,

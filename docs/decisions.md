@@ -168,3 +168,9 @@ The designer asked for per-line word-space adjustment alongside tracking so line
 - **Split**: the distance to the edge is shared by `splitAdjustment`, which minimises (t/max)² + (w/max)² (the precise-mode cost): each control is used, relative to its maximum, in proportion to its reach. When one control reaches its maximum the other takes the rest. Values are cut toward zero, so lines never overshoot. Letter tracking only counts ligature widening (ADR-014) when it is non-zero.
 - **Reach, German reference text, 60 characters per line, 10 pt**: letters ±10 alone: 14/33 lines within 0.5 pt, worst 16.7 pt off; with ±50 % word spaces: worst 8.6 pt; letters ±30 with ±50 %: 29/32 within 0.5 pt, worst 3.7 pt.
 - Rescue mode (ADR-010) does not use word spaces.
+
+## ADR-016: Measuring bench document, per-page teeth, band view (2026-10-17)
+
+- **Measure whole paragraphs in a hidden document** that is closed after Apply's preparation. Reading the positions of thousands of characters in a frame of the user's document leaves InDesign with work on every later change to that frame (measured: probing 140 ms per word instead of 3 ms, removing the frame 12 s). Probing stays in a small scratch frame in the user's document, so the document's own hyphenation exceptions still apply. Document text settings that change glyph sizes (super/subscript, small caps) are copied to the bench.
+- **Teeth are pooled per page.** A tooth cannot move between pages; list-position matching recreated teeth whenever an earlier page's line count changed.
+- **Band view** on its own layer "Flatter (Ansicht)", directly under the control layer: non-printing, locked, no text wrap, 22 % opacity, Multiply, so it sits over any background and the text stays readable. It shows the target bands (long: measure − band … measure; short: measure − Z − band … measure − Z), like the playground. On by default in the panel; never printed or exported (non-printing layer).

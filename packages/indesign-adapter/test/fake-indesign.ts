@@ -3,7 +3,7 @@
  * loop in Node: greedy line breaking, teeth limit a line's width by baseline,
  * InDesign's squeeze tolerance (spike S2), and a dictionary that may refuse points.
  */
-import type { LineSlot, ParagraphData, Port, ReadLine, ToothSpec, TrackingSpan } from '../src/index.ts';
+import type { BandSpec, LineSlot, ParagraphData, Port, ReadLine, ToothSpec, TrackingSpan } from '../src/index.ts';
 
 export interface FakeOptions {
   measure: number;
@@ -59,6 +59,12 @@ export class FakeInDesign implements Port {
   probe(words: readonly string[]): Map<string, number[]> | undefined {
     if (!this.o.probing) return undefined;
     return new Map(words.map((w) => [w, this.o.accepts(w)]));
+  }
+
+  bands: BandSpec[] = [];
+
+  setBands(bands: readonly BandSpec[]): void {
+    this.bands = [...bands];
   }
 
   setTeeth(teeth: readonly ToothSpec[]): void {

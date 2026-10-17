@@ -5,7 +5,7 @@
  */
 import { opposite, solveParagraph, type FlatterSettings, type HyphenClass, type Item, type Plan, type Role } from '@flatter/core';
 import { createHyphenator, createSenseRule, type Hyphenator, type HyphenLanguage } from '@flatter/hyphenation';
-import { slotsForPlan, toothFor, sameSlot, type LineSlot, type ToothSpec } from './geometry.ts';
+import { bandsFor, slotsForPlan, toothFor, sameSlot, type BandSpec, type LineSlot, type ToothSpec } from './geometry.ts';
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
@@ -25,6 +25,8 @@ export interface ApplySettings extends Omit<FlatterSettings, 'measure' | 'langua
    * (panel slider, e.g. 0.3 = ±30 %). Converted per paragraph into tracking.wordSpaceMax (ADR-015).
    */
   wordSpaceShare?: number;
+  /** Show the Flatterzone and band behind the text (panel switch). */
+  showBands?: boolean;
 }
 
 export interface ParagraphResult {
@@ -145,6 +147,12 @@ export class FlatterSession {
     // took most of a slider tick in a long overset story (2026-10-17).
     for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
     this.port.setTeeth(this.teeth);
+    if (this.port.setBands) {
+      const bands: BandSpec[] = this.settings.showBands
+        ? this.work.flatMap((w) => bandsFor(w.plan, this.usedSlots.get(w.data.index) ?? [], w.data.leading))
+        : [];
+      this.port.setBands(bands);
+    }
   }
 
   /**
@@ -235,7 +243,7 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
 
 function solve(items: Item[], data: ParagraphData, settings: ApplySettings, startRole: Role | undefined): Plan {
   const lang = hyphenLanguage(data.language);
-  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, ...rest } = settings;
+  const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, showBands: _b, ...rest } = settings;
   const flatterzone = zoneShare !== undefined ? zoneShare * data.measure : rest.flatterzone;
   const band = bandShare !== undefined && flatterzone !== undefined ? bandShare * flatterzone : rest.band;
   return solveParagraph(items, {
