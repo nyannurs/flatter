@@ -11,6 +11,9 @@ import {
   openSession,
   removeFlatter,
   storedSettings,
+  setStoryLanguage,
+  storyLanguage,
+  LANGUAGES,
   type ApplyResult,
   type ApplySettings,
   type LiveSession,
@@ -98,6 +101,59 @@ export function targetStory(): Any | undefined {
     /* no usable selection */
   }
   return undefined;
+}
+
+/** Every story in the selection (selected frames, or the story the text cursor is in), once each. */
+function selectedStories(): Any[] {
+  const out = new Map<number, Any>();
+  try {
+    if (!app.documents.length) return [];
+    for (const item of app.selection ?? []) {
+      const story = item?.parentStory;
+      if (story?.isValid) out.set(Number(story.id), story);
+    }
+  } catch {
+    /* no usable selection */
+  }
+  return [...out.values()];
+}
+
+/** Show the target story's language and mark the matching button. */
+function showLanguage(story: Any | undefined): void {
+  const name = story ? storyLanguage(story) : '';
+  $('langNow').textContent = name ? `Now: ${name}` : '';
+  $('langDe').selected = name === LANGUAGES.de;
+  $('langEn').selected = name === LANGUAGES.en;
+}
+
+/**
+ * German / English buttons: set the language of the selected stories (all linked frames). A story
+ * Flatter works on is applied again, because the language changes hyphenation and required settings.
+ */
+function setLanguage(lang: keyof typeof LANGUAGES): void {
+  if (state.busy) return;
+  const stories = selectedStories();
+  if (!stories.length) {
+    setStatus('Select one or more text frames first.', 'bad');
+    return;
+  }
+  try {
+    setStoryLanguage(stories, LANGUAGES[lang]);
+  } catch (e) {
+    fail(e);
+    return;
+  }
+  const story = targetStory();
+  showLanguage(story);
+  const others = stories.filter((s) => s.id !== story?.id && storedSettings(s)).length;
+  if (story && storedSettings(story)) {
+    state.live = undefined;
+    state.failed = undefined;
+    apply();
+  } else {
+    setStatus(`Language set to ${LANGUAGES[lang]} for ${stories.length === 1 ? 'this story' : `${stories.length} stories`}.`, 'ok', 'Press Apply to set the rag.');
+  }
+  if (others) $('meta').textContent += ` ${others} other selected ${others === 1 ? 'story uses' : 'stories use'} Flatter: select ${others === 1 ? 'it' : 'each'} and press Recompute.`;
 }
 
 function syncLabels(): void {
@@ -308,10 +364,12 @@ function onSelectionChanged(): void {
   const story = targetStory();
   if (!story) {
     $('target').textContent = 'Select a text frame or put the cursor in text.';
+    showLanguage(undefined);
     return;
   }
   const words = String(story.contents).replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
   $('target').textContent = `Story: ${words}…`;
+  showLanguage(story);
   if (state.storyId !== story.id) {
     state.live = undefined;
     state.failed = undefined;
@@ -345,6 +403,8 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  $('langDe').addEventListener('click', () => setLanguage('de'));
+  $('langEn').addEventListener('click', () => setLanguage('en'));
   $('report').addEventListener('click', (e: Any) => {
     let el = e.target;
     while (el && el.id !== 'report' && !el.dataset?.l) el = el.parentElement;

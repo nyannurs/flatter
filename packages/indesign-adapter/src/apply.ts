@@ -80,6 +80,8 @@ interface Working {
   items: Item[];
   plan: Plan;
   refused: string[];
+  /** Per-line measures the plan was made with (frames of different widths), or undefined. */
+  widths?: number[] | undefined;
 }
 
 /**
@@ -135,7 +137,8 @@ export class FlatterSession {
     this.settings = settings;
     let nextRole: Role | undefined;
     for (const w of this.work) {
-      w.plan = solve(w.items, w.data, settings, settings.continuous ? nextRole : undefined);
+      w.widths = lineMeasuresFor(w.data, slotsOf(this.current, w.data.index));
+      w.plan = solve(w.items, w.data, settings, settings.continuous ? nextRole : undefined, w.widths);
       if (settings.continuous) nextRole = w.plan.lines.length ? opposite(w.plan.lines[w.plan.lines.length - 1]!.role) : nextRole;
     }
   }
@@ -177,6 +180,14 @@ export class FlatterSession {
       let changed = false;
       for (const w of this.work) {
         const got = this.current.filter((l) => l.paragraph === w.data.index);
+        // The paragraph's lines sit in frames of other widths than planned for: plan again.
+        const widths = lineMeasuresFor(w.data, got.map((l) => l.slot));
+        if (!sameWidths(widths, w.widths)) {
+          w.widths = widths;
+          w.plan = solve(w.items, w.data, this.settings, w.plan.startRole, widths);
+          changed = true;
+          continue;
+        }
         const used = this.usedSlots.get(w.data.index) ?? [];
         const bad = firstMismatch(w, got, this.overset);
         if (bad < 0) {
@@ -194,7 +205,7 @@ export class FlatterSession {
             // repeated word costs one round, not one round per occurrence (2026-10-17).
             const same = new Set(sameWordPoints(w.items, line.breakAt));
             w.items = w.items.map((it, k) => (same.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
-            w.plan = solve(w.items, w.data, this.settings, w.plan.startRole);
+            w.plan = solve(w.items, w.data, this.settings, w.plan.startRole, w.widths);
           }
         }
         changed = true;
@@ -255,7 +266,26 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
   return session.verify(settings.maxRounds ?? 6);
 }
 
-function solve(items: Item[], data: ParagraphData, settings: ApplySettings, startRole: Role | undefined): Plan {
+/**
+ * Each line's measure from the column it sits in: the paragraph's measure plus the difference between
+ * that column's width and the column the measure was taken from. Undefined when every line has the
+ * paragraph's measure.
+ */
+export function lineMeasuresFor(data: ParagraphData, slots: readonly LineSlot[]): number[] | undefined {
+  if (data.columnWidth === undefined || !slots.length) return undefined;
+  const out = slots.map((s) => (s.columnLeft === undefined ? data.measure : data.measure + (s.columnRight - s.columnLeft - data.columnWidth!)));
+  return out.every((m) => Math.abs(m - data.measure) < 0.01) ? undefined : out;
+}
+
+function sameWidths(a: readonly number[] | undefined, b: readonly number[] | undefined): boolean {
+  if (!a || !b) return a === b;
+  // Lines beyond the list take its last entry, so compare over the longer list.
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) if (Math.abs(a[Math.min(i, a.length - 1)]! - b[Math.min(i, b.length - 1)]!) > 0.01) return false;
+  return true;
+}
+
+function solve(items: Item[], data: ParagraphData, settings: ApplySettings, startRole: Role | undefined, widths?: readonly number[]): Plan {
   const lang = hyphenLanguage(data.language);
   const { continuous: _c, sense: _s, maxRounds: _m, zoneShare, bandShare, wordSpaceShare, showBands: _b, draft, ...rest } = settings;
   const flatterzone = zoneShare !== undefined ? zoneShare * data.measure : rest.flatterzone;
@@ -265,6 +295,7 @@ function solve(items: Item[], data: ParagraphData, settings: ApplySettings, star
     ...(flatterzone !== undefined ? { flatterzone } : {}),
     ...(band !== undefined ? { band } : {}),
     measure: data.measure,
+    ...(widths ? { lineMeasures: widths } : {}),
     firstLineIndent: data.firstLineIndent,
     language: lang.startsWith('de') ? 'de' : 'en',
     ...(startRole ? { startRole } : {}),

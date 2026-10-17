@@ -60,6 +60,7 @@ inNewDocument((doc: Any) => {
       ms: r.ms,
       teeth,
       bands,
+      measures: [...new Set(r.paragraphs.flatMap((p) => p.plan.lines.map((l) => Math.round(l.available + l.indent))))],
       reapply: { lines: `${again.linesAsPlanned}/${again.linesPlanned}`, probes: again.probes, ms: again.ms },
       tracked: r.trackedLines,
       oversetLines: r.oversetLines,
@@ -76,6 +77,8 @@ inNewDocument((doc: Any) => {
       },
       pass:
         r.linesAsPlanned === r.linesPlanned &&
+        // Threaded into a wider frame: its lines are planned at its width.
+        (!name.includes('into a wide') || new Set(r.paragraphs.flatMap((p) => p.plan.lines.map((l) => Math.round(l.available + l.indent)))).size >= 2) &&
         again.linesAsPlanned === again.linesPlanned &&
         JSON.stringify(afterRemove) === JSON.stringify(original) &&
         teethOf(doc, story) === 0 &&
@@ -136,6 +139,19 @@ inNewDocument((doc: Any) => {
       tracking: { enabled: true, mode: 'precise', max },
       wordSpaceShare: share,
     });
+  }
+
+  // Threaded frames of different widths: each frame's lines are planned at that frame's width.
+  for (const [name, settings] of [
+    ['plain', {}],
+    ['exact ends', { tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 }],
+  ] as const) {
+    run(`German, narrow frame threaded into a wide one, ${name}`, () => {
+      const narrow = frameWithDefaults(doc, [40, 40, 170, 250], DE_TEXT.join('\r'), 'German: 2006 Reform');
+      const wide = doc.pages.item(0).textFrames.add({ geometricBounds: [200, 40, 500, 460] });
+      narrow.nextTextFrame = wide;
+      return narrow;
+    }, settings);
   }
 
   // A document in millimetres (the user's TestFile): Flatter must work in points and restore the setting.

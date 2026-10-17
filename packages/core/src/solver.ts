@@ -8,7 +8,7 @@
  */
 import type { Item } from './items.ts';
 import { ParagraphMetrics } from './metrics.ts';
-import { opposite, resolveParams, type FlatterSettings, type ResolvedParams, type Role } from './params.ts';
+import { lineMeasure, lineScale, opposite, resolveParams, type FlatterSettings, type ResolvedParams, type Role } from './params.ts';
 import type { Plan, PlannedLine } from './plan.ts';
 import { unitHash } from './random.ts';
 import { checkPlan, planStats } from './check.ts';
@@ -45,6 +45,8 @@ interface Node {
   tracking: number;
   /** Tracking added to each word space inside this line, in 1/1000 em (0 = none). */
   wordSpace: number;
+  /** Index of this line in the paragraph (−1 for the virtual start). Part of the state when widths vary. */
+  line: number;
 }
 
 /**
@@ -97,25 +99,25 @@ function hyphenCost(P: ResolvedParams, quality: string): number {
 }
 
 /** Target gap (distance from the full measure) of a band line. */
-export function targetGap(P: ResolvedParams, role: Role, startItem: number): number {
+export function targetGap(P: ResolvedParams, role: Role, startItem: number, scale = 1): number {
   // Precise Laufweite keeps long lines a safety distance from the measure (TrackingRules.safety).
-  const lo = role === 'long' ? (P.tracking.enabled && P.tracking.mode === 'precise' ? P.tracking.safety : 0) : P.flatterzone;
+  const lo = role === 'long' ? (P.tracking.enabled && P.tracking.mode === 'precise' ? P.tracking.safety : 0) : P.flatterzone * scale;
   if (P.variation === 0) return lo;
-  return lo + P.variation * P.band * unitHash(P.variationSeed, startItem);
+  return lo + P.variation * P.band * scale * unitHash(P.variationSeed, startItem);
 }
 
 function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean): DPResult | null {
   const precise = allowTracking && P.tracking.enabled && P.tracking.mode === 'precise';
   const { items, n, candidates } = M;
-  const Z = P.flatterzone;
-  const band = P.band;
   const W = P.weights;
   const hyphenCap = W.hyphenBudget + 6;
+  // With per-line measures the line number decides a line's width, so it becomes part of the state.
+  const byLine = P.lineMeasures !== undefined;
   const buckets = new Map<number, Map<string, Node>>();
   let states = 0;
 
   const add = (node: Node): void => {
-    const key = `${node.a}|${node.role}|${node.consec}|${Math.min(node.hyphens, hyphenCap)}`;
+    const key = `${node.a}|${node.role}|${node.consec}|${Math.min(node.hyphens, hyphenCap)}${byLine ? `|${node.line}` : ''}`;
     let bucket = buckets.get(node.b);
     if (!bucket) {
       bucket = new Map();
@@ -132,7 +134,12 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
     const a = node.b;
     const first = a < 0;
     const indent = first ? P.firstLineIndent : 0;
-    const avail = P.measure - indent;
+    const lineNo = node.line + 1;
+    const avail = lineMeasure(P, lineNo) - indent;
+    const scale = lineScale(P, lineNo);
+    const Z = P.flatterzone * scale;
+    const band = P.band * scale;
+    const contrast = P.contrast * scale;
     const role = opposite(node.role);
 
     /**
@@ -175,7 +182,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           // Precise Laufweite: track letters and word spaces so the line end lands on its target, within
           // their maxima, never closer to the measure than the safety distance (unless the untracked line
           // already is). Letter tracking also breaks up ligatures (ligExtra).
-          const target = targetGap(P, role, g.start);
+          const target = targetGap(P, role, g.start, scale);
           const T = trackUnit > 0 ? P.tracking.max : 0;
           let { t, w } = splitAdjustment(gap - ligExtra - target, trackUnit, T, spaceUnit, P.tracking.wordSpaceMax);
           if (t === 0) w = splitAdjustment(gap - target, 0, 0, spaceUnit, P.tracking.wordSpaceMax).w;
@@ -214,14 +221,14 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           if (allowSkip && gap > hi + Z) return 'short';
           cost += SOFT_COST.band + SOFT_COST.bandSlope * (dist / band) ** 2;
         }
-        const target = targetGap(P, role, g.start);
+        const target = targetGap(P, role, g.start, scale);
         cost += (precise ? W.edge : W.centring) * ((gap - target) / band) ** 2;
         if (!node.exempt) {
           // Short gap minus long gap: how much shorter the short neighbour is.
           const diff = role === 'short' ? gap - node.gap : node.gap - gap;
-          if (diff < P.contrast - TOL) {
+          if (diff < contrast - TOL) {
             if (hard) return 'next';
-            cost += SOFT_COST.contrast + SOFT_COST.bandSlope * ((P.contrast - diff) / band) ** 2;
+            cost += SOFT_COST.contrast + SOFT_COST.bandSlope * ((contrast - diff) / band) ** 2;
           }
         }
       }
@@ -300,6 +307,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         startRun,
         tracking,
         wordSpace,
+        line: lineNo,
       });
 
       return forced ? 'stop' : 'added';
@@ -334,6 +342,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
     startRun: 0,
     tracking: 0,
     wordSpace: 0,
+    line: -1,
   };
   extend(start, 0);
   for (let ci = 0; ci < candidates.length - 1; ci++) {
@@ -375,7 +384,8 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
     const g = { ...g0, width: g0.width + trackWidth, ink: g0.ink + trackWidth };
     const first = spec.a < 0;
     const indent = first ? P.firstLineIndent : 0;
-    const available = P.measure - indent;
+    const available = lineMeasure(P, index) - indent;
+    const scale = lineScale(P, index);
     const final = spec.b === M.n;
     const kind = final ? 'last' : M.isForced(spec.b) ? 'forced' : 'band';
     const pen = final ? undefined : M.penaltyAt(spec.b);
@@ -392,7 +402,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
       kind === 'band'
         ? Math.max(g.ink, Math.min(g.ink + Math.min(margin, slack / 2), Math.max(available, g.ink)))
         : available;
-    const targetWidth = kind === 'band' ? available - targetGap(P, spec.role, g.start) : g.width;
+    const targetWidth = kind === 'band' ? available - targetGap(P, spec.role, g.start, scale) : g.width;
     const line: PlannedLine = {
       index,
       role: spec.role,

@@ -99,6 +99,13 @@ export interface FlatterSettings {
   contrast?: number;
   /** Extra left indent of the first line. Its bands are measured from the indent. */
   firstLineIndent?: number;
+  /**
+   * The measure of each line when it differs from line to line, for example in threaded frames of
+   * different widths: lineMeasures[i] is line i's measure, lines beyond the list take the last entry.
+   * Flatterzone, band and contrast scale with each line's measure (they are set relative to `measure`),
+   * so a percentage setting means the same in a wide frame as in a narrow one.
+   */
+  lineMeasures?: readonly number[];
   /** ε: steering margin added to the planned width (plan §3). */
   epsilon?: number;
   phase?: Phase;
@@ -129,6 +136,8 @@ export interface ResolvedParams {
   band: number;
   contrast: number;
   firstLineIndent: number;
+  /** Per-line measures (see FlatterSettings.lineMeasures); undefined when every line has `measure`. */
+  lineMeasures: readonly number[] | undefined;
   epsilon: number;
   phase: Phase;
   startRole: Role | undefined;
@@ -266,6 +275,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     band,
     contrast,
     firstLineIndent: settings.firstLineIndent ?? 0,
+    lineMeasures: lineMeasuresOf(settings.lineMeasures, measure),
     epsilon: settings.epsilon ?? 0.15,
     phase: settings.phase ?? 'long',
     startRole: settings.startRole,
@@ -286,3 +296,21 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
 }
 
 export const opposite = (r: Role): Role => (r === 'long' ? 'short' : 'long');
+
+function lineMeasuresOf(list: readonly number[] | undefined, measure: number): readonly number[] | undefined {
+  if (!list?.length) return undefined;
+  for (const m of list) if (!(m > 0)) throw new RangeError(`lineMeasures must be positive, got ${m}`);
+  return list.every((m) => Math.abs(m - measure) < 1e-6) ? undefined : [...list];
+}
+
+/** The measure of line i (before its indent). */
+export function lineMeasure(P: ResolvedParams, line: number): number {
+  const list = P.lineMeasures;
+  if (!list) return P.measure;
+  return list[Math.min(Math.max(0, line), list.length - 1)]!;
+}
+
+/** How Flatterzone, band and contrast scale on line i: its measure over the paragraph's measure. */
+export function lineScale(P: ResolvedParams, line: number): number {
+  return P.lineMeasures ? lineMeasure(P, line) / P.measure : 1;
+}

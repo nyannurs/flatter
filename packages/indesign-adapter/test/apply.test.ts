@@ -132,6 +132,20 @@ describe('typed hyphens InDesign will not break after', () => {
   });
 });
 
+describe('threaded frames of different widths', () => {
+  it('plans each line at the width of the frame it sits in', () => {
+    for (const [line, wide] of [[4, 330], [6, 160], [9, 300]] as const) {
+      const fake = new FakeInDesign(DE, { measure: 220, accepts: ourSafe, frameFrom: { line, measure: wide } });
+      const r = applyToPort(fake, {});
+      expect(r.linesAsPlanned, `frame change after line ${line}`).toBe(r.linesPlanned);
+      // Lines in the second frame were planned for its width.
+      const lines = r.paragraphs.flatMap((p) => p.plan.lines);
+      expect(lines.slice(line).every((l) => l.available + l.indent === wide)).toBe(true);
+      expect(lines.slice(0, Math.min(line, lines.length)).every((l) => l.available + l.indent === 220)).toBe(true);
+    }
+  });
+});
+
 describe('band view', () => {
   it('shows the bands when asked and removes them when switched off', () => {
     const fake = new FakeInDesign(DE, { measure: 220, accepts: ourSafe });

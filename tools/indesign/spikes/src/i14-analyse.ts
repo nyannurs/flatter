@@ -47,6 +47,7 @@ inNewDocument((doc: Any) => {
     const mm = report.paragraphs[0]!.mismatch;
     rows.push({
       mismatch: mm ? `line ${mm.line}: planned …${mm.planned.text.slice(-14)} hy=${mm.planned.hyphen} got …${mm.got?.text.slice(-14)} hy=${mm.got?.hyphenated}` : undefined,
+      measures: [...new Set(plan.lines.map((l: Any) => Math.round(l.available + l.indent)))],
       name, solvedAs: plan.solvedAs, lines: plan.lines.length, visible, asPlanned: `${report.linesAsPlanned}/${report.linesPlanned}`,
       linesWithRhythmProblems: lines.size, visibleWithProblems: visibleBad, kinds, hyphens: plan.stats.hyphens,
       measure: Math.round(plan.params.measure * 10) / 10, Z: Math.round(plan.params.flatterzone * 10) / 10, band: Math.round(plan.params.band * 10) / 10,
@@ -56,17 +57,10 @@ inNewDocument((doc: Any) => {
     made.forEach((f: Any) => f.remove());
   };
   const base: ApplySettings = { ...userSettings, showBands: false };
-  run('your settings (English language on German text)', base);
-
-  run('language German: 2006 Reform', base, 'German: 2006 Reform');
-  run('German, soft search 40× wider (beam 2000)', { ...base, softBeam: 2000 } as Any, 'German: 2006 Reform');
   const de = 'German: 2006 Reform';
-  run('German + hyphenation Normal (class C too)', { ...base, hyphenation: 'normal' }, de);
-  run('German + 3 hyphens in a row', { ...base, maxConsecutiveHyphens: 3 }, de);
-  run('German + Flatterzone 12 %', { ...base, zoneShare: 0.12 }, de);
+  run('your settings, language as in your file', base);
+  run('German', base, de);
   run('German + Flatterzone 15 %', { ...base, zoneShare: 0.15 }, de);
-  run('German + tracking rescue ±3', { ...base, tracking: { enabled: true, max: 3 } }, de);
   run('German + exact ends (letters ±10, spaces ±25 %)', { ...base, tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 }, de);
-  run('English + exact ends (letters ±10, spaces ±25 %)', { ...base, tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 });
   return { userSettings, sizes, rows };
 });

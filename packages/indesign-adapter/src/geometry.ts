@@ -17,6 +17,8 @@ export interface LineSlot {
   startX: number;
   /** Right edge of the column the line sits in. */
   columnRight: number;
+  /** Left edge of that column (frames of different widths give lines different measures). */
+  columnLeft?: number;
   /** Space to the next column or object on the right; the tooth must not reach into it. */
   gutter: number;
   /** Font size of the line, for the x-height estimate. */
@@ -121,12 +123,17 @@ export function bandsFor(plan: Plan, slots: readonly (LineSlot | undefined)[], l
       if (!t || t.page !== s.page || Math.abs(t.columnRight - s.columnRight) > 0.5 || t.baseline <= prev.baseline) break;
       j++;
     }
-    const right = s.startX + plan.lines[i]!.available;
+    const line = plan.lines[i]!;
+    const right = s.startX + line.available;
+    // Zone and band scale with the line's measure (threaded frames of different widths).
+    const scale = (line.available + line.indent) / plan.params.measure;
+    const Z = flatterzone * scale;
+    const b = band * scale;
     const top = s.baseline - leading * 0.8;
     const bottom = slots[j - 1]!.baseline + leading * 0.2;
     out.push(
-      { page: s.page, bounds: [top, right - band, bottom, right], kind: 'long' },
-      { page: s.page, bounds: [top, right - flatterzone - band, bottom, right - flatterzone], kind: 'short' },
+      { page: s.page, bounds: [top, right - b, bottom, right], kind: 'long' },
+      { page: s.page, bounds: [top, right - Z - b, bottom, right - Z], kind: 'short' },
     );
     i = j;
   }

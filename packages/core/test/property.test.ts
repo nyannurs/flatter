@@ -62,6 +62,8 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
       tracking: fc.option(fc.integer({ min: 0, max: 10 }), { nil: undefined }),
       trackingMode: fc.constantFrom<'rescue' | 'precise'>('rescue', 'precise'),
       wordSpaceMax: fc.constantFrom(0, 20, 80),
+      // Threaded frames of different widths: after some lines the measure changes.
+      widths: fc.option(fc.record({ after: fc.integer({ min: 1, max: 6 }), factor: fc.constantFrom(0.7, 1.5, 2) }), { nil: undefined }),
     })
     .map(
       (r): FlatterSettings => ({
@@ -75,6 +77,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
         variation: r.variation,
         hyphenCountsTowardWidth: !r.hanging,
         ...(r.tracking !== undefined ? { tracking: { enabled: true, mode: r.trackingMode, max: r.tracking, emSize: 10, wordSpaceMax: r.wordSpaceMax } } : {}),
+        ...(r.widths ? { lineMeasures: [...Array(r.widths.after).fill(r.measure), r.measure * r.widths.factor] } : {}),
       }),
     );
 
@@ -122,14 +125,18 @@ describe('solver invariants for any paragraph', () => {
             run = line.endsWithHyphen ? run + 1 : 0;
             expect(run).toBeLessThanOrEqual(P.maxConsecutiveHyphens);
             expect(line.width).toBeLessThanOrEqual(line.available + TOL);
+            // Each line's measure: lineMeasures when given, and zone, band and contrast scale with it.
+            const m = P.lineMeasures ? P.lineMeasures[Math.min(i, P.lineMeasures.length - 1)]! : P.measure;
+            expect(line.available + line.indent).toBeCloseTo(m, 6);
             if (line.kind !== 'band') return;
-            const lo = line.role === 'long' ? 0 : P.flatterzone;
+            const scale = m / P.measure;
+            const lo = line.role === 'long' ? 0 : P.flatterzone * scale;
             expect(line.gap).toBeGreaterThanOrEqual(lo - TOL);
-            expect(line.gap).toBeLessThanOrEqual(lo + P.band + TOL);
+            expect(line.gap).toBeLessThanOrEqual(lo + P.band * scale + TOL);
             const prev = plan.lines[i - 1];
             if (prev?.kind === 'band') {
               const diff = line.role === 'short' ? line.gap - prev.gap : prev.gap - line.gap;
-              expect(diff).toBeGreaterThanOrEqual(P.contrast - TOL);
+              expect(diff).toBeGreaterThanOrEqual(P.contrast * scale - TOL);
             }
           });
         }

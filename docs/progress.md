@@ -2,6 +2,14 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 — Frames of different widths; language buttons (ADR-018)
+
+- **Each frame at its own width.** A story threaded through frames of different widths was planned with the first frame's width for every line (the designer's TestFile: 259 pt into 523 pt). The core takes `lineMeasures` (measure per line; later lines take the last entry); Flatterzone, band and contrast scale with each line's measure, so the panel's percentages mean the same in every frame. With per-line measures the line number is part of the DP state. The adapter derives each line's measure from the column it sits in (`LineSlot.columnLeft`, `ParagraphData.columnWidth`, `lineMeasuresFor`) and plans again when verify finds the widths changed. Band strips scale per line; the staircase check compares gaps, not absolute line ends.
+- Tests: core unit tests, property tests with a width change (including the brute-force exactness check), a fake composer with a second frame, InDesign integration cases (narrow frame threaded into a wide one, plain and exact ends: lines planned at 210 and 420 pt, all as planned). On a copy of the TestFile story: lines planned at 259 and 523 pt, 106/106 as planned; problem lines with the designer's settings 35 → 16 (11 with German).
+- **German / English buttons** (panel, under the story name): set the language of the selected stories, every linked frame, as one undo step "Flatter: Language" (`setStoryLanguage`, `storyLanguage`, `LANGUAGES` in dom.ts: German: 2006 Reform, English: USA). The current language is shown and its button marked. A story Flatter works on is applied again at once (the language decides hyphenation and the capitalised-words and Duden settings); for other selected Flatter stories the panel says to press Recompute. Integration test `i18-language` (also guards against the probing bug: German text must get hyphens).
+
+Next: the designer tries both. Still open: report cleanup (overset lines, one message per line).
+
 ## 2026-10-17 (late night) — Probing never worked in a fixed story; narrow-column analysis
 
 The designer tried a narrow column (259 pt, about 45 characters) with Flatterzone 8 %, band 90 %, tracking off and asked which of the many report entries are real bugs.

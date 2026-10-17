@@ -23,8 +23,6 @@ function wordAt(items: readonly Item[], k: number, edge: 'start' | 'end'): strin
 
 export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[], P: ResolvedParams): Violation[] {
   const out: Violation[] = [];
-  const Z = P.flatterzone;
-  const b = P.band;
   let consec = 0;
   let hyphens = 0;
   let startRun = 0;
@@ -43,6 +41,11 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
     }
 
     if (line.kind === 'band') {
+      // Flatterzone, band and contrast scale with the line's measure (lineMeasures).
+      const scale = (line.available + line.indent) / P.measure;
+      const Z = P.flatterzone * scale;
+      const b = P.band * scale;
+      const contrast = P.contrast * scale;
       const lo = line.role === 'long' ? 0 : Z;
       const hi = lo + b;
       if (line.gap < lo - TOL || line.gap > hi + TOL) {
@@ -59,12 +62,12 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
       }
       if (prev?.kind === 'band') {
         const diff = line.role === 'short' ? line.gap - prev.gap : prev.gap - line.gap;
-        if (diff < P.contrast - TOL) {
+        if (diff < contrast - TOL) {
           out.push({
             kind: 'contrast',
             severity: 'error',
             line: i,
-            message: `Long/short contrast with the previous line is ${fmt(diff)} pt, below the minimum ${fmt(P.contrast)} pt.`,
+            message: `Long/short contrast with the previous line is ${fmt(diff)} pt, below the minimum ${fmt(contrast)} pt.`,
           });
         }
       }
@@ -185,7 +188,7 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
         message: `The last line is a single word of fewer than ${P.lastLine.minLetters} letters.`,
       });
     }
-    if (P.lastLine.shortAfterLong && prev.kind === 'band' && prev.role === 'long' && last.gap < Z - TOL) {
+    if (P.lastLine.shortAfterLong && prev.kind === 'band' && prev.role === 'long' && last.gap < (P.flatterzone * (last.available + last.indent)) / P.measure - TOL) {
       out.push({
         kind: 'last-line-too-long',
         severity: 'warning',
@@ -220,7 +223,8 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
  */
 export function analysePattern(lines: readonly PlannedLine[]): Violation[] {
   const out: Violation[] = [];
-  const edges = lines.map((l) => l.indent + l.width);
+  // Line ends measured from each line's own measure, so a change of frame width is not a staircase.
+  const edges = lines.map((l) => -l.gap);
   for (let i = 2; i < lines.length; i++) {
     if (lines[i]!.kind === 'last') continue;
     const d1 = edges[i - 1]! - edges[i - 2]!;

@@ -26,12 +26,20 @@
   .swatch.long { background: rgba(37, 99, 235, 0.6); }
   .swatch.short { background: rgba(234, 88, 12, 0.6); }
   .hint { margin: 0 0 4px 26px; }
+  .langrow { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
+  .langrow > * { margin-right: 6px; }
 </style>
 </head>
 <body>
 <div id="scroll">
   <div class="head"><sp-heading size="XS">Flatter</sp-heading><sp-detail id="modeTag">FLATTERSATZ</sp-detail></div>
   <sp-body size="S" id="target">Select a text frame or put the cursor in text.</sp-body>
+  <div class="langrow">
+    <sp-detail>LANGUAGE</sp-detail>
+    <sp-action-button id="langDe" size="s">German</sp-action-button>
+    <sp-action-button id="langEn" size="s">English</sp-action-button>
+    <sp-body size="XS" id="langNow"></sp-body>
+  </div>
 
   <sp-divider size="small"></sp-divider>
   <div>

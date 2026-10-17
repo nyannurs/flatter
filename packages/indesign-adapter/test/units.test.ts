@@ -134,7 +134,8 @@ describe('settings', () => {
 describe('bandsFor', () => {
   const slot = (page: number, baseline: number, startX = 40): LineSlot => ({ page, baseline, startX, columnRight: 240, gutter: 12, size: 10 });
   const plan = (available: number[]) =>
-    ({ params: { band: 10, flatterzone: 30 }, lines: available.map((a) => ({ available: a })) }) as unknown as Plan;
+    // Measure 200: a line with less available width has that much first-line indent.
+    ({ params: { band: 10, flatterzone: 30, measure: 200 }, lines: available.map((a) => ({ available: a, indent: 200 - a })) }) as unknown as Plan;
 
   it('draws a long and a short strip per stretch of lines in one column', () => {
     const bands = bandsFor(plan([200, 200, 200]), [slot(0, 100), slot(0, 112), slot(0, 124)], 12);
@@ -153,6 +154,15 @@ describe('bandsFor', () => {
   it('starts new strips in the next frame and leaves out overset lines', () => {
     const bands = bandsFor(plan([200, 200, 200, 200]), [slot(0, 100), slot(0, 112), slot(1, 50), undefined], 12);
     expect(bands.map((b) => `${b.kind}@${b.page}`)).toEqual(['long@0', 'short@0', 'long@1', 'short@1']);
+  });
+
+  it('scales the strips with a wider frame', () => {
+    // Line 3 sits in a frame twice as wide: zone and band double.
+    const wide = { params: { band: 10, flatterzone: 30, measure: 200 }, lines: [200, 200, 400].map((a) => ({ available: a, indent: 0 })) } as unknown as Plan;
+    const bands = bandsFor(wide, [slot(0, 100), slot(0, 112), { ...slot(1, 50), columnRight: 440 }], 12);
+    expect(bands[2]!.bounds[3]).toBeCloseTo(440);
+    expect(bands[2]!.bounds[3] - bands[2]!.bounds[1]).toBeCloseTo(20);
+    expect(bands[3]!.bounds[3]).toBeCloseTo(440 - 60);
   });
 
   it('uses each line\'s own start, so a first-line indent does not shift the measure', () => {

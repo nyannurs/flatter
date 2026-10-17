@@ -334,3 +334,29 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
     return { teethRemoved, settingsRestored };
   });
 }
+
+/** The languages the panel's buttons set (InDesign language names). */
+export const LANGUAGES = { de: 'German: 2006 Reform', en: 'English: USA' } as const;
+
+/**
+ * Set the language of whole stories (every linked frame). One undo step "Flatter: Language".
+ * The language decides hyphenation (ours and InDesign's) and some required settings, so a story Flatter
+ * works on must be applied again afterwards.
+ */
+export function setStoryLanguage(stories: readonly Any[], language: string): number {
+  return undoable('Flatter: Language', () => {
+    for (const story of stories) story.texts.item(0).appliedLanguage = language;
+    return stories.length;
+  });
+}
+
+/** The story's language name, or "mixed" when its text uses more than one. */
+export function storyLanguage(story: Any): string {
+  try {
+    // Per paragraph: reading every style range (thousands with tracked word spaces) slows later edits.
+    const names = [...new Set(asArray(story.paragraphs.everyItem().appliedLanguage).map((l: Any) => String(l?.name ?? l)))];
+    return names.length === 1 ? names[0]! : names.length ? 'mixed' : '';
+  } catch {
+    return '';
+  }
+}

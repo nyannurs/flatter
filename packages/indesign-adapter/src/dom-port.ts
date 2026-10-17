@@ -210,6 +210,7 @@ export class DomPort implements Port {
           size,
           leading: lead,
           measure: column - left[p]! - right[p]!,
+          columnWidth: column,
           firstLineIndent: first[p]!,
         });
       }
@@ -262,7 +263,7 @@ export class DomPort implements Port {
         const lastChar = text[first + len - 1] ?? '';
         const nextChar = text[first + len] ?? '';
         const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
-        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnRight: col.right, gutter: col.gutter, size: sizeOf.get(p) ?? 10, limit: frame.bottom };
+        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: col.left, columnRight: col.right, gutter: col.gutter, size: sizeOf.get(p) ?? 10, limit: frame.bottom };
         const k = lineInPara.get(p) ?? 0;
         lineInPara.set(p, k + 1);
         out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });

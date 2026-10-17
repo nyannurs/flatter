@@ -64,6 +64,8 @@ docs/spike-results.md InDesign spike findings (Phase 0)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
+Threaded frames of different widths are supported (per-line measures, ADR-018); the panel has German / English language buttons.
+
 Planned but not created yet: Freeze/Unfreeze, review list (Phase 5), packaging (Phase 7).
 
 ## Conventions

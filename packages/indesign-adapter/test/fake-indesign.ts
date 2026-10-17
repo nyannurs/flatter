@@ -20,6 +20,8 @@ export interface FakeOptions {
   spaceBefore?: number;
   /** Lines that fit in the frame; later lines are overset. */
   maxLines?: number;
+  /** A second, threaded frame of another width: from this line of the story on, lines have this measure. */
+  frameFrom?: { line: number; measure: number };
   /** Compounds whose typed hyphen InDesign will not break after (like "master-builder" with hyphenation on). */
   refusesAfterHyphen?: (compound: string, at: number) => boolean;
 }
@@ -33,7 +35,7 @@ export class FakeInDesign implements Port {
   /** Tracking units per paragraph and character (1/1000 em). */
   tracking = new Map<number, number[]>();
   private readonly texts: string[];
-  private readonly o: Required<Omit<FakeOptions, 'spaceBefore'>> & { spaceBefore: number };
+  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number } };
 
   constructor(texts: string[], o: FakeOptions) {
     this.texts = texts;
@@ -50,6 +52,7 @@ export class FakeInDesign implements Port {
       size: this.o.size,
       leading: this.o.leading,
       measure: this.o.measure,
+      columnWidth: this.o.measure,
       firstLineIndent: 0,
     }));
   }
@@ -96,6 +99,7 @@ export class FakeInDesign implements Port {
   private allLines(): ReadLine[] {
     const out: ReadLine[] = [];
     let y = 0;
+    let storyLine = 0;
     this.texts.forEach((text, paragraph) => {
       y += paragraph > 0 ? this.o.spaceBefore : 0;
       const chars = [...text];
@@ -103,9 +107,10 @@ export class FakeInDesign implements Port {
       let line = 0;
       while (start < chars.length) {
         const baseline = y + this.o.leading;
-        const slot: LineSlot = { page: 0, baseline, startX: 0, columnRight: this.o.measure, gutter: 10, size: this.o.size, ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : {}) };
+        const measure = this.o.frameFrom && storyLine >= this.o.frameFrom.line ? this.o.frameFrom.measure : this.o.measure;
+        const slot: LineSlot = { page: 0, baseline, startX: 0, columnLeft: 0, columnRight: measure, gutter: 10, size: this.o.size, ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : {}) };
         const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size);
-        const max = tooth ? Math.min(tooth.bounds[1] - slot.startX, this.o.measure) : this.o.measure;
+        const max = tooth ? Math.min(tooth.bounds[1] - slot.startX, measure) : measure;
         const track = this.tracking.get(paragraph) ?? [];
         const { end, hyphenated } = this.breakLine(chars, start, max, (k) => advance(chars[k]!) + ((track[k] ?? 0) * this.o.size) / 1000);
         let last = end - 1;
@@ -114,6 +119,7 @@ export class FakeInDesign implements Port {
         start = end;
         while (start < chars.length && chars[start] === ' ') start++;
         line++;
+        storyLine++;
         y = baseline;
       }
     });

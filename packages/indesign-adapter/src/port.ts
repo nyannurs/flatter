@@ -21,6 +21,8 @@ export interface ParagraphData {
   leading: number;
   /** Available width for the lines: column width minus left and right indents. */
   measure: number;
+  /** The column width `measure` is based on (the story's first column); other columns differ by their own width. */
+  columnWidth?: number;
   firstLineIndent: number;
 }
 

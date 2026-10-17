@@ -182,3 +182,8 @@ The designer asked for per-line word-space adjustment alongside tracking so line
 - **A refused point is refused in every occurrence of the same word** (same word key, same position): InDesign decides by word.
 - **Draft ticks**: with word spaces on, slider ticks plan letter tracking only; the full plan (word spaces) is written once after the slider stops, then verified. Keeps a drag responsive in long stories (word spaces are one write each).
 - **Idle teeth**: a band line steered to the full measure keeps a tooth just outside its column (none when columns touch), so tooth counts per page stay stable while a slider moves. Teeth are moved before tracking is written.
+
+## ADR-018: Per-line measures for threaded frames; language buttons (2026-10-18)
+
+- **`lineMeasures`** (core): a measure per line; Flatterzone, band and contrast scale with it (they are set relative to the paragraph's measure, and the panel sets them as percentages). The DP keys states by line number only when measures vary, so single-width paragraphs cost nothing extra. The adapter reads each line's column from the frames (line k of a paragraph sits at the k-th line position after the paragraph's start, which does not depend on the paragraph's own breaks) and re-plans when verify sees other widths; lines beyond the visible ones take the last frame's width.
+- **Language buttons** set whole stories (all linked frames) to German: 2006 Reform or English: USA and re-apply Flatter to the story it works on, because the language changes hyphenation and required settings. For a bilingual publication each story keeps its own Flatter settings (loaded into the panel when it is selected).
