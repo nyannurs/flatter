@@ -623,6 +623,11 @@ export class DomPort implements Port {
     }
     all.composer = 'Adobe Single-line Composer';
     all.justification = this.id.Justification.LEFT_ALIGN;
+    // The probed word is always the last word of the probe text. Flatter's required settings turn
+    // "Hyphenate Last Word" off (a paragraph rule the planner applies itself); copied here it made
+    // InDesign refuse every point, so probing returned nothing and no line was ever hyphenated
+    // (found 2026-10-17).
+    all.hyphenateLastWord = true;
     return this.scratch;
   }
 

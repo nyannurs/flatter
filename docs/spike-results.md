@@ -152,6 +152,11 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 - **Line width model at full size is exact**: the line that failed in the user's story ("…the master-", letters −12.23, spaces −19.59) measures 522.0876 pt in InDesign, model 522.0876 pt.
 - **Write costs**: tracking a whole line costs about 0.36 ms; one space about 0.3 ms in isolation, about 1 ms in a long live story; overwriting a line whose spaces still carry their own values about 2 ms. Undo mode and wrap objects next to the text make little difference. Merging ticks into one undo step (AUTO_UNDO) does not slow down over a drag.
 
+## Probing and "Hyphenate Last Word" (2026-10-17, `i15`, `i16`)
+
+- With "Hyphenate Last Word" off, InDesign never hyphenates "x <word>" (the word is the last word of the paragraph): probing must turn it on in the probe frame. With it on, probing returns InDesign's points again (for example demonstrandum 2, 5, 10; happiness 3, 5).
+- With "Hyphenate Capitalized Words" off, capitalised words get no points at all (German nouns in a story tagged English).
+
 ## Plan amendments from Phase 0
 
 1. **Teeth**: zero-stroke rectangles set at creation, 0.1 pt high, half an x-height above each baseline; one per band line per frame or column. The control layer "Flatter (Steuerung)" must be the **topmost** layer (so "wrap only affects text beneath" cannot disable it) and its "suppress text wrap when hidden" must be off. The layer may be hidden; steering keeps working.

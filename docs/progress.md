@@ -2,6 +2,30 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-17 (late night) — Probing never worked in a fixed story; narrow-column analysis
+
+The designer tried a narrow column (259 pt, about 45 characters) with Flatterzone 8 %, band 90 %, tracking off and asked which of the many report entries are real bugs.
+
+- **Bug (fixed): InDesign hyphenation points were never found.** Fix Settings turns "Hyphenate Last Word" off, and the probe frame copied that setting; the probed word is always the last word of the probe text, so InDesign refused every point, probing returned nothing and `mergePoints` (Safe = ours ∩ InDesign) dropped all points. Every plan in InDesign so far was set without hyphenation. The probe frame now always allows hyphenating its last word (`scratchFrame` in dom-port.ts). Integration tests did not catch it because they only check that lines break as planned.
+- **Language:** the story is German text tagged English: USA. Then our classes treat German words with English patterns and capitalised words as class X, and Fix Settings (correctly, for English) turns off hyphenation of capitalised words, so German nouns never break.
+- **Analysis on a copy at the exact frame sizes** (`i14-analyse.ts`; every variant set 106/106 visible lines as planned):
+
+  | Variant | Visible lines with rhythm problems (of 106) | Hyphens |
+  |---|---|---|
+  | as set (English tag, before the fix) | 35 | 0 |
+  | German tag + fix | 21 | 61 |
+  | German + Normal hyphenation | 19 | 73 |
+  | German + Flatterzone 12 % | 7 | 36 |
+  | German + Flatterzone 15 % | 0 (strict) | 32 |
+  | German + tracking rescue ±3 | 14 | 43 |
+  | German + exact ends (letters ±10, spaces ±25 %) | 0 (strict) | 9 |
+  | English tag + exact ends | 8 | 2 |
+
+  A 40× wider soft search (beam 2000) finds nothing better, so the remaining problems at Flatterzone 8 % without tracking come from the text and the settings, not from the solver.
+- Test harness pitfall: running several Apply variants in one document leaves teeth from earlier copies (labelled by story id) that squeeze later copies; `i14` now calls `removeFlatter` between variants.
+
+Open (not done): the report lists overset lines and gives two entries for one short line ("misses its band" and "hole"); no warning when the text's language looks wrong; threaded frames of different widths are planned with the first frame's width (TestFile frame 2 is 523 pt; proposed as a separate task).
+
 ## 2026-10-17 (night) — Regression in millimetre documents fixed; typed hyphens; draft ticks (ADR-017)
 
 The designer reported a regression in TestFile ("results aren't as good anymore", many band errors). Causes and fixes:
