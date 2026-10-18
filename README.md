@@ -2,7 +2,7 @@
 
 A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in a strict **long, short, long, short** rhythm. It can also pull every line end onto its target edge with per-line letter tracking and word-space adjustment.
 
-**Status: version 0.3.0, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.3.1, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
 
 ## What it does
 
@@ -14,13 +14,20 @@ A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flatte
 - **Freeze for hand-off.** Freeze fixes the current line breaks in the text: forced line breaks, plus real hyphens where InDesign hyphenated, all tagged with the condition "Flatter frozen". The file then keeps its rag on any computer, whatever its hyphenation dictionary. Unfreeze removes exactly those characters and brings the live rag back. You don't need Freeze for PDF output.
 - **Real layouts.** Stories threaded through frames of different widths, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
 
-## Install (for testing)
+## Install
 
-1. Get `Flatter-<version>.ccx`: build it with `npm run package` (see below), or ask for the current build.
-2. Double-click the `.ccx` file and confirm in Creative Cloud.
-3. Quit and reopen InDesign. The panel is under **Plugins → Flatter**.
+**You need:** Adobe InDesign 2023 (18.5) or newer, and the Creative Cloud desktop app, signed in. Flatter has been tested on InDesign 2026 for Mac. Windows and older versions should work but are untested.
 
-To update, install a newer `.ccx` the same way.
+1. Download `Flatter-<version>.ccx` from the [Releases](../../releases) page, or get the file from whoever shared it with you.
+2. Quit InDesign.
+3. Double-click the `.ccx` file. Creative Cloud opens the plugin installer; it may warn that the plugin does not come from the Adobe Marketplace. Confirm the installation.
+4. Open InDesign. The panel is under **Plugins → Flatter**.
+
+**Update:** install a newer `.ccx` the same way; it replaces the old version.
+
+**Uninstall:** Creative Cloud desktop app → **Stock & Marketplace** → **Plugins** → **Manage plugins** → Flatter → **⋯** → **Uninstall**.
+
+Documents keep their rag without the plugin: it is ordinary InDesign composition. Without Flatter you only cannot change it.
 
 ## Use
 
@@ -45,7 +52,7 @@ Each story keeps its own Flatter settings. Selecting a story loads them into the
 | 4 Panel | done |
 | 5 Review and QA tooling | partly: clickable report, band view; review list not built |
 | 6 Robustness | partly: overset text, frames of different widths, any document unit |
-| 7 Packaging | partly: installable `.ccx`; not signed, licence texts not yet bundled |
+| 7 Packaging | partly: installable `.ccx` with licence texts, GitHub releases; not on the Adobe Marketplace |
 
 Not built yet: a review list across a whole document, tabs and anchored objects inside planned paragraphs, and automatic updates while you edit (press Recompute after edits).
 

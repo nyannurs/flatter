@@ -1,6 +1,6 @@
 # Third-party notices
 
-## Shipped with the plugin (planned)
+## Shipped with the plugin
 
 ### hyphen (npm package)
 ISC License. Copyright (c) Yevhen Tiurin. https://github.com/ytiurin/hyphen
@@ -11,7 +11,7 @@ ISC License. Copyright (c) Yevhen Tiurin. https://github.com/ytiurin/hyphen
 - **British English, en-gb**. MIT License. Copyright (C) 1992, 1996, 2005, 2016 Dominik Wujastyk, Graham Toal.
 - **US English, en-us**. Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken. "Copying and distribution of this file, with or without modification, are permitted in any medium without royalty provided the copyright notice and this notice are preserved."
 
-The full licence texts must be included in the packaged plugin (Phase 7).
+The full licence texts are in `packages/panel/licenses/THIRD-PARTY-LICENSES.txt`, which `npm run package` puts into every `.ccx`.
 
 ## Development only (simulator and playground, not shipped)
 

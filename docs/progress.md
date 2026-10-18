@@ -2,6 +2,13 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (late) — Release 0.3.1 for sharing
+
+- The `.ccx` now carries `THIRD-PARTY-LICENSES.txt` (hyphen ISC licence, MIT texts for the de-1996 and en-gb patterns, the en-us notice), from `packages/panel/licenses/`, copied in by `npm run package`.
+- README: install, update and uninstall steps for other people; requirements (InDesign 2023 / 18.5 or newer per the manifest; tested only on InDesign 2026 for Mac).
+- GitHub release v0.3.1 with `Flatter-0.3.1.ccx` attached (the repository is private: only collaborators can download it). Installed 0.3.1 for the designer.
+- Open for the designer: Flatter itself has no licence yet (all rights reserved by default); choose one before making the repository public. Adobe Marketplace listing would remove the "not from the Marketplace" warning.
+
 ## 2026-10-18 (night) — Freeze / Unfreeze; release 0.3.0 installed (ADR-019)
 
 - **Freeze** (`freezeFlatter` in dom.ts): every visible line that does not already end a paragraph gets a forced line break; lines InDesign hyphenated, or broke at a discretionary hyphen (which shows no hyphen before a forced break, spike `s10-freeze`), also get a real hyphen. Inserted characters carry the condition "Flatter frozen" and the paragraph's base tracking (no tracking after a line's last glyph). Teeth and band strips are removed; tracking stays; overset lines are left alone. The story label records `frozen`.
