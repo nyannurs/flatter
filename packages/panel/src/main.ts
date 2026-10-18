@@ -16,6 +16,10 @@ import {
   freezeFlatter,
   unfreezeFlatter,
   isFrozen,
+  selfCheck,
+  compatibilityAlarms,
+  isUserError,
+  type SelfCheckResult,
   LANGUAGES,
   type ApplyResult,
   type ApplySettings,
@@ -27,6 +31,7 @@ import { startDevChannel } from './dev.ts';
 type Any = any;
 declare const require: (m: string) => Any;
 declare const FLATTER_DEV: boolean;
+declare const FLATTER_VERSION: string;
 
 const indesign = require('indesign');
 const app = indesign.app;
@@ -305,6 +310,14 @@ function render(r: ApplyResult, ms?: number): void {
     if (state.showNotes) parts.push(...notes);
   }
   $('report').innerHTML = parts.join('');
+  const alarms = compatibilityAlarms(r);
+  if (alarms.length) {
+    showAlarm(
+      'InDesign behaved in a way Flatter does not expect. If this keeps happening, an InDesign update may have changed how it sets text.',
+      alarms,
+      `${alarms.join('\n')}\n\nlines as planned ${r.linesAsPlanned}/${r.linesPlanned}, probe check ${r.probeCheck.empty}/${r.probeCheck.checked} empty, paragraphs ${r.paragraphs.length}`,
+    );
+  }
 }
 
 /** One sentence for all of a line's problems: a band miss and the hole it makes are one problem. */
@@ -345,7 +358,121 @@ function escapeHtml(s: string): string {
 }
 
 function fail(e: unknown): void {
-  setStatus('Flatter could not set this story', 'err', `${String((e as Error)?.message ?? e)}. Nothing was changed. Press Apply to try again.`);
+  const message = String((e as Error)?.message ?? e);
+  if (isUserError(e)) {
+    setStatus('Flatter could not set this story', 'err', `${message} Nothing was changed.`);
+    return;
+  }
+  setStatus('Flatter could not set this story', 'err', 'An unexpected error: see the pink box at the top. Nothing was changed.');
+  showAlarm('Something unexpected went wrong. This can mean an InDesign update changed something Flatter relies on.', [message], String((e as Error)?.stack ?? message));
+}
+
+// --- Compatibility alarm -------------------------------------------------------------------------
+
+const CHECK_KEY = 'flatter-selfcheck';
+
+function environment(): string {
+  let platform = '';
+  try {
+    platform = String(require('os').platform());
+  } catch {
+    /* unknown */
+  }
+  return `Flatter ${FLATTER_VERSION} · InDesign ${String(app.version)}${platform ? ` · ${platform}` : ''}`;
+}
+
+/**
+ * The pink box at the top of the panel: only for things that should never happen, so an InDesign
+ * update that changes something Flatter relies on is noticed at once.
+ */
+export function showAlarm(summary: string, lines: readonly string[], details: string): void {
+  $('alarmText').innerHTML = `<div class="alarm-lead">${escapeHtml(summary)}</div>` + lines.map((l) => `<div class="alarm-line">• ${escapeHtml(l)}</div>`).join('');
+  $('alarmDetails').value = `${environment()}\n${new Date().toISOString()}\n\n${details}`;
+  $('alarm').style.display = 'block';
+  $('scroll').scrollTop = 0;
+}
+
+function hideAlarm(): void {
+  $('alarm').style.display = 'none';
+}
+
+export function alarmState(): { visible: boolean; text: string; status: string; version: string } {
+  return { visible: $('alarm').style.display !== 'none', text: String($('alarmText').textContent ?? ''), status: String($('status').textContent ?? ''), version: FLATTER_VERSION };
+}
+
+function loadCheck(): { indesign: string; plugin: string; ok: boolean } | undefined {
+  try {
+    return JSON.parse(localStorage.getItem(CHECK_KEY) ?? 'null') ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeCheck(r: SelfCheckResult): void {
+  try {
+    localStorage.setItem(CHECK_KEY, JSON.stringify({ indesign: r.indesign, plugin: FLATTER_VERSION, ok: r.ok, at: new Date().toISOString() }));
+  } catch {
+    /* no storage: the check runs again next time */
+  }
+}
+
+/** Run the self-check (a hidden test document, a few seconds). Resolves when done. */
+export function runSelfCheck(auto: boolean): Promise<SelfCheckResult | undefined> {
+  return new Promise((resolve) => {
+    if (state.busy) {
+      if (!auto) setStatus('Flatter is busy. Try the self-check again in a moment.', 'bad');
+      resolve(undefined);
+      return;
+    }
+    state.busy = true;
+    setStatus(`Checking Flatter with InDesign ${String(app.version)}…`, '', auto ? 'This runs once after each InDesign or Flatter update and takes a few seconds.' : 'Takes a few seconds.');
+    setTimeout(() => {
+      let result: SelfCheckResult | undefined;
+      try {
+        result = selfCheck();
+        storeCheck(result);
+        if (result.ok) {
+          hideAlarm();
+          setStatus(`✓ Self-check passed on InDesign ${result.indesign}`, 'ok', `${result.checks.length} checks in ${result.ms} ms.`);
+        } else {
+          const failed = result.checks.filter((c) => !c.ok);
+          showAlarm(
+            `Flatter's self-check failed on InDesign ${result.indesign}. Something InDesign does has changed, so results may be wrong until Flatter is updated.`,
+            failed.map((c) => `${c.name}: ${c.detail}`),
+            result.checks.map((c) => `${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`).join('\n'),
+          );
+          setStatus('Self-check failed', 'err', 'See the pink box at the top.');
+        }
+      } catch (e) {
+        showAlarm('The self-check could not run.', [String((e as Error)?.message ?? e)], String((e as Error)?.stack ?? e));
+        setStatus('Self-check failed', 'err', 'See the pink box at the top.');
+      } finally {
+        state.busy = false;
+      }
+      resolve(result);
+    }, 50);
+  });
+}
+
+/** After an InDesign or Flatter update (or a failed check), check again once. */
+function selfCheckIfNeeded(): void {
+  const last = loadCheck();
+  if (!last || last.indesign !== String(app.version) || last.plugin !== FLATTER_VERSION || !last.ok) void runSelfCheck(true);
+}
+
+function copyAlarmDetails(): void {
+  const text = String($('alarmDetails').value ?? '');
+  try {
+    const clip = (navigator as Any).clipboard;
+    if (clip?.setContent) void clip.setContent({ 'text/plain': text });
+    else if (clip?.writeText) void clip.writeText(text);
+    else throw new Error('no clipboard');
+    setStatus('Details copied.', 'ok', 'Paste them into a message to the developer.');
+  } catch {
+    $('alarmDetails').focus();
+    $('alarmDetails').select?.();
+    setStatus('Press Cmd+C to copy the selected details.', '', '');
+  }
 }
 
 /** Apply: measure, probe, plan, steer. Shows "Preparing…" first (it can take seconds on long stories). */
@@ -519,6 +646,13 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  $('selfcheck').addEventListener('click', () => void runSelfCheck(false));
+  $('alarmRecheck').addEventListener('click', () => void runSelfCheck(false));
+  $('alarmClose').addEventListener('click', hideAlarm);
+  $('alarmCopy').addEventListener('click', copyAlarmDetails);
+  $('version').textContent = `Flatter ${FLATTER_VERSION}`;
+  $('brandVersion').textContent = FLATTER_VERSION;
+  setTimeout(selfCheckIfNeeded, 1500);
   $('freeze').addEventListener('click', freezeToggle);
   $('langDe').addEventListener('click', () => setLanguage('de'));
   $('langEn').addEventListener('click', () => setLanguage('en'));
@@ -535,7 +669,7 @@ function init(): void {
   app.addEventListener('afterSelectionChanged', onSelectionChanged);
   syncLabels();
   onSelectionChanged();
-  if (typeof FLATTER_DEV !== 'undefined' && FLATTER_DEV) startDevChannel();
+  if (typeof FLATTER_DEV !== 'undefined' && FLATTER_DEV) startDevChannel({ runSelfCheck, showAlarm, alarmState });
 }
 
 const { entrypoints } = require('uxp');

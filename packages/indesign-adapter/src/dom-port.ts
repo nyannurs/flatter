@@ -4,6 +4,7 @@
  * bulk reads, teeth without stroke set at creation, the control layer on top,
  * probing with "x <word>" in a scratch frame, settings re-applied in place.
  */
+import { FlatterUserError } from './errors.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
@@ -161,6 +162,7 @@ export class DomPort implements Port {
     const n = paras.length;
     const lengths = asArray(paras.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
     const sizes = asArray(paras.everyItem().pointSize).map(Number);
+    const hyphenationOn = asArray(paras.everyItem().hyphenation).map((v: Any) => v === true);
     const leadings = asArray(paras.everyItem().leading);
     const autoLeading = asArray(paras.everyItem().autoLeading).map(Number);
     const left = asArray(paras.everyItem().leftIndent).map(Number);
@@ -211,6 +213,7 @@ export class DomPort implements Port {
           leading: lead,
           measure: column - left[p]! - right[p]!,
           columnWidth: column,
+          hyphenation: hyphenationOn[p],
           firstLineIndent: first[p]!,
         });
       }
@@ -593,7 +596,7 @@ export class DomPort implements Port {
 
   private columnWidth(): number {
     const f = this.frames()[0];
-    if (!f) throw new Error('story has no text frame');
+    if (!f) throw new FlatterUserError('This story has no text frame.');
     return f.columns[0]!.right - f.columns[0]!.left;
   }
 
@@ -657,7 +660,7 @@ export class DomPort implements Port {
     para.texts.item(0).duplicate(this.id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
     const all = story.texts.item(0);
     all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0 };
-    if (story.overflows) throw new Error('paragraph too long to measure');
+    if (story.overflows) throw new FlatterUserError('A paragraph is too long to measure (more than about 1,000 lines of 9,000 pt).');
     const chars = Array.from(String(story.contents));
     const read = (): number[] => {
       const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
@@ -673,7 +676,7 @@ export class DomPort implements Port {
     };
     const advances = read();
     all.ligatures = false;
-    if (story.overflows) throw new Error('paragraph too long to measure');
+    if (story.overflows) throw new FlatterUserError('A paragraph is too long to measure (more than about 1,000 lines of 9,000 pt).');
     const trackedAdvances = read();
     return { advances, trackedAdvances };
   }

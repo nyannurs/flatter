@@ -7,7 +7,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pluginDir = resolve(here, '../../packages/panel/plugin');
+// The dev build (npm run panel) lives in dist/dev-panel as "Flatter (dev)", beside any installed release.
+const pluginDir = resolve(here, '../../dist/dev-panel');
 const sessionFile = resolve(here, '../../packages/panel/.uxp-session.json');
 const action = process.argv[2] ?? 'load';
 const port = Number(process.env.UXP_PORT ?? 14001);

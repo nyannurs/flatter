@@ -1,6 +1,6 @@
 import { createHyphenator } from '@flatter/hyphenation';
 import { describe, expect, it } from 'vitest';
-import { applyToPort } from '../src/index.ts';
+import { applyToPort, compatibilityAlarms } from '../src/index.ts';
 import { FakeInDesign } from './fake-indesign.ts';
 
 const DE = [
@@ -143,6 +143,30 @@ describe('threaded frames of different widths', () => {
       expect(lines.slice(line).every((l) => l.available + l.indent === wide)).toBe(true);
       expect(lines.slice(0, Math.min(line, lines.length)).every((l) => l.available + l.indent === 220)).toBe(true);
     }
+  });
+});
+
+describe('compatibility alarms', () => {
+  // Lower-case long words with safe points, as German text has plenty of.
+  const text = ['die verschiedensten unterschiedlichen zusammenhänge entstehen nachträglich durch verantwortungsvolle überlegungen und gemeinsame entscheidungen über wirtschaftliche bedingungen, sowie durch regelmäßige veranstaltungen mit ausgezeichneten teilnehmern aus benachbarten gemeinden und landwirtschaftlichen betrieben, die gelegentlich erhebliche schwierigkeiten bereiten'];
+
+  it('stay quiet when InDesign behaves as expected', () => {
+    const r = applyToPort(new FakeInDesign(text, { measure: 220, accepts: ourSafe }), {});
+    expect(r.probeCheck.checked).toBeGreaterThan(10);
+    expect(compatibilityAlarms(r)).toEqual([]);
+  });
+
+  it('report InDesign giving no hyphenation points', () => {
+    const r = applyToPort(new FakeInDesign(text, { measure: 220, accepts: () => [] }), {});
+    expect(compatibilityAlarms(r).join(' ')).toMatch(/no hyphenation points/);
+  });
+
+  it('report InDesign ignoring the steering', () => {
+    const fake = new FakeInDesign(DE, { measure: 220, accepts: ourSafe });
+    // Teeth stop working, as if an update changed how text wrap affects the composer.
+    fake.setTeeth = () => {};
+    const r = applyToPort(fake, {});
+    expect(compatibilityAlarms(r).join(' ')).toMatch(/did not follow/);
   });
 });
 

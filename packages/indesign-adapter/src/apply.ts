@@ -67,6 +67,29 @@ export interface ApplyResult {
   spacedLines: number;
   /** Planned lines that fall outside the frames (overset); they cannot be steered. */
   oversetLines: number;
+  /**
+   * Long lower-case words with safe points of our own, and how many of them InDesign gave no point at
+   * all. Almost all empty means probing broke (it did once: Hyphenate Last Word, 2026-10-17).
+   */
+  probeCheck: { checked: number; empty: number };
+}
+
+/**
+ * Signs that InDesign behaved in a way Flatter does not expect, for the panel's compatibility alarm.
+ * Normal results never trigger them: in every test so far all visible lines were set as planned and
+ * InDesign found points in most long words.
+ */
+export function compatibilityAlarms(r: ApplyResult): string[] {
+  const out: string[] = [];
+  const unsupported = r.paragraphs.some((p) => p.unsupported.length);
+  if (!unsupported && r.linesPlanned >= 10 && r.linesAsPlanned / r.linesPlanned < 0.7) {
+    out.push(`InDesign did not follow Flatter's line steering: only ${r.linesAsPlanned} of ${r.linesPlanned} visible lines were set as planned (normally all of them).`);
+  }
+  const { checked, empty } = r.probeCheck;
+  if (checked >= 10 && empty / checked >= 0.8) {
+    out.push(`InDesign returned no hyphenation points for ${empty} of ${checked} long words that normally have them.`);
+  }
+  return out;
 }
 
 /** Map an InDesign language name to the hyphenation module's language. */
@@ -100,6 +123,7 @@ export class FlatterSession {
   private current: ReadLine[] = [];
   private teeth: ToothSpec[] = [];
   private usedSlots = new Map<number, LineSlot[]>();
+  private probeCheck = { checked: 0, empty: 0 };
   private settings: ApplySettings = {};
   private overset = false;
   rounds = 0;
@@ -112,6 +136,7 @@ export class FlatterSession {
   prepare(settings: ApplySettings = {}): void {
     this.settings = settings;
     this.work = [];
+    this.probeCheck = { checked: 0, empty: 0 };
     for (const data of this.port.paragraphs()) {
       const lang = hyphenLanguage(data.language);
       const h = this.hyphenator(lang);
@@ -120,6 +145,11 @@ export class FlatterSession {
       // Compounds with typed hyphens: InDesign decides per word whether it breaks after the hyphen.
       const compounds = [...new Set(text.match(/\p{L}+(?:-\p{L}+)+/gu) ?? [])];
       const probed = this.port.probe([...words, ...compounds], data);
+      if (probed && data.hyphenation !== false) {
+        const sure = words.filter((w) => w.length >= 8 && w === w.toLowerCase() && h.points(w).some((p) => p.quality === 'A' || p.quality === 'B'));
+        this.probeCheck.checked += sure.length;
+        this.probeCheck.empty += sure.filter((w) => !(probed.get(w)?.length)).length;
+      }
       const sense = settings.sense ?? lang.startsWith('de');
       const measured = itemsFromMeasured(data.chars, data.advances, {
         hyphenWidth: data.hyphenWidth,
@@ -250,7 +280,7 @@ export class FlatterSession {
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
     const spacedLines = this.work.reduce((s, w) => s + w.plan.stats.spacedLines, 0);
     const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - visibleCount(this.current, w.data.index)), 0) : 0;
-    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines };
+    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines, probeCheck: { ...this.probeCheck } };
   }
 
   private hyphenator(lang: HyphenLanguage): Hyphenator {

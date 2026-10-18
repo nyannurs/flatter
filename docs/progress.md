@@ -2,6 +2,14 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-18 (late evening) — Compatibility alarm and self-check; panel text wraps; release 0.4.0 (ADR-020)
+
+- **Self-check** (`selfCheck` in selfcheck.ts): in a hidden document, on a known German text: scripting interface present, all lines set as steered, InDesign gives hyphenation points, exact line ends work, no compatibility alarms, Freeze/Unfreeze round trip, Remove restores the text, units restored. About 2–4 s. The panel runs it once after every InDesign or Flatter version change (remembered in the plugin's localStorage) and on demand (**Run self-check**). Integration test `i20-selfcheck` also makes probing return nothing and checks that the self-check catches it.
+- **Compatibility alarm**: a hot-magenta box with a yellow edge at the top of the panel, for things that should never happen: a failed self-check; an error that is not a `FlatterUserError` (expected problems such as a frozen story now throw `FlatterUserError` and stay red); `compatibilityAlarms(result)` after every Apply/verify (fewer than 70 % of at least 10 visible lines as planned without unsupported content, or InDesign returning no points for at least 80 % of at least 10 long lower-case words). The box shows details (Flatter and InDesign version, platform, failing checks) with Copy details (clipboard permission added to the manifest), Run self-check and Dismiss. Seen in the real panel via the dev channel (`alarm-demo`, `panel-state`, `selfcheck` commands).
+- **Dev build** now lives in `dist/dev-panel` as "Flatter (dev)" with id com.flatter.panel.dev, so it loads beside the installed release; `uxp-load.mjs` loads that folder. `FLATTER_VERSION` is compiled in (dev builds say `-dev`).
+- **Panel text wraps**: checkbox and slider labels are short (UXP checkboxes do not wrap their labels); explanations moved into wrapping hint lines; language row, footer and status lines wrap; the name and version print at the top ("Flatter 0.4.0"). Checked in the real panel at its default floating width.
+- Release 0.4.0 packaged, installed and published on GitHub; test checklist gained four setup tests (56 tests).
+
 ## 2026-10-18 (late) — Release 0.3.1 for sharing
 
 - The `.ccx` now carries `THIRD-PARTY-LICENSES.txt` (hyphen ISC licence, MIT texts for the de-1996 and en-gb patterns, the en-us notice), from `packages/panel/licenses/`, copied in by `npm run package`.

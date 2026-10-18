@@ -193,3 +193,10 @@ The designer asked for per-line word-space adjustment alongside tracking so line
 - Freeze inserts a forced line break at every visible line end (and a real hyphen where the line was hyphenated) instead of, for example, converting the rag to fixed tracking or outlines: the text stays text, searchable and editable after Unfreeze.
 - The inserted characters carry the condition "Flatter frozen", so Unfreeze and Remove find exactly them (by checking the conditions of every forced break and hyphen in the story; no Find/Change, which would overwrite the user's Find/Change settings).
 - Teeth are removed at Freeze: forced breaks hold every line, and the frozen file no longer depends on wrap objects or the hyphenation dictionary. A frozen story cannot be re-planned until it is unfrozen.
+
+## ADR-020: Self-check and compatibility alarm (2026-10-18)
+
+Flatter relies on InDesign behaviour that is not documented (composer and text wrap, tracking at line ends, ligatures under tracking, hyphenation probing). An InDesign update could change any of it.
+- After every version change of InDesign or Flatter the panel runs a self-check of the whole chain in a hidden document; on demand too.
+- One unmistakable signal for "this should never happen": a hot-magenta box at the top of the panel (not used for anything else; ordinary problems stay red, yellow and green). It fires on a failed self-check, on unexpected errors (anything not raised as `FlatterUserError`) and on results no healthy InDesign produces (most lines not as steered, no hyphenation points).
+- Thresholds are chosen so normal use never triggers them: every test so far set all visible lines as planned, and InDesign found points in most long words.

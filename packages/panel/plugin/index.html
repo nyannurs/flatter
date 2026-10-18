@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <style>
   /* Text uses Spectrum elements (sp-heading, sp-body, sp-detail), which follow InDesign's theme. */
-  .head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+  .head { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; }
   sp-divider { margin: 10px 0 8px; }
   sp-slider { width: 100%; margin-bottom: 2px; }
   .row { display: flex; flex-direction: row; }
@@ -12,6 +12,11 @@
   .row > *:last-child { margin-right: 0; }
   sp-picker { width: 100%; }
   sp-checkbox { display: flex; margin: 2px 0; }
+  /* Everything wraps inside the panel: checkboxes keep short labels; longer explanations go in .hint lines. */
+  sp-body, sp-detail, sp-heading, sp-label, div { white-space: normal; overflow-wrap: anywhere; }
+  #scroll { overflow-x: hidden; }
+  .brand { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; }
+  .brand sp-heading { margin: 0 8px 0 0; }
   .buttons { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 10px; }
   .buttons sp-button, .buttons sp-action-button { margin: 0 6px 6px 0; }
   #status { margin-top: 8px; font-weight: bold; }
@@ -29,13 +34,33 @@
   .dim { opacity: 0.7; }
   .toggle { cursor: pointer; margin-top: 8px; }
   #report sp-detail { display: block; margin: 8px 0 2px; }
-  .langrow { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
+  #alarm { background: #e0007a; color: #ffffff; border-left: 6px solid #ffe600; border-radius: 4px; padding: 8px 10px; margin: 8px 0; }
+  #alarm .alarm-title { font-weight: bold; font-size: 12px; letter-spacing: 0.08em; margin-bottom: 4px; }
+  #alarm .alarm-lead { font-size: 12px; margin-bottom: 4px; }
+  #alarm .alarm-line { font-size: 11px; margin: 2px 0 2px 8px; }
+  #alarm textarea { width: 100%; height: 70px; margin-top: 6px; font-size: 10px; color: #ffffff; background: rgba(0, 0, 0, 0.3); border: none; }
+  #alarm .alarm-actions { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 6px; }
+  #alarm .alarm-actions > * { margin: 0 6px 4px 0; }
+  .footer { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 16px; }
+  .langrow { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  #langNow { flex-basis: 100%; }
   .langrow > * { margin-right: 6px; }
 </style>
 </head>
 <body>
 <div id="scroll">
-  <div class="head"><sp-heading size="XS">Flatter</sp-heading><sp-detail id="modeTag">FLATTERSATZ</sp-detail></div>
+  <div class="head"><div class="brand"><sp-heading size="S">Flatter</sp-heading><sp-detail id="brandVersion"></sp-detail></div><sp-detail id="modeTag">FLATTERSATZ</sp-detail></div>
+  <!-- Compatibility alarm: only for things that should never happen (an InDesign update changed something). -->
+  <div id="alarm" style="display: none">
+    <div class="alarm-title">COMPATIBILITY ALARM</div>
+    <div id="alarmText"></div>
+    <textarea id="alarmDetails" readonly></textarea>
+    <div class="alarm-actions">
+      <sp-action-button id="alarmCopy" size="s">Copy details</sp-action-button>
+      <sp-action-button id="alarmRecheck" size="s">Run self-check</sp-action-button>
+      <sp-action-button id="alarmClose" size="s">Dismiss</sp-action-button>
+    </div>
+  </div>
   <sp-body size="S" id="target">Select a text frame or put the cursor in text.</sp-body>
   <div class="langrow">
     <sp-detail>LANGUAGE</sp-detail>
@@ -64,8 +89,9 @@
         </sp-menu>
       </sp-picker>
     </div>
-    <sp-checkbox id="continuous">Continue rhythm across paragraphs</sp-checkbox>
-    <sp-checkbox id="showBands" checked>Show Flatterzone and band in the document</sp-checkbox>
+    <sp-checkbox id="continuous">Rhythm across paragraphs</sp-checkbox>
+    <sp-body size="XS" class="hint">Continue long/short from one paragraph into the next.</sp-body>
+    <sp-checkbox id="showBands" checked>Show zone and band</sp-checkbox>
     <sp-body size="XS" class="hint"><span class="swatch long"></span> long lines end here · <span class="swatch short"></span> short lines end here (not printed)</sp-body>
   </div>
 
@@ -85,9 +111,10 @@
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>LAUFWEITE</sp-detail>
-    <sp-checkbox id="tracking">Align line ends exactly (per line: letter tracking and word spaces)</sp-checkbox>
-    <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Largest letter tracking (1/1000 em)</sp-label></sp-slider>
-    <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true" disabled><sp-label slot="label">Largest word-space change (%)</sp-label></sp-slider>
+    <sp-checkbox id="tracking">Align line ends exactly</sp-checkbox>
+    <sp-body size="XS" class="hint">Per line: letter tracking and word spaces, within the limits below.</sp-body>
+    <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Letter tracking ± (1/1000 em)</sp-label></sp-slider>
+    <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true" disabled><sp-label slot="label">Word spaces ± (%)</sp-label></sp-slider>
   </div>
 
   <div class="buttons">
@@ -96,11 +123,13 @@
     <sp-action-button id="freeze">Freeze</sp-action-button>
     <sp-action-button id="remove">Remove</sp-action-button>
   </div>
-  <sp-checkbox id="live" checked>Live: sliders reset the text as you move them</sp-checkbox>
+  <sp-checkbox id="live" checked>Live</sp-checkbox>
+  <sp-body size="XS" class="hint">Sliders reset the text while you move them.</sp-body>
 
   <sp-body size="S" id="status"></sp-body>
-  <sp-detail id="meta"></sp-detail>
+  <sp-body size="XS" id="meta"></sp-body>
   <div id="report"></div>
+  <div class="footer"><sp-detail id="version"></sp-detail><sp-action-button id="selfcheck" size="s" quiet>Run self-check</sp-action-button></div>
   <script src="index.js"></script>
 </div>
 </body>

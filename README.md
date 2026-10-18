@@ -2,7 +2,7 @@
 
 A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in a strict **long, short, long, short** rhythm. It can also pull every line end onto its target edge with per-line letter tracking and word-space adjustment.
 
-**Status: version 0.3.1, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.4.0, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
 
 ## What it does
 
@@ -12,6 +12,7 @@ A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flatte
 - **Careful hyphenation.** German (2006 reform) and English, from TeX patterns plus a second opinion: a German syllable and word-joint analyser, and US and UK English patterns that must agree. Every point gets a class, and only safe points are used by default. Each point is also checked against InDesign's own hyphenation, including typed hyphens in compounds. A Sinneinheiten option keeps an article or preposition with its word, a number with its unit, and dates and initials together.
 - **Live panel.** Sliders for Flatterzone and band, as a percentage of the measure, plus hyphens in a row and the tracking and word-space limits. Results update while you drag. An optional band view shows where long lines (blue) and short lines (orange) should end, on a non-printing layer. The report lists one entry per visible line, and clicking an entry selects that line in the document.
 - **Freeze for hand-off.** Freeze fixes the current line breaks in the text: forced line breaks, plus real hyphens where InDesign hyphenated, all tagged with the condition "Flatter frozen". The file then keeps its rag on any computer, whatever its hyphenation dictionary. Unfreeze removes exactly those characters and brings the live rag back. You don't need Freeze for PDF output.
+- **Compatibility alarm.** After every InDesign or Flatter update, the panel checks once, in a hidden test document, that InDesign still behaves the way Flatter relies on. If a check fails, or something happens that should never happen (an unexpected error, InDesign ignoring the steering, no hyphenation points), a hot-magenta box appears at the top of the panel with the details to copy. **Run self-check** at the bottom of the panel runs it any time.
 - **Real layouts.** Stories threaded through frames of different widths, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
 
 ## Install
@@ -69,7 +70,7 @@ npm run typecheck
 npm run sim -- --help   # simulator: text in, SVG and report out, no InDesign needed
 npm run playground      # browser playground with the same solver
 npm run test:indesign   # integration tests inside a running InDesign (throwaway documents)
-npm run panel           # dev build of the panel, loaded with the UXP Developer Tool
+npm run panel           # dev build as "Flatter (dev)" (own plugin id, runs beside an installed release)
 npm run package         # release build → dist/Flatter-<version>.ccx
 ```
 

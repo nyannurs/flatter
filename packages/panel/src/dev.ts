@@ -2,7 +2,8 @@
  * Development channel (dev builds only). Lets a terminal script drive the
  * loaded panel without clicks: write a JSON command to the application label
  * "flatter-dev-command"; the panel answers in "flatter-dev-result".
- * Commands: { "cmd": "ping" } and { "cmd": "s4", "ticks": 20 } (spike S4: live latency).
+ * Commands: { "cmd": "ping" }, { "cmd": "s4", "ticks": 20 } (spike S4: live latency), { "cmd": "selfcheck" },
+ * { "cmd": "alarm-demo" } and { "cmd": "panel-state" } (the compatibility alarm).
  */
 import { liveUpdate, liveVerify, openSession, removeFlatter } from '@flatter/indesign-adapter';
 
@@ -20,7 +21,13 @@ const TEXT = [
 
 const yieldToHost = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-export function startDevChannel(): void {
+export interface DevHooks {
+  runSelfCheck: (auto: boolean) => Promise<unknown>;
+  showAlarm: (summary: string, lines: readonly string[], details: string) => void;
+  alarmState: () => unknown;
+}
+
+export function startDevChannel(hooks?: DevHooks): void {
   const { app } = require('indesign');
   let busy = false;
   setInterval(async () => {
@@ -34,6 +41,11 @@ export function startDevChannel(): void {
       const cmd = JSON.parse(raw);
       if (cmd.cmd === 'ping') result = { ok: true, panel: 'Flatter', time: new Date().toISOString() };
       else if (cmd.cmd === 's4') result = await s4(Number(cmd.ticks ?? 20), !!cmd.visible, !!cmd.mergeFirst);
+      else if (cmd.cmd === 'selfcheck' && hooks) result = { check: await hooks.runSelfCheck(false), panel: hooks.alarmState() };
+      else if (cmd.cmd === 'alarm-demo' && hooks) {
+        hooks.showAlarm('Demo: this is how the compatibility alarm looks.', ['Lines set where Flatter steers them: 3 of 40 lines as planned'], 'demo details');
+        result = hooks.alarmState();
+      } else if (cmd.cmd === 'panel-state' && hooks) result = hooks.alarmState();
       else result = { error: `unknown command ${cmd.cmd}` };
     } catch (e) {
       result = { error: String(e), stack: String((e as Error)?.stack ?? '') };

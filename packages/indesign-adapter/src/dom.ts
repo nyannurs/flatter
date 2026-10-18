@@ -2,6 +2,7 @@
  * Public InDesign operations: check and fix settings, apply, remove. Each runs
  * as one undo step ("Flatter: …") through app.doScript (spike S8).
  */
+import { FlatterUserError } from './errors.ts';
 import { FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
 import { asArray, controlLayer, DomPort, indesign, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
@@ -227,7 +228,7 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
  */
 export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): { live: LiveSession; report: ApplyReport } {
   const t0 = Date.now();
-  if (isFrozen(story)) throw new Error('This story is frozen. Unfreeze it to change the rag.');
+  if (isFrozen(story)) throw new FlatterUserError('This story is frozen. Unfreeze it to change the rag.');
   return undoableMode('Flatter: Apply', 'entire', () => {
     const doc = story.parent;
     const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
@@ -365,7 +366,7 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
     const doc = story.parent;
     const id = indesign();
     const state = readState(story);
-    if (!state) throw new Error('Apply Flatter to this story before freezing it.');
+    if (!state) throw new FlatterUserError('Apply Flatter to this story before freezing it.');
     if (state.frozen) return { breaks: 0, hyphens: 0, linesBefore: 0, linesAfter: 0 };
     story.recompose();
     const text = Array.from(String(story.contents));
