@@ -11,13 +11,21 @@ function userStory(): Any {
       const st = d.stories.item(s);
       if (st.extractLabel('flatter')) return st;
     }
+    // No story with Flatter applied: the longest story.
+    let best: Any;
+    for (let s = 0; s < d.stories.length; s++) {
+      const st = d.stories.item(s);
+      if (!best || Number(st.characters.length) > Number(best.characters.length)) best = st;
+    }
+    if (best && Number(best.characters.length) > 2000) return best;
   }
-  throw new Error('no Flatter story in TestFile');
+  throw new Error('no usable story in TestFile');
 }
 
 inNewDocument((doc: Any) => {
   const src = userStory();
-  const userSettings: ApplySettings = JSON.parse(src.extractLabel('flatter')).settings;
+  const label = src.extractLabel('flatter');
+  const userSettings: ApplySettings = label ? JSON.parse(label).settings : { zoneShare: 0.12, bandShare: 0.5, mode: 'strict', hyphenation: 'safe', maxConsecutiveHyphens: 2, sense: true };
   const sizes = inPoints(() => asArray(src.textContainers).map((f: Any) => { const b = f.geometricBounds.map(Number); return [b[3] - b[1], b[2] - b[0]]; }));
   doc.documentPreferences.pagesPerDocument = sizes.length;
   const copy = (lang?: string): Any => {
@@ -58,9 +66,10 @@ inNewDocument((doc: Any) => {
   };
   const base: ApplySettings = { ...userSettings, showBands: false };
   const de = 'German: 2006 Reform';
-  run('your settings, language as in your file', base);
-  run('German', base, de);
-  run('German + Flatterzone 15 %', { ...base, zoneShare: 0.15 }, de);
-  run('German + exact ends (letters ±10, spaces ±25 %)', { ...base, tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 }, de);
+  for (const zone of [0.08, 0.12, 0.15]) {
+    run(`aesthetic, zone ${zone * 100} %`, { ...base, zoneShare: zone, bandShare: 0.5, style: 'aesthetic' }, de);
+    run(`functional, zone ${zone * 100} %`, { ...base, zoneShare: zone, bandShare: 0.5, style: 'functional' } as Any, de);
+  }
+  run('functional, zone 8 %, Laufweite rescue', { ...base, zoneShare: 0.08, bandShare: 0.5, style: 'functional', tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 } as Any, de);
   return { userSettings, sizes, rows };
 });

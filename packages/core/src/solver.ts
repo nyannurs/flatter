@@ -106,8 +106,19 @@ export function targetGap(P: ResolvedParams, role: Role, startItem: number, scal
   return lo + P.variation * P.band * scale * unitHash(P.variationSeed, startItem);
 }
 
+/** Steps smaller than this do not count as a staircase (same as the checker). */
+const STAIR_STEP = 0.5;
+
+/** A reading pause before a break: the word before it ends with punctuation. */
+function isPause(item: Item | undefined): boolean {
+  return item?.type === 'box' && /[.,;:!?)\]»«"”“–—]$/.test(item.text ?? '');
+}
+
 function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean): DPResult | null {
   const precise = allowTracking && P.tracking.enabled && P.tracking.mode === 'precise';
+  const functional = P.style === 'functional';
+  // Functional style: Laufweite (letters and word spaces) rescues lines that would end outside the zone.
+  const zoneTracking = functional && allowTracking && P.tracking.enabled;
   const { items, n, candidates } = M;
   const W = P.weights;
   const hyphenCap = W.hyphenBudget + 6;
@@ -157,7 +168,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       // Width one unit of tracking adds to this line (1/1000 em per character).
       const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end, b) : 0;
       // Width one unit of word-space tracking adds (precise mode only: 1/1000 em per space inside the line).
-      const spaceUnit = precise && !exempt && P.tracking.wordSpaceMax > 0 ? (P.tracking.emSize / 1000) * M.glueCount(g.start, g.end) : 0;
+      const spaceUnit = (precise || zoneTracking) && !exempt && P.tracking.wordSpaceMax > 0 ? (P.tracking.emSize / 1000) * M.glueCount(g.start, g.end) : 0;
       const shrink = trackUnit * P.tracking.max + spaceUnit * P.tracking.wordSpaceMax;
       // Tracked, the line also takes on the width of its broken-up ligatures.
       const ligExtra = trackUnit > 0 ? M.trackedExtra(g.start, g.end) : 0;
@@ -174,7 +185,52 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       let tracking = 0;
       let wordSpace = 0;
 
-      if (!exempt) {
+      if (!exempt && functional) {
+        // Functional Flattersatz: every line ends inside the Flatterzone, in no fixed order.
+        const lo = 0;
+        const hi = Z;
+        let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
+        if (dist > TOL && (trackUnit > 0 || spaceUnit > 0)) {
+          // The least letter tracking and word-space change that brings the line just inside the zone.
+          const inset = Math.min(1, Z * 0.1);
+          const want = gap > hi ? hi - inset : lo + Math.min(Z / 2, Math.max(inset, P.tracking.safety));
+          const T = trackUnit > 0 ? P.tracking.max : 0;
+          let { t, w } = splitAdjustment(gap - ligExtra - want, trackUnit, T, spaceUnit, P.tracking.wordSpaceMax);
+          if (t === 0) w = splitAdjustment(gap - want, 0, 0, spaceUnit, P.tracking.wordSpaceMax).w;
+          if (t !== 0 || w !== 0) {
+            tracking = t;
+            wordSpace = w;
+            gap = gap - (t !== 0 ? ligExtra : 0) - t * trackUnit - w * spaceUnit;
+            dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
+            if (overfull > 0 && gap >= -TOL) overfull = 0;
+            cost =
+              node.cost +
+              W.trackingBase / 4 +
+              W.trackingPrecise * ((t / Math.max(1, P.tracking.max)) ** 2 + (w / Math.max(1, P.tracking.wordSpaceMax)) ** 2) +
+              (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
+          }
+        }
+        if (overfull > 0 && hard) return 'next';
+        if (dist > TOL) {
+          if (hard) return 'next';
+          if (allowSkip && gap > hi + Z) return 'short';
+          cost += SOFT_COST.band + SOFT_COST.bandSlope * (dist / Math.max(Z, 1e-6)) ** 2;
+        }
+        // Fuller lines read more evenly; a gentle pull towards the measure.
+        cost += W.centring * (gap / Math.max(Z, 1e-6)) ** 2;
+        if (!node.exempt) {
+          // The edge should flutter: neighbours closer than the band cost a little.
+          const diff = Math.abs(gap - node.gap);
+          if (band > 0 && diff < band) cost += W.flutter * ((band - diff) / band) ** 2;
+          // Three lines in a row getting longer or shorter make a staircase.
+          const pp = node.prev;
+          if (pp && !pp.exempt && !pp.virtual) {
+            const d1 = node.gap - pp.gap;
+            const d2 = gap - node.gap;
+            if ((d1 > STAIR_STEP && d2 > STAIR_STEP) || (d1 < -STAIR_STEP && d2 < -STAIR_STEP)) cost += W.staircase;
+          }
+        }
+      } else if (!exempt) {
         const lo = role === 'long' ? 0 : Z;
         const hi = lo + band;
         let dist = gap < lo ? lo - gap : gap > hi ? gap - hi : 0;
@@ -241,6 +297,8 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
         const it = items[b]!;
         if (it.type === 'glue') {
           cost += (it.breakCost ?? 0) * W.sense;
+          // Functional style: breaks belong at reading pauses, after punctuation.
+          if (functional && !isPause(items[b - 1])) cost += W.pauseless;
         } else if (it.type === 'penalty') {
           cost += it.cost ?? 0;
           if (it.flagged) {
@@ -272,7 +330,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           if (hard) return 'next';
           cost += SOFT_COST.lastLineRule;
         }
-        if (P.lastLine.shortAfterLong && !node.exempt && node.role === 'long' && gap < Z - TOL) {
+        if (!functional && P.lastLine.shortAfterLong && !node.exempt && node.role === 'long' && gap < Z - TOL) {
           cost += W.lastLineTooLong * (1 + ((Z - gap) / band) ** 2);
         }
         if (P.lastLine.minWidth > 0 && g.width < P.lastLine.minWidth) cost += W.lastLineTooShort;
@@ -402,7 +460,14 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
       kind === 'band'
         ? Math.max(g.ink, Math.min(g.ink + Math.min(margin, slack / 2), Math.max(available, g.ink)))
         : available;
-    const targetWidth = kind === 'band' ? available - targetGap(P, spec.role, g.start, scale) : g.width;
+    // Functional style: the target is the zone itself, so a line inside it has no miss.
+    const gap0 = available - g.width;
+    const targetWidth =
+      kind !== 'band'
+        ? g.width
+        : P.style === 'functional'
+          ? available - Math.min(Math.max(gap0, 0), P.flatterzone * scale)
+          : available - targetGap(P, spec.role, g.start, scale);
     const line: PlannedLine = {
       index,
       role: spec.role,
@@ -492,11 +557,14 @@ export function solveParagraph(items: readonly Item[], settings: FlatterSettings
       stats: { ...planStats([]), states: 0 },
     };
   }
-  const requested: Role[] = P.startRole
-    ? [P.startRole]
-    : P.phase === 'auto'
-      ? ['long', 'short']
-      : [P.phase];
+  // The functional style has no roles: one start is enough.
+  const requested: Role[] = P.style === 'functional'
+    ? ['long']
+    : P.startRole
+      ? [P.startRole]
+      : P.phase === 'auto'
+        ? ['long', 'short']
+        : [P.phase];
 
   const pick = (roles: Role[], hard: boolean, tracking: boolean): { res: DPResult; role: Role } | null => {
     let best: { res: DPResult; role: Role } | null = null;
@@ -512,13 +580,14 @@ export function solveParagraph(items: readonly Item[], settings: FlatterSettings
   // strict setting exists without it, and the designer's phase wins over an untracked flip.
   const track = P.tracking.enabled;
   // Precise Laufweite tracks every line from the start; the rescue only after strict fails without it.
-  const precise = track && P.tracking.mode === 'precise';
+  // Functional style: Laufweite only rescues lines outside the zone, so it may be offered from the start.
+  const precise = track && (P.tracking.mode === 'precise' || P.style === 'functional');
   let solvedAs: 'strict' | 'soft' = 'strict';
   let phaseFlipped = false;
   let found: { res: DPResult; role: Role } | null = null;
   if (P.mode === 'strict') {
     found = precise ? pick(requested, true, true) : (pick(requested, true, false) ?? (track ? pick(requested, true, true) : null));
-    if (!found && requested.length === 1) {
+    if (!found && requested.length === 1 && P.style !== 'functional') {
       // Plan §4.3 step 1: try the other phase.
       const other = [opposite(requested[0]!)];
       found = precise ? pick(other, true, true) : (pick(other, true, false) ?? (track ? pick(other, true, true) : null));

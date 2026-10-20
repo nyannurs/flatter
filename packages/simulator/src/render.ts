@@ -55,7 +55,10 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
     const blockTop = y;
     const blockHeight = plan.lines.length * leading;
     const P = plan.params;
-    if (opts.showBands !== false && plan.lines.length > 0) {
+    if (opts.showBands !== false && plan.lines.length > 0 && P.style === 'functional') {
+      // Functional style: one zone in which every line ends.
+      parts.push(`<rect x="${left + measure - P.flatterzone}" y="${blockTop}" width="${P.flatterzone}" height="${blockHeight}" fill="${c.longBand}"/>`);
+    } else if (opts.showBands !== false && plan.lines.length > 0) {
       parts.push(
         `<rect x="${left + measure - P.band}" y="${blockTop}" width="${P.band}" height="${blockHeight}" fill="${c.longBand}"/>`,
         `<rect x="${left + measure - P.flatterzone - P.band}" y="${blockTop}" width="${P.band}" height="${blockHeight}" fill="${c.shortBand}"/>`,

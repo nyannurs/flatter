@@ -17,6 +17,12 @@ describe('Sinneinheiten, German', () => {
     expect(cost(de, 'mit,', 'und')).toBe(0);
   });
 
+  it('keeps titles and names together', () => {
+    expect(cost(de, 'Frau', 'Müller')).toBeGreaterThan(100);
+    expect(cost(de, 'Max', 'Planck')).toBeGreaterThan(0);
+    expect(cost(de, 'Planck,', 'der')).toBe(0);
+  });
+
   it('keeps numbers with units, dates and abbreviations together', () => {
     expect(cost(de, '10', 'kg')).toBeGreaterThanOrEqual(300);
     expect(cost(de, '5', '%')).toBeGreaterThanOrEqual(300);
@@ -46,5 +52,12 @@ describe('Sinneinheiten, English', () => {
     expect(cost(en, '(a)', 'first')).toBeGreaterThan(0);
     expect(cost(en, '12', 'pt')).toBeGreaterThanOrEqual(300);
     expect(cost(en, 'March', '12')).toBeGreaterThan(100);
+  });
+
+  it('keeps first and last names and proper names together', () => {
+    expect(cost(en, 'Christina', 'Poth')).toBeGreaterThan(0);
+    expect(cost(en, 'Nxt', 'Museum')).toBeGreaterThan(0);
+    expect(cost(en, 'Poth,', 'who')).toBe(0);
+    expect(cost(en, 'house', 'Stands')).toBe(0);
   });
 });

@@ -200,3 +200,11 @@ Flatter relies on InDesign behaviour that is not documented (composer and text w
 - After every version change of InDesign or Flatter the panel runs a self-check of the whole chain in a hidden document; on demand too.
 - One unmistakable signal for "this should never happen": a hot-magenta box at the top of the panel (not used for anything else; ordinary problems stay red, yellow and green). It fires on a failed self-check, on unexpected errors (anything not raised as `FlatterUserError`) and on results no healthy InDesign produces (most lines not as steered, no hyphenation points).
 - Thresholds are chosen so normal use never triggers them: every test so far set all visible lines as planned, and InDesign found points in most long words.
+
+## ADR-021: A functional Flattersatz next to the aesthetic one (2026-10-20)
+
+The designer wants two algorithms: the strict long/short rhythm (aesthetic) and a functional rag after the we.type guide "How to Flattersatz".
+- **Functional rules** (from the guide and the usual rag rules): lines vary freely; no misshapen edges (holes, staircases); breaks follow Sinneinheiten (article and noun, number and unit, dates, first and last names, proper names) and fall at natural reading pauses; hyphenation follows word structure; no hyphen at a column end or near the paragraph end.
+- **Mapping to the controls**: Flatterzone = the zone in which every line ends; Band = "Flutter", the difference neighbouring lines should keep (soft), so the edge does not creep; Laufweite = a rescue for lines that would end outside the zone, nothing else (the functional style does not chase exact edges).
+- **Priorities**: correct hyphenation and the zone (hard in strict) > Sinneinheiten (×4) > staircases and flutter > reading pauses > gentle pull to the measure.
+- Same solver, same DP: the style switches the line evaluation; aesthetic results are unchanged.

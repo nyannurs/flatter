@@ -40,7 +40,19 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
       });
     }
 
-    if (line.kind === 'band') {
+    if (line.kind === 'band' && P.style === 'functional') {
+      // Functional style: one zone, no order. A line ending outside it is the only rhythm error.
+      const Zf = (P.flatterzone * (line.available + line.indent)) / P.measure;
+      if (line.gap < -TOL || line.gap > Zf + TOL) {
+        const off = line.gap < 0 ? -line.gap : line.gap - Zf;
+        out.push({
+          kind: 'band',
+          severity: 'error',
+          line: i,
+          message: `Line ends ${fmt(off)} pt outside the Flatterzone (${line.gap < 0 ? 'too long' : 'too short: a hole in the rag'}).`,
+        });
+      }
+    } else if (line.kind === 'band') {
       // Flatterzone, band and contrast scale with the line's measure (lineMeasures).
       const scale = (line.available + line.indent) / P.measure;
       const Z = P.flatterzone * scale;
@@ -118,7 +130,8 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
     prevEnd = endWord;
 
     if (line.tracking !== 0) {
-      const precise = P.tracking.mode === 'precise';
+      // The functional zone rescue works like precise mode: fractional values, word spaces allowed.
+      const precise = P.tracking.mode === 'precise' || P.style === 'functional';
       const allowed = P.tracking.enabled && Math.abs(line.tracking) <= P.tracking.max + 1e-9 && (precise || Number.isInteger(line.tracking));
       if (allowed && precise) {
         // Every line is tracked in precise mode; the paragraph summary reports it instead.
@@ -140,7 +153,7 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
     }
 
     if (line.wordSpace !== 0) {
-      const ok = P.tracking.enabled && P.tracking.mode === 'precise' && Math.abs(line.wordSpace) <= P.tracking.wordSpaceMax + 1e-9;
+      const ok = P.tracking.enabled && (P.tracking.mode === 'precise' || P.style === 'functional') && Math.abs(line.wordSpace) <= P.tracking.wordSpaceMax + 1e-9;
       if (!ok) {
         out.push({
           kind: 'tracking-limit',
@@ -188,7 +201,7 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
         message: `The last line is a single word of fewer than ${P.lastLine.minLetters} letters.`,
       });
     }
-    if (P.lastLine.shortAfterLong && prev.kind === 'band' && prev.role === 'long' && last.gap < (P.flatterzone * (last.available + last.indent)) / P.measure - TOL) {
+    if (P.style !== 'functional' && P.lastLine.shortAfterLong && prev.kind === 'band' && prev.role === 'long' && last.gap < (P.flatterzone * (last.available + last.indent)) / P.measure - TOL) {
       out.push({
         kind: 'last-line-too-long',
         severity: 'warning',

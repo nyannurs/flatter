@@ -63,6 +63,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
       trackingMode: fc.constantFrom<'rescue' | 'precise'>('rescue', 'precise'),
       wordSpaceMax: fc.constantFrom(0, 20, 80),
       // Threaded frames of different widths: after some lines the measure changes.
+      style: fc.constantFrom<'aesthetic' | 'functional'>('aesthetic', 'aesthetic', 'functional'),
       widths: fc.option(fc.record({ after: fc.integer({ min: 1, max: 6 }), factor: fc.constantFrom(0.7, 1.5, 2) }), { nil: undefined }),
     })
     .map(
@@ -77,6 +78,7 @@ const settingsArb = (minMeasure: number, maxMeasure: number) =>
         variation: r.variation,
         hyphenCountsTowardWidth: !r.hanging,
         ...(r.tracking !== undefined ? { tracking: { enabled: true, mode: r.trackingMode, max: r.tracking, emSize: 10, wordSpaceMax: r.wordSpaceMax } } : {}),
+        style: r.style,
         ...(r.widths ? { lineMeasures: [...Array(r.widths.after).fill(r.measure), r.measure * r.widths.factor] } : {}),
       }),
     );
@@ -130,6 +132,12 @@ describe('solver invariants for any paragraph', () => {
             expect(line.available + line.indent).toBeCloseTo(m, 6);
             if (line.kind !== 'band') return;
             const scale = m / P.measure;
+            if (P.style === 'functional') {
+              // One zone, no order: every line ends inside the Flatterzone.
+              expect(line.gap).toBeGreaterThanOrEqual(-TOL);
+              expect(line.gap).toBeLessThanOrEqual(P.flatterzone * scale + TOL);
+              return;
+            }
             const lo = line.role === 'long' ? 0 : P.flatterzone * scale;
             expect(line.gap).toBeGreaterThanOrEqual(lo - TOL);
             expect(line.gap).toBeLessThanOrEqual(lo + P.band * scale + TOL);
@@ -151,12 +159,13 @@ describe('solver invariants for any paragraph', () => {
 
         // Tracking: whole units within the maximum, only on band lines, and only as a rescue.
         for (const line of plan.lines) {
-          if (P.tracking.mode === 'rescue') expect(Number.isInteger(line.tracking)).toBe(true);
+          // The aesthetic rescue uses whole units; the functional zone rescue may use fractions.
+          if (P.tracking.mode === 'rescue' && P.style !== 'functional') expect(Number.isInteger(line.tracking)).toBe(true);
           if (!P.tracking.enabled) expect(line.tracking).toBe(0);
           expect(Math.abs(line.tracking)).toBeLessThanOrEqual(P.tracking.enabled ? P.tracking.max : 0);
           if (line.kind !== 'band') expect(line.tracking).toBe(0);
           // Word spaces: precise mode only, band lines only, within their maximum.
-          if (P.tracking.mode !== 'precise' || !P.tracking.enabled || line.kind !== 'band') expect(line.wordSpace).toBe(0);
+          if ((P.tracking.mode !== 'precise' && P.style !== 'functional') || !P.tracking.enabled || line.kind !== 'band') expect(line.wordSpace).toBe(0);
           expect(Math.abs(line.wordSpace)).toBeLessThanOrEqual(P.tracking.wordSpaceMax + 1e-9);
         }
         if (P.tracking.enabled && P.tracking.mode === 'rescue' && P.mode === 'strict') {

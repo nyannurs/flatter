@@ -20,6 +20,8 @@ export interface SenseCosts {
   abbreviation: number;
   enumerator: number;
   nameSuffix: number;
+  /** Two capitalised words in a row: first and last name, or a proper name ("Max Planck", "Nxt Museum"). */
+  name: number;
 }
 
 export const DEFAULT_SENSE_COSTS: SenseCosts = {
@@ -33,6 +35,7 @@ export const DEFAULT_SENSE_COSTS: SenseCosts = {
   abbreviation: 120,
   enumerator: 60,
   nameSuffix: 120,
+  name: 40,
 };
 
 const words = (s: string) => new Set(s.trim().split(/\s+/));
@@ -42,6 +45,7 @@ const DE_PREPOSITIONS = words(`an auf aus bei bis durch für gegen hinter in mit
   zu zwischen am im zum zur vom beim ins ans aufs ab per pro samt trotz wegen während entlang gemäß laut binnen`);
 const DE_ABBREVIATIONS = words(`z. d. h. u. a. o. s. v. S. Nr. Dr. Prof. Hr. Fr. St. ca. vgl. Abb. Bd. Kap. Tab. bzw. ggf.
   inkl. evtl. Mio. Mrd. Tsd. Jh. Str. bspw. sog. ugs. zzgl. Anm. Hrsg.`);
+const DE_TITLES = words('Herr Herrn Frau Fräulein Dr. Prof. Hr. Fr.');
 const DE_MONTHS = words('Januar Jänner Februar März April Mai Juni Juli August September Oktober November Dezember');
 
 const EN_ARTICLES = words('a an the');
@@ -79,12 +83,22 @@ export function createSenseRule(language: HyphenLanguage, costs: Partial<SenseCo
     if ((DE_MONTHS.has(bw) || EN_MONTHS.has(bw)) && /^\d{1,4}\.?,?$/.test(a)) return { cost: c.date, reason: `"${before} ${after}": date split across lines.` };
     // Initials: J. S. Bach.
     if (/^\p{Lu}\.$/u.test(b) && /^\p{Lu}/u.test(a)) return { cost: c.initials, reason: `"${before} ${after}": initials separated from the name.` };
+    // Titles and names: Frau Müller, Herr Dr. Schmidt.
+    if (german && DE_TITLES.has(b) && /^\p{Lu}/u.test(bare(after))) return { cost: c.abbreviation, reason: `"${before} ${after}": title separated from the name.` };
+    // First and last name, proper names: two capitalised words in a row, with no punctuation between
+    // (checked after the more specific title and suffix rules).
+    const name = () =>
+      !endsClause(before) && /^\p{Lu}\p{Ll}+$/u.test(bw) && /^\p{Lu}\p{Ll}[\p{L}-]*$/u.test(bare(after)) && !(german ? DE_ARTICLES : EN_ARTICLES).has(bw.toLowerCase())
+        ? { cost: c.name, reason: `"${bw} ${bare(after)}": name split across lines.` }
+        : null;
 
     if (german) {
       if (DE_ABBREVIATIONS.has(b) && !endsClauseAfterAbbreviation(before)) {
         return { cost: c.abbreviation, reason: `Line ends on the abbreviation "${before}".` };
       }
       if (endsClause(before)) return null;
+      const n = name();
+      if (n) return n;
       const lw = bw.toLowerCase();
       if (DE_ARTICLES.has(lw)) return { cost: c.article, reason: `Line ends on the article "${bw}".` };
       if (DE_PREPOSITIONS.has(lw)) return { cost: c.preposition, reason: `Line ends on the preposition "${bw}".` };
@@ -96,6 +110,8 @@ export function createSenseRule(language: HyphenLanguage, costs: Partial<SenseCo
     if (EN_NAME_SUFFIXES.has(a) || EN_NAME_SUFFIXES.has(bare(after))) return { cost: c.nameSuffix, reason: `"${before} ${after}": name separated from ${after}.` };
     if (/^\(?(\d{1,2}|[a-z])\)$/.test(before) || /^\d{1,2}\.$/.test(before)) return { cost: c.enumerator, reason: `Line ends on the list marker "${before}".` };
     if (endsClause(before)) return null;
+    const n = name();
+    if (n) return n;
     const lw = bw.toLowerCase();
     if (EN_ARTICLES.has(lw)) return { cost: lw === 'a' ? c.oneLetter : c.article, reason: `Line ends on the article "${bw}".` };
     if (EN_PRONOUNS.has(bw) || EN_PRONOUNS.has(lw)) return { cost: bw === 'I' ? c.oneLetter : c.pronoun, reason: `Line ends on the pronoun "${bw}".` };

@@ -6,6 +6,13 @@ import type { Item } from './items.ts';
 export type Role = 'long' | 'short';
 export type Phase = 'long' | 'short' | 'auto';
 export type Mode = 'strict' | 'soft';
+/**
+ * aesthetic: the strict long, short, long, short rhythm (the plugin's original algorithm).
+ * functional: a reading-first Flattersatz (ADR-021): no alternation; every line ends inside the Flatterzone;
+ * neighbouring lines should differ by at least the band so the edge flutters; staircases are avoided; breaks
+ * prefer Sinneinheiten and reading pauses.
+ */
+export type RagStyle = 'aesthetic' | 'functional';
 export type HyphenationMode = 'safe' | 'normal';
 export type Language = 'de' | 'en';
 
@@ -44,6 +51,12 @@ export interface Weights {
   edge: number;
   /** Precise mode: cost of tracking, per (tracking / max)²: prefer the least tracking that hits the edge. */
   trackingPrecise: number;
+  /** Functional style: neighbouring lines closer than the band, per ((band − difference) / band)². */
+  flutter: number;
+  /** Functional style: three lines in a row getting longer or shorter (a staircase). */
+  staircase: number;
+  /** Functional style: a line break at a space that is not a reading pause (no punctuation before it). */
+  pauseless: number;
 }
 
 /**
@@ -106,6 +119,8 @@ export interface FlatterSettings {
    * so a percentage setting means the same in a wide frame as in a narrow one.
    */
   lineMeasures?: readonly number[];
+  /** aesthetic (default) or functional (ADR-021). */
+  style?: RagStyle;
   /** ε: steering margin added to the planned width (plan §3). */
   epsilon?: number;
   phase?: Phase;
@@ -136,6 +151,7 @@ export interface ResolvedParams {
   band: number;
   contrast: number;
   firstLineIndent: number;
+  style: RagStyle;
   /** Per-line measures (see FlatterSettings.lineMeasures); undefined when every line has `measure`. */
   lineMeasures: readonly number[] | undefined;
   epsilon: number;
@@ -174,6 +190,9 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     trackingBase: 400,
     trackingSlope: 600,
     edge: 400,
+    flutter: 40,
+    staircase: 60,
+    pauseless: 3,
     trackingPrecise: 20,
   },
   // English hyphenates less (Hochuli, plan §2A.5).
@@ -193,6 +212,9 @@ const LANGUAGE_WEIGHTS: Record<Language, Weights> = {
     trackingBase: 400,
     trackingSlope: 600,
     edge: 400,
+    flutter: 40,
+    staircase: 60,
+    pauseless: 3,
     trackingPrecise: 20,
   },
 };
@@ -276,6 +298,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     contrast,
     firstLineIndent: settings.firstLineIndent ?? 0,
     lineMeasures: lineMeasuresOf(settings.lineMeasures, measure),
+    style: settings.style ?? 'aesthetic',
     epsilon: settings.epsilon ?? 0.15,
     phase: settings.phase ?? 'long',
     startRole: settings.startRole,
@@ -289,7 +312,8 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     charsPerLine,
     widthFactor,
     lastLine: { ...DEFAULT_LAST_LINE, ...settings.lastLine },
-    weights: { ...LANGUAGE_WEIGHTS[language], ...settings.weights },
+    // Functional style: Sinneinheiten weigh four times as much (they are the point of it).
+    weights: { ...LANGUAGE_WEIGHTS[language], ...(settings.style === 'functional' ? { sense: LANGUAGE_WEIGHTS[language].sense * 4 } : {}), ...settings.weights },
     softBeam: settings.softBeam ?? 48,
     tracking,
   };

@@ -120,11 +120,12 @@ export function summarise(result: SimResult): Summary {
 export function formatReport(result: SimResult): string {
   const s = summarise(result);
   const out: string[] = [];
+  const functional = result.paragraphs[0]?.plan.params.style === 'functional';
   const band = result.paragraphs.flatMap(({ plan }) => plan.lines.filter((l) => l.kind === 'band'));
   const miss = band.map((l) => Math.abs(l.available - l.targetWidth - l.gap));
   const onEdge = miss.filter((m) => m <= 0.5).length;
   out.push(
-    `${s.perfect}/${s.paragraphs} paragraphs in perfect alternation, ${s.inRhythm}/${s.bandLines} lines in rhythm, ${s.hyphens} hyphens, ${s.tracked} tracked lines, ` +
+    `${s.perfect}/${s.paragraphs} paragraphs ${functional ? 'strict' : 'in perfect alternation'}, ${s.inRhythm}/${s.bandLines} lines ${functional ? 'inside the Flatterzone' : 'in rhythm'}, ${s.hyphens} hyphens, ${s.tracked} tracked lines, ` +
       `${s.spaced} with adjusted word spaces, ${s.errors} errors, ${s.warnings} warnings. Measure ${result.measure.toFixed(1)} pt. Solve ${result.solveMs.toFixed(1)} ms.`,
     `Edges: ${onEdge}/${band.length} band lines within 0.5 pt of their edge, worst ${Math.max(0, ...miss).toFixed(1)} pt off.`,
   );

@@ -63,7 +63,11 @@ export function controlLayer(doc: Any): Any {
 export const BAND_LAYER = 'Flatter (Ansicht)';
 export const BAND_LABEL = 'flatter-band';
 /** Band colours, as in the playground: blue for the long band, orange for the short band. */
-const BAND_COLORS = { long: { name: 'Flatter Band lang', rgb: [37, 99, 235] }, short: { name: 'Flatter Band kurz', rgb: [234, 88, 12] } } as const;
+const BAND_COLORS = {
+  long: { name: 'Flatter Band lang', rgb: [37, 99, 235] },
+  short: { name: 'Flatter Band kurz', rgb: [234, 88, 12] },
+  zone: { name: 'Flatter Zone', rgb: [13, 148, 136] },
+} as const;
 const BAND_OPACITY = 22;
 
 /** The band layer, created on demand, placed second from the top (under the control layer). */
@@ -342,7 +346,7 @@ export class DomPort implements Port {
     });
   }
 
-  private bandCache: { rect: Any; bounds: number[]; page: number; kind: 'long' | 'short' }[] | undefined;
+  private bandCache: { rect: Any; bounds: number[]; page: number; kind: BandSpec['kind'] }[] | undefined;
 
   /**
    * Show the Flatterzone and band as tinted strips behind the text (on their own layer, no text wrap,
@@ -359,10 +363,11 @@ export class DomPort implements Port {
     if (!this.bandCache) {
       this.bandCache = asArray(layer.pageItems.everyItem().getElements())
         .filter((it: Any) => it.extractLabel(BAND_LABEL) === this.storyKey())
-        .map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), kind: String(rect.extractLabel('flatter-band-kind')) as 'long' | 'short' }));
+        .map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), kind: String(rect.extractLabel('flatter-band-kind')) as BandSpec['kind'] }));
     }
     const cache = this.bandCache;
-    const colors = { long: this.bandColor('long'), short: this.bandColor('short') };
+    const colors: Record<string, Any> = {};
+    const colorOf = (k: BandSpec['kind']) => (colors[k] ??= this.bandColor(k));
     const none = this.doc.swatches.itemByName('None');
     bands.forEach((b, i) => {
       const have = cache[i];
@@ -374,7 +379,7 @@ export class DomPort implements Port {
         return;
       }
       if (have) have.rect.remove();
-      const rect = this.doc.pages.item(b.page).rectangles.add({ geometricBounds: b.bounds, itemLayer: layer, fillColor: colors[b.kind], strokeColor: none, strokeWeight: 0, nonprinting: true });
+      const rect = this.doc.pages.item(b.page).rectangles.add({ geometricBounds: b.bounds, itemLayer: layer, fillColor: colorOf(b.kind), strokeColor: none, strokeWeight: 0, nonprinting: true });
       rect.textWrapPreferences.textWrapMode = id.TextWrapModes.NONE;
       rect.transparencySettings.blendingSettings.properties = { opacity: BAND_OPACITY, blendMode: id.BlendMode.MULTIPLY };
       rect.insertLabel(BAND_LABEL, this.storyKey());
@@ -385,7 +390,7 @@ export class DomPort implements Port {
     layer.locked = true;
   }
 
-  private bandColor(kind: 'long' | 'short'): Any {
+  private bandColor(kind: BandSpec['kind']): Any {
     const c = BAND_COLORS[kind];
     const sw = this.doc.colors.itemByName(c.name);
     if (sw.isValid) return sw;

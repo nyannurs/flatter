@@ -60,10 +60,12 @@ interface PanelState {
   lastResult?: ApplyResult;
   /** The notes section of the report is open. */
   showNotes?: boolean;
+  /** Aesthetic (strict long/short) or functional rag (ADR-021). */
+  style: 'aesthetic' | 'functional';
   /** The last tick was a draft (no word spaces): verify applies the full settings first. */
   draft?: boolean;
 }
-const state: PanelState = { dragging: false, busy: false, pending: false };
+const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic' };
 
 export function settingsFromUI(): ApplySettings {
   const tracking = checked('tracking');
@@ -77,6 +79,7 @@ export function settingsFromUI(): ApplySettings {
     sense: checked('sense'),
     continuous: checked('continuous'),
     showBands: checked('showBands'),
+    style: state.style,
     // Laufweite in precise mode (ADR-013): every line end is pulled onto its edge, within ±max.
     ...(tracking ? { tracking: { enabled: true, mode: 'precise' as const, max: num('trackMax') }, wordSpaceShare: num('wordMax') / 100 } : {}),
   };
@@ -92,6 +95,7 @@ function settingsToUI(s: ApplySettings): void {
   if (s.sense !== undefined) $('sense').checked = s.sense;
   if (s.continuous !== undefined) $('continuous').checked = s.continuous;
   if (s.showBands !== undefined) $('showBands').checked = s.showBands;
+  state.style = s.style ?? 'aesthetic';
   $('tracking').checked = !!s.tracking?.enabled;
   if (s.tracking?.max !== undefined) $('trackMax').value = s.tracking.max;
   if (s.wordSpaceShare !== undefined) $('wordMax').value = Math.round(s.wordSpaceShare * 100);
@@ -228,6 +232,23 @@ function setLanguage(lang: keyof typeof LANGUAGES): void {
 function syncLabels(): void {
   const share = num('zone') / 100;
   $('modeTag').textContent = modeLabel(share, 1).toUpperCase();
+  // Aesthetic: strict long/short bands. Functional: one zone, a fluttering edge, Laufweite as a rescue.
+  const functional = state.style === 'functional';
+  $('styleAesthetic').selected = !functional;
+  $('styleFunctional').selected = functional;
+  $('styleHint').textContent = functional
+    ? 'Reading first: lines end anywhere in the Flatterzone, break at Sinneinheiten and pauses, no staircases.'
+    : 'Strict long, short, long, short.';
+  $('bandLabel').textContent = functional ? 'Flutter (% of zone)' : 'Band (% of zone)';
+  $('phase').disabled = functional;
+  $('continuous').disabled = functional;
+  $('continuousHint').textContent = functional ? 'Not used in the functional style.' : 'Continue long/short from one paragraph into the next.';
+  $('legendAesthetic').style.display = functional ? 'none' : '';
+  $('legendFunctional').style.display = functional ? '' : 'none';
+  $('trackingLabel').textContent = functional ? 'Rescue lines with Laufweite' : 'Align line ends exactly';
+  $('trackingHint').textContent = functional
+    ? 'Letter tracking and word spaces only for lines that would end outside the zone, within the limits below.'
+    : 'Per line: letter tracking and word spaces, within the limits below.';
   $('trackMax').disabled = !checked('tracking');
   $('wordMax').disabled = !checked('tracking');
 }
@@ -294,9 +315,13 @@ function render(r: ApplyResult, ms?: number): void {
   }
   const allGood = inRhythm === band && r.linesAsPlanned === r.linesPlanned;
   setStatus(
-    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} visible lines in rhythm`,
+    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} visible lines ${state.style === 'functional' ? 'inside the Flatterzone' : 'in rhythm'}`,
     allGood ? 'ok' : 'bad',
-    `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · ` +
+    (state.style === 'functional'
+      ? worstMiss > 0.05
+        ? `Worst line ${worstMiss.toFixed(1)} pt outside the Flatterzone · `
+        : 'Every line ends inside the Flatterzone · '
+      : `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · `) +
       `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked, ${r.spacedLines} with adjusted word spaces` +
       (r.oversetLines ? ` · ${r.oversetLines} lines overset (not visible, not set)` : '') +
       (ms !== undefined ? ` · ${ms} ms` : '') +
@@ -646,6 +671,13 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  const setStyle = (style: 'aesthetic' | 'functional') => {
+    if (state.style === style) return;
+    state.style = style;
+    onInput();
+  };
+  $('styleAesthetic').addEventListener('click', () => setStyle('aesthetic'));
+  $('styleFunctional').addEventListener('click', () => setStyle('functional'));
   $('selfcheck').addEventListener('click', () => void runSelfCheck(false));
   $('alarmRecheck').addEventListener('click', () => void runSelfCheck(false));
   $('alarmClose').addEventListener('click', hideAlarm);

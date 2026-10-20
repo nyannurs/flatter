@@ -154,6 +154,20 @@ inNewDocument((doc: Any) => {
     }, settings);
   }
 
+  // The functional style (ADR-021): one zone, free rag, Laufweite as a rescue.
+  for (const [name, settings] of [
+    ['functional', { style: 'functional', zoneShare: 0.15, bandShare: 0.4 }],
+    ['functional with Laufweite rescue', { style: 'functional', zoneShare: 0.1, bandShare: 0.4, tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 }],
+  ] as const) {
+    run(`German, ${name}`, () => frameWithDefaults(doc, [40, 40, 500, 300], DE_TEXT.join('\r'), 'German: 2006 Reform'), settings);
+    run(`English, ${name}, narrow frame into a wide one`, () => {
+      const narrow = frameWithDefaults(doc, [40, 40, 170, 250], EN_TEXT.join('\r'), 'English: USA');
+      const wide = doc.pages.item(0).textFrames.add({ geometricBounds: [200, 40, 500, 460] });
+      narrow.nextTextFrame = wide;
+      return narrow;
+    }, settings);
+  }
+
   // A document in millimetres (the user's TestFile): Flatter must work in points and restore the setting.
   const unitBefore = String(app.scriptPreferences.measurementUnit);
   for (const [name, settings] of [

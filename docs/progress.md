@@ -2,6 +2,20 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-20 — Functional style (ADR-021); release 0.5.0
+
+The designer asked for a second algorithm next to the aesthetic long/short rhythm: a functional Flattersatz after the we.type guide "How to Flattersatz" (https://wetype.xyz/share/how-to-flattersatz), with Flatterzone, band and Laufweite still adjustable.
+
+- **Core**: `style: 'aesthetic' | 'functional'` (default aesthetic, unchanged; snapshots unchanged). Functional: every band line ends inside [0, Z] (hard in strict, scaled per line measure); `flutter` cost when neighbours differ by less than the band; `staircase` cost for three lines in one direction; `pauseless` cost for a break at a space without punctuation before it (reading pauses); Sinneinheiten weight ×4; centring cost pulls lines gently towards the measure; no phase flip; Laufweite rescues lines outside the zone with letters and word spaces (`splitAdjustment`, fractional), from the start. Checker: one "outside the Flatterzone" error per line, no contrast, no last-line role rule. Tests: `functional.test.ts`, functional style in the property tests.
+- **Sinneinheiten** (both styles): two capitalised words in a row (first and last name, proper names: "Max Planck", "Nxt Museum") and German titles with a name ("Frau Müller").
+- **Adapter**: band view draws one teal zone strip ("Flatter Zone" colour) in the functional style.
+- **Panel**: Aesthetic / Functional buttons at the top of the RAG section; in Functional the band slider is "Flutter (% of zone)", phase and "Rhythm across paragraphs" are disabled, the tracking checkbox reads "Rescue lines with Laufweite", the legend shows the zone, the status counts lines inside the zone.
+- **Simulator / playground**: Style select (playground artifact republished), `--style` on the CLI. German reference text: aesthetic 33 lines, 7 hyphens; functional 31 lines, all inside the zone, 4 hyphens.
+- InDesign integration: four functional cases (German one frame; English narrow into wide; each plain and with rescue), all lines as planned. Not run on the designer's TestFile copy: InDesign was closed (do not relaunch it without the designer; `run.sh` launches InDesign).
+- Release 0.5.0 packaged and installed.
+
+Open: the guide's "no hyphen at the end of a column" is left to InDesign's "Hyphenate Across Columns" off (required setting); first and last names in German are detected only as two capitalised words in a row, which also matches a capitalised sentence start before a noun.
+
 ## 2026-10-18 (late evening) — Compatibility alarm and self-check; panel text wraps; release 0.4.0 (ADR-020)
 
 - **Self-check** (`selfCheck` in selfcheck.ts): in a hidden document, on a known German text: scripting interface present, all lines set as steered, InDesign gives hyphenation points, exact line ends work, no compatibility alarms, Freeze/Unfreeze round trip, Remove restores the text, units restored. About 2–4 s. The panel runs it once after every InDesign or Flatter version change (remembered in the plugin's localStorage) and on demand (**Run self-check**). Integration test `i20-selfcheck` also makes probing return nothing and checks that the self-check catches it.

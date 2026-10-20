@@ -30,6 +30,10 @@
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
   .swatch.long { background: rgba(37, 99, 235, 0.6); }
   .swatch.short { background: rgba(234, 88, 12, 0.6); }
+  .swatch.zone { background: rgba(13, 148, 136, 0.6); }
+  .stylerow { display: flex; flex-direction: row; flex-wrap: wrap; margin: 2px 0 2px; }
+  .stylerow > * { margin: 0 6px 4px 0; }
+  .note { margin: 0 0 6px; }
   .hint { margin: 0 0 4px 26px; }
   .dim { opacity: 0.7; }
   .toggle { cursor: pointer; margin-top: 8px; }
@@ -72,8 +76,13 @@
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>RAG</sp-detail>
+    <div class="stylerow">
+      <sp-action-button id="styleAesthetic" size="s" selected>Aesthetic</sp-action-button>
+      <sp-action-button id="styleFunctional" size="s">Functional</sp-action-button>
+    </div>
+    <sp-body size="XS" class="note" id="styleHint">Strict long, short, long, short.</sp-body>
     <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone (% of measure)</sp-label></sp-slider>
-    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label">Band (% of zone)</sp-label></sp-slider>
+    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label" id="bandLabel">Band (% of zone)</sp-label></sp-slider>
     <div class="row">
       <sp-picker id="phase" size="s" label="Phase">
         <sp-menu slot="options">
@@ -90,9 +99,10 @@
       </sp-picker>
     </div>
     <sp-checkbox id="continuous">Rhythm across paragraphs</sp-checkbox>
-    <sp-body size="XS" class="hint">Continue long/short from one paragraph into the next.</sp-body>
+    <sp-body size="XS" class="hint" id="continuousHint">Continue long/short from one paragraph into the next.</sp-body>
     <sp-checkbox id="showBands" checked>Show zone and band</sp-checkbox>
-    <sp-body size="XS" class="hint"><span class="swatch long"></span> long lines end here · <span class="swatch short"></span> short lines end here (not printed)</sp-body>
+    <sp-body size="XS" class="hint" id="legendAesthetic"><span class="swatch long"></span> long lines end here · <span class="swatch short"></span> short lines end here (not printed)</sp-body>
+    <sp-body size="XS" class="hint" id="legendFunctional" style="display: none"><span class="swatch zone"></span> every line ends in this zone (not printed)</sp-body>
   </div>
 
   <sp-divider size="small"></sp-divider>
@@ -111,8 +121,8 @@
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>LAUFWEITE</sp-detail>
-    <sp-checkbox id="tracking">Align line ends exactly</sp-checkbox>
-    <sp-body size="XS" class="hint">Per line: letter tracking and word spaces, within the limits below.</sp-body>
+    <sp-checkbox id="tracking"><span id="trackingLabel">Align line ends exactly</span></sp-checkbox>
+    <sp-body size="XS" class="hint" id="trackingHint">Per line: letter tracking and word spaces, within the limits below.</sp-body>
     <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Letter tracking ± (1/1000 em)</sp-label></sp-slider>
     <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true" disabled><sp-label slot="label">Word spaces ± (%)</sp-label></sp-slider>
   </div>

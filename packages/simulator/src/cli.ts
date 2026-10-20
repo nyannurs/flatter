@@ -23,6 +23,7 @@ const { values } = parseArgs({
     band: { type: 'string' },
     variation: { type: 'string', default: '0' },
     phase: { type: 'string', default: 'long' },
+    style: { type: 'string', default: 'aesthetic' },
     continuous: { type: 'boolean', default: false },
     mode: { type: 'string', default: 'strict' },
     hyphenation: { type: 'string', default: 'safe' },
@@ -59,6 +60,7 @@ if (values.help) {
   --no-hyphenation     do not hyphenate at all
   --sense / --no-sense Sinneinheiten penalties (default: on for German, off for English)
   --tracking <max>     allow tracking (Laufweite) up to ±max/1000 em on lines that just miss their band (off by default)
+  --style <s>          aesthetic (strict long/short, default) or functional (free rag, reading first)
   --precise            with --tracking: pull every line end onto its edge (ADR-013)
   --word-spaces <pct>  with --precise: also change word spaces by up to ±pct % (ADR-015)
   --font <file>        .woff/.ttf/.otf font (default Source Serif 4)
@@ -83,6 +85,7 @@ const result = simulate(readFileSync(textPath, 'utf8'), {
   ...(values.band ? { band: num(values.band)! } : {}),
   variation: Number(values.variation),
   phase: values.phase as 'long' | 'short' | 'auto',
+  style: values.style as 'aesthetic' | 'functional',
   continuous: values.continuous,
   mode: values.mode as 'strict' | 'soft',
   hyphenation: values.hyphenation as 'safe' | 'normal',

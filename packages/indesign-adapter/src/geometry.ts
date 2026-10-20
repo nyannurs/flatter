@@ -97,7 +97,7 @@ export interface BandSpec {
   page: number;
   /** [top, left, bottom, right] in page coordinates. */
   bounds: [number, number, number, number];
-  kind: 'long' | 'short';
+  kind: 'long' | 'short' | 'zone';
 }
 
 /**
@@ -131,6 +131,12 @@ export function bandsFor(plan: Plan, slots: readonly (LineSlot | undefined)[], l
     const b = band * scale;
     const top = s.baseline - leading * 0.8;
     const bottom = slots[j - 1]!.baseline + leading * 0.2;
+    if (plan.params.style === 'functional') {
+      // Functional style: one zone in which every line ends.
+      out.push({ page: s.page, bounds: [top, right - Z, bottom, right], kind: 'zone' });
+      i = j;
+      continue;
+    }
     out.push(
       { page: s.page, bounds: [top, right - b, bottom, right], kind: 'long' },
       { page: s.page, bounds: [top, right - Z - b, bottom, right - Z], kind: 'short' },

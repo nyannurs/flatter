@@ -42,6 +42,11 @@ function render(): void {
   $('zOut').textContent = `${num('z').toFixed(1)} % · ${z.toFixed(1)} pt`;
   $('modeTag').textContent = modeLabel(z, measure);
   $('bandOut').textContent = `${num('band')} % of zone · ${band.toFixed(1)} pt`;
+  // Functional style: the band is how much neighbouring lines should differ at least; no phase.
+  const functionalStyle = val('style') === 'functional';
+  $('bandName').textContent = functionalStyle ? 'Flutter (neighbours differ by at least)' : 'Band';
+  $<HTMLSelectElement>('phase').disabled = functionalStyle;
+  $<HTMLInputElement>('continuous').disabled = functionalStyle;
   $('maxHyphOut').textContent = String(num('maxHyph'));
   $('trackMaxOut').textContent = `±${num('trackMax')}/1000 em`;
   $<HTMLInputElement>('trackMax').disabled = !checked('tracking');
@@ -56,6 +61,7 @@ function render(): void {
     flatterzone: z,
     band,
     phase: val('phase') as 'long' | 'short' | 'auto',
+    style: val('style') as 'aesthetic' | 'functional',
     continuous: checked('continuous'),
     mode: val('mode') as 'strict' | 'soft',
     maxConsecutiveHyphens: num('maxHyph'),
@@ -94,7 +100,7 @@ function render(): void {
 }
 
 for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'trackMax', 'wordMax']) $(id).addEventListener('input', schedule);
-for (const id of ['phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
+for (const id of ['style', 'phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;
   schedule();
