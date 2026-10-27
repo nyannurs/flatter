@@ -194,6 +194,38 @@ export interface LiveSession {
   port: DomPort;
   session: FlatterSession;
   state: StoryState;
+  /** The story's text and basic formatting when it was measured (see storySignature). */
+  signature: string;
+}
+
+/**
+ * Text plus the formatting that changes widths, per paragraph. Tracking is left out on purpose: Flatter
+ * writes it itself. A different signature means the measurements are out of date.
+ */
+export function storySignature(story: Any): string {
+  try {
+    const paras = story.paragraphs.everyItem();
+    const parts = [
+      String(story.contents),
+      asArray(paras.pointSize).join(','),
+      asArray(paras.appliedFont).map((f: Any) => String(f?.name ?? f)).join(','),
+      asArray(paras.horizontalScale).join(','),
+      asArray(paras.kerningMethod).map(String).join(','),
+      asArray(paras.appliedLanguage).map((l: Any) => String(l?.name ?? l)).join(','),
+    ];
+    return parts.join('\u0000');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The story was edited (text, size, font, language) since Flatter measured it. The panel then measures
+ * again instead of planning with old widths, which set every line wrong (designer's report, 2026-10-27).
+ */
+export function liveIsStale(live: LiveSession): boolean {
+  if (!live.story?.isValid) return true;
+  return storySignature(live.story) !== live.signature;
 }
 
 function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T {
@@ -257,7 +289,7 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     const tCheck = Date.now();
     const check = checkSettings(story);
     const timings = { fixSettings: fixMs, prepare: tPlan - tPrep, plan: tSteer - tPlan, steerAndVerify: tCheck - tSteer, check: Date.now() - tCheck };
-    return { live: { story, port, session, state }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check, timings } };
+    return { live: { story, port, session, state, signature: storySignature(story) }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check, timings } };
   });
 }
 

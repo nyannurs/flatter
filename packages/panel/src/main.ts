@@ -15,6 +15,7 @@ import {
   storyLanguage,
   freezeFlatter,
   unfreezeFlatter,
+  liveIsStale,
   isFrozen,
   selfCheck,
   compatibilityAlarms,
@@ -578,6 +579,12 @@ function tick(): void {
       apply();
       return;
     }
+    if (liveIsStale(state.live)) {
+      // The text or its formatting changed since Flatter measured it: measure again first.
+      state.live = undefined;
+      apply();
+      return;
+    }
     const t0 = Date.now();
     const settings = settingsFromUI();
     // While a slider moves, word spaces wait: they are applied once the slider stops (see verify).
@@ -595,6 +602,11 @@ function tick(): void {
 
 function verify(): void {
   if (!state.live) return;
+  if (liveIsStale(state.live)) {
+    state.live = undefined;
+    apply();
+    return;
+  }
   if (state.draft) {
     // Show that something is happening, then set the word spaces (about a second in a long story).
     setStatus('Setting word spaces…', '', '');

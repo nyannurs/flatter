@@ -2,6 +2,15 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-27 — Edits after Apply are measured again; release 0.5.1
+
+The designer got the compatibility alarm "only 0 of 49 visible lines were set as planned" (Flatter 0.5.0, InDesign 21.6, a one-paragraph story in Avara Bold 14/16 in Untitled-1). On a copy the same story set 49/49 with all settings and the same facing-pages layout. Cause: the designer had deleted "Avara Bold 14/16 " from the start of the paragraph after Apply; the live session kept planning with the old measurements, so every line was off from the first one. Reproduced exactly (`i22-edit-after-apply.ts`: 49/49 before, 0/49 and the same alarm after the edit).
+
+- Fix: `storySignature` (text plus size, font, horizontal scale, kerning and language per paragraph; tracking left out because Flatter writes it) is stored with the live session; `liveIsStale` compares it. The panel measures again (a new Apply) before a slider tick or a verify when the story changed. The alarm text now also suggests Recompute after edits.
+- `i22-edit-after-apply` is part of `test:indesign`: Flatter's own tracking ticks do not count as an edit; deleting text and changing the type size do; measuring again gives all lines as planned.
+- Not an InDesign compatibility problem: the alarm did its job, but for a Flatter bug.
+- Release 0.5.1 packaged, installed and published.
+
 ## 2026-10-20 — Functional style (ADR-021); release 0.5.0
 
 The designer asked for a second algorithm next to the aesthetic long/short rhythm: a functional Flattersatz after the we.type guide "How to Flattersatz" (https://wetype.xyz/share/how-to-flattersatz), with Flatterzone, band and Laufweite still adjustable.

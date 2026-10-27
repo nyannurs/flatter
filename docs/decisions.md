@@ -208,3 +208,7 @@ The designer wants two algorithms: the strict long/short rhythm (aesthetic) and 
 - **Mapping to the controls**: Flatterzone = the zone in which every line ends; Band = "Flutter", the difference neighbouring lines should keep (soft), so the edge does not creep; Laufweite = a rescue for lines that would end outside the zone, nothing else (the functional style does not chase exact edges).
 - **Priorities**: correct hyphenation and the zone (hard in strict) > Sinneinheiten (×4) > staircases and flutter > reading pauses > gentle pull to the measure.
 - Same solver, same DP: the style switches the line evaluation; aesthetic results are unchanged.
+
+## ADR-022: The live session measures again when the story changed (2026-10-27)
+
+Flatter does not listen to edit events (ADR-012, S5: listeners belong in the panel, and per-keystroke work would be costly). Instead the live session remembers a signature of the story's text and width-relevant formatting; before a slider tick or a verify the panel compares it and, when it differs, applies again (fresh measurements, fixed settings). Planning with stale measurements set every line wrong and raised a false compatibility alarm.

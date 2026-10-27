@@ -83,7 +83,7 @@ export function compatibilityAlarms(r: ApplyResult): string[] {
   const out: string[] = [];
   const unsupported = r.paragraphs.some((p) => p.unsupported.length);
   if (!unsupported && r.linesPlanned >= 10 && r.linesAsPlanned / r.linesPlanned < 0.7) {
-    out.push(`InDesign did not follow Flatter's line steering: only ${r.linesAsPlanned} of ${r.linesPlanned} visible lines were set as planned (normally all of them).`);
+    out.push(`InDesign did not follow Flatter's line steering: only ${r.linesAsPlanned} of ${r.linesPlanned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Recompute and see whether this goes away.`);
   }
   const { checked, empty } = r.probeCheck;
   if (checked >= 10 && empty / checked >= 0.8) {
