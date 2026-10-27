@@ -216,3 +216,7 @@ Flatter does not listen to edit events (ADR-012, S5: listeners belong in the pan
 ## ADR-023: Mixed tracking without a record counts as Flatter's leftover (2026-10-27)
 
 A duplicated frame carries Flatter's tracking but not the story label with the base tracking. When Laufweite is on, Apply treats a paragraph with mixed tracking and no record as such a leftover: it resets it to its base (the even value, else the paragraph style's tracking) before measuring and records that base. Flatter already overwrote mixed tracking in every line it tracked (`baseTrackingOf`), so a designer's own tracking inside such a paragraph was never kept; now the measurements match the text. With Laufweite off the tracking stays and is measured as it is.
+
+## ADR-024: Measure again automatically before the compatibility alarm (2026-10-27)
+
+Every "lines not as planned" alarm the designer saw so far came from measurements that no longer matched the story, and Recompute cured each. The live session cannot notice every edit (ADR-022 covers text, size, font, scale, kerning and language). So when most lines miss, the panel measures again once by itself and shows the magenta alarm only if the lines still miss; a broken InDesign still raises it. Content InDesign sets differently from how it draws (ß in synthetic capitals) is reported as unsupported, not as an alarm.

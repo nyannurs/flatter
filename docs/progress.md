@@ -2,6 +2,19 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-27 (evening) — Automatic re-measure, measure cache keyed on all width settings, ß in capitals; release 0.5.3 (ADR-024)
+
+The designer got the alarm again (0.5.2): "only 18 of 53 visible lines were set as planned" on story 1636 in Layout1.indd, after Language → Apply → four slider moves; they pressed Remove afterwards. Nothing reproduced it outside their panel: copies of the story set 53/53 with and without leftover tracking, with the panel's slider sequence (`i25-ticks-copy.ts`), with the document's probe cache and the neighbouring frame, and with the whole history replayed (`i26-history.ts`: Flatter at 14/17 wide, duplicate, 12/15 narrower, language, Apply, ticks). Every earlier case was cured by Recompute, so the remaining suspect is measurements that no longer match the story.
+
+- **Automatic re-measure** (panel): when most lines miss (`steeringFailed`, the same test as the alarm), the panel measures again once, as Recompute does, and raises the alarm only if that does not help. The status then says "Measured again automatically". Tested in the real panel through the dev channel (`{"cmd":"recovery"}`: a capitalization change after Apply, which the live session does not notice; 22/22, then 25/25 after the automatic re-measure, no alarm).
+- **Alarm details** now say what led to the result (Apply, slider, language change, automatic re-measure…), the story id, the document units, rounds, the first line that differs (planned and actual end, widths) and the settings, plus the first failure when the automatic re-measure did not help.
+- **Measure cache key**: all width-relevant character attributes of every style range (capitalization, OpenType features, position, ligatures, kerning method, tracking, …), not only the first letter's font, size and tracking. Small caps reused the measurements of plain text before (0/22). The probe key includes capitalization; probe cache version v3.
+- **ß in All Caps and Small Caps**: InDesign's line breaker needs more room for ß than it draws (one ß: +6.5 pt in Minion Pro 10 pt small caps, +1.9 pt in all caps; four ß: +37 pt / +24 pt; not additive), so those lines break early. Flatter reports it as unsupported content ("ß in All Caps or Small Caps") instead of raising the alarm. OpenType All Small Caps is not affected; capitals without ß set exactly (`i27-capitals` in `test:indesign`).
+- Spikes: `i25-ticks-copy.ts` (copy plus the panel's slider sequence; app label `flatter-i25-extras` = `probes`, `neighbours`), `i26-history.ts`, `i28-caps-drift.ts` (letter-by-letter comparison of a line).
+- Release 0.5.3 packaged, installed and published.
+
+Open: the trigger of the designer's 18/53 is still unknown. If the alarm comes back with 0.5.3, its details now name the action and the first line that differs.
+
 ## 2026-10-27 (later) — Duplicated Flatter frames measured without leftover tracking; release 0.5.2 (ADR-023)
 
 The designer got the alarm "only 22 of 46 visible lines were set as planned" (0.5.1, Layout1.indd, a story in Avara Bold 14/16); Recompute fixed it. The undo history showed Duplicate before the Apply, and the document holds a duplicated Flatter story (1636) that carries Flatter's tracking but no Flatter record: InDesign does not copy story labels when a frame is duplicated. Apply on such a copy measured the text with the leftover tracking, then wrote its own tracking over it, so the lines no longer matched the measurements. Recompute worked because the first Apply had recorded the base tracking and Recompute clears the measure cache.

@@ -171,3 +171,8 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 ## Duplicated frames (2026-10-27, `i24`)
 
 - Duplicating a frame whose story Flatter set copies the text with Flatter's tracking but not the story's labels: the copy has no Flatter record. Teeth and band strips are not part of the story and are not duplicated with it.
+
+## Capitals and ß (2026-10-27, `i27`, `i28`)
+
+- In All Caps, Small Caps and Cap To Small Cap, InDesign draws ß as one glyph ("draußen" in Minion Pro 10 pt small caps: 34.91 pt, "draussen" 40.71 pt) but its line breaker needs more room: a line with one ß fits only 6.5 pt (small caps) or 1.9 pt (all caps) wider than drawn, four ß 37 pt / 24 pt. Without ß, capitals fit exactly at their drawn width. OpenType All Small Caps is not affected.
+- Character offsets in synthetic capitals are consistent within a line; the sum of the advances equals the drawn width.

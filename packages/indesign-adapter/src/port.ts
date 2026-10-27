@@ -26,6 +26,8 @@ export interface ParagraphData {
   /** The column width `measure` is based on (the story's first column); other columns differ by their own width. */
   columnWidth?: number;
   firstLineIndent: number;
+  /** Content the port found Flatter cannot plan around (shown in the report; no compatibility alarm). */
+  unsupported?: string[];
 }
 
 export interface ReadLine {

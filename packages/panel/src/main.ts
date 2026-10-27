@@ -19,6 +19,7 @@ import {
   isFrozen,
   selfCheck,
   compatibilityAlarms,
+  steeringFailed,
   isUserError,
   type SelfCheckResult,
   LANGUAGES,
@@ -65,8 +66,12 @@ interface PanelState {
   style: 'aesthetic' | 'functional';
   /** The last tick was a draft (no word spaces): verify applies the full settings first. */
   draft?: boolean;
+  /** What produced the latest result (for the alarm details). */
+  lastAction: string;
+  /** Steering failed and the story was measured again automatically; the first failure, for the alarm. */
+  recovery?: { storyId: number; first: string };
 }
-const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic' };
+const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic', lastAction: '' };
 
 export function settingsFromUI(): ApplySettings {
   const tracking = checked('tracking');
@@ -104,7 +109,11 @@ function settingsToUI(s: ApplySettings): void {
 }
 
 /** The story of the current selection: a text frame, or text / insertion point inside one. */
+/** Dev channel only: a story to work on instead of the selection (in a hidden throwaway document). */
+let devStory: Any | undefined;
+
 export function targetStory(): Any | undefined {
+  if (devStory?.isValid) return devStory;
   try {
     if (!app.documents.length) return undefined;
     const sel = app.selection;
@@ -144,7 +153,7 @@ function freezeToggle(): void {
       setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Applying the rag again…');
       state.live = undefined;
       state.failed = undefined;
-      apply();
+      apply('Unfreeze');
     } catch (e) {
       fail(e);
     }
@@ -223,7 +232,7 @@ function setLanguage(lang: keyof typeof LANGUAGES): void {
   if (story && storedSettings(story)) {
     state.live = undefined;
     state.failed = undefined;
-    apply();
+    apply('language change');
   } else {
     setStatus(`Language set to ${LANGUAGES[lang]} for ${stories.length === 1 ? 'this story' : `${stories.length} stories`}.`, 'ok', 'Press Apply to set the rag.');
   }
@@ -336,14 +345,48 @@ function render(r: ApplyResult, ms?: number): void {
     if (state.showNotes) parts.push(...notes);
   }
   $('report').innerHTML = parts.join('');
+  const storyId = state.live?.story.id as number | undefined;
+  if (steeringFailed(r) && storyId !== undefined && state.recovery?.storyId !== storyId) {
+    // Lines that do not match their measurements look exactly like this, and Recompute cured every case so far
+    // (2026-10-27): measure again once, automatically, before raising the alarm.
+    state.recovery = { storyId, first: diagnosis(r) };
+    setStatus('Lines did not match the plan. Measuring the story again…', '', '');
+    setTimeout(() => recompute('automatic re-measure'), 0);
+    return;
+  }
+  if (state.recovery?.storyId === storyId && !steeringFailed(r)) {
+    state.recovery = undefined;
+    $('meta').textContent += ' · Measured again automatically: the lines did not match the measurements.';
+  }
   const alarms = compatibilityAlarms(r);
   if (alarms.length) {
+    const before = state.recovery?.storyId === storyId ? `\n\nBefore measuring again:\n${state.recovery!.first}` : '';
     showAlarm(
       'InDesign behaved in a way Flatter does not expect. If this keeps happening, an InDesign update may have changed how it sets text.',
       alarms,
-      `${alarms.join('\n')}\n\nlines as planned ${r.linesAsPlanned}/${r.linesPlanned}, probe check ${r.probeCheck.empty}/${r.probeCheck.checked} empty, paragraphs ${r.paragraphs.length}`,
+      `${alarms.join('\n')}\n\nlines as planned ${r.linesAsPlanned}/${r.linesPlanned}, probe check ${r.probeCheck.empty}/${r.probeCheck.checked} empty, paragraphs ${r.paragraphs.length}\n${diagnosis(r)}${before}`,
     );
   }
+}
+
+/** What happened, for the alarm details: the action, the story, the first line that differs, the settings. */
+function diagnosis(r: ApplyResult): string {
+  const p = r.paragraphs.find((x) => x.mismatch);
+  const m = p?.mismatch;
+  const end = (t: string) => JSON.stringify(t.trim().slice(-30));
+  let units = '';
+  try {
+    units = String(state.live?.story.parent.viewPreferences.horizontalMeasurementUnits);
+  } catch {
+    /* not available */
+  }
+  return [
+    `after ${state.lastAction || 'unknown'}, story ${state.live?.story.id ?? '?'}, units ${units}, rounds ${r.rounds}, tracked ${r.trackedLines}, word spaces ${r.spacedLines}, overset ${r.oversetLines}`,
+    p && m
+      ? `first difference ¶${p.index + 1} line ${m.line + 1}: planned ${end(m.planned.text)} (steer ${m.planned.steerWidth.toFixed(2)} pt), got ${m.got ? `${end(m.got.text)} (${m.got.width.toFixed(2)} pt)` : 'nothing'}`
+      : 'no difference recorded',
+    `settings ${JSON.stringify(settingsFromUI())}`,
+  ].join('\n');
 }
 
 /** One sentence for all of a line's problems: a band miss and the hole it makes are one problem. */
@@ -501,8 +544,16 @@ function copyAlarmDetails(): void {
   }
 }
 
+/** Measure afresh (for example after formatting changed inside a paragraph), then apply. */
+function recompute(action: string): void {
+  clearMeasureCache();
+  state.live = undefined;
+  state.failed = undefined;
+  apply(action);
+}
+
 /** Apply: measure, probe, plan, steer. Shows "Preparing…" first (it can take seconds on long stories). */
-function apply(): void {
+function apply(action = 'Apply'): void {
   const story = targetStory();
   if (!story) {
     setStatus('Select a text frame first.', 'bad');
@@ -521,6 +572,7 @@ function apply(): void {
   setTimeout(() => {
     try {
       const { live, report } = openSession(story, settingsFromUI());
+      state.lastAction = action;
       state.live = live;
       state.storyId = story.id;
       render(report, report.ms);
@@ -576,13 +628,13 @@ function tick(): void {
   }
   try {
     if (!state.live || state.storyId !== story.id || !state.live.story.isValid) {
-      apply();
+      apply('slider on a new story');
       return;
     }
     if (liveIsStale(state.live)) {
       // The text or its formatting changed since Flatter measured it: measure again first.
       state.live = undefined;
-      apply();
+      apply('re-measure after an edit (slider)');
       return;
     }
     const t0 = Date.now();
@@ -604,7 +656,7 @@ function verify(): void {
   if (!state.live) return;
   if (liveIsStale(state.live)) {
     state.live = undefined;
-    apply();
+    apply('re-measure after an edit (verify)');
     return;
   }
   if (state.draft) {
@@ -626,6 +678,7 @@ function verify(): void {
   try {
     const t0 = Date.now();
     const r = liveVerify(state.live);
+    state.lastAction = 'slider';
     state.dragging = false;
     render(r, Date.now() - t0);
   } catch (e) {
@@ -671,13 +724,10 @@ function init(): void {
     $(id).addEventListener('change', onInput);
   }
   for (const id of ['phase', 'mode', 'hyphenation', 'sense', 'continuous', 'tracking', 'showBands']) $(id).addEventListener('change', onInput);
-  $('apply').addEventListener('click', apply);
+  $('apply').addEventListener('click', () => apply());
   $('recompute').addEventListener('click', () => {
-    // Recompute measures afresh (for example after formatting changed inside a paragraph).
-    clearMeasureCache();
-    state.live = undefined;
-    state.failed = undefined;
-    apply();
+    state.recovery = undefined;
+    recompute('Recompute');
   });
   $('apply').addEventListener('click', () => {
     state.failed = undefined;
@@ -713,7 +763,20 @@ function init(): void {
   app.addEventListener('afterSelectionChanged', onSelectionChanged);
   syncLabels();
   onSelectionChanged();
-  if (typeof FLATTER_DEV !== 'undefined' && FLATTER_DEV) startDevChannel({ runSelfCheck, showAlarm, alarmState });
+  if (typeof FLATTER_DEV !== 'undefined' && FLATTER_DEV) startDevChannel({
+      runSelfCheck,
+      showAlarm,
+      alarmState,
+      setTarget: (story: Any) => {
+        devStory = story;
+        state.live = undefined;
+        state.recovery = undefined;
+      },
+      apply: () => apply(),
+      verify: () => verify(),
+      busy: () => state.busy,
+      result: () => (state.lastResult ? { asPlanned: `${state.lastResult.linesAsPlanned}/${state.lastResult.linesPlanned}`, action: state.lastAction, meta: String($('meta').textContent ?? '') } : undefined),
+    });
 }
 
 const { entrypoints } = require('uxp');

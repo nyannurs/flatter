@@ -18,7 +18,7 @@ export const CONTROL_LAYER = 'Flatter (Steuerung)';
 export const TOOTH_LABEL = 'flatter-tooth';
 export const PROBE_LABEL = 'flatter-probe';
 /** Probe cache entries from other versions are dropped (see the DomPort constructor). */
-const PROBE_VERSION = 'v2';
+const PROBE_VERSION = 'v3';
 const TOLERANCE = 0.4;
 
 /**
@@ -34,6 +34,43 @@ export function baseTrackingOf(para: Any): number {
 }
 
 export const asArray = <T>(v: T | T[]): T[] => (Array.isArray(v) ? v : [v]);
+
+/** Character attributes that change glyph widths: a cached measurement is reused only when all of them match. */
+const WIDTH_ATTRIBUTES = [
+  'appliedFont', 'fontStyle', 'pointSize', 'tracking', 'kerningMethod', 'horizontalScale', 'capitalization', 'position', 'ligatures',
+  'otfContextualAlternate', 'otfDiscretionaryLigature', 'otfFigureStyle', 'otfStylisticSets', 'otfSwash', 'otfOrdinal', 'otfFraction',
+  'otfTitling', 'otfSlashedZero', 'otfLocale', 'otfMark', 'characterDirection', 'appliedLanguage',
+];
+
+const SHARP_S_CAPS = 'ß in All Caps or Small Caps (InDesign reserves more room for it than it draws)';
+
+/**
+ * ß in All Caps or Small Caps: InDesign's line breaker needs several points more room for it than the drawn
+ * line takes (6.5 pt for one ß in Minion Pro 10 pt small caps, 37 pt for four), so lines with it break early
+ * (2026-10-27). OpenType All Small Caps is not affected.
+ */
+function sharpSInCapitals(para: Any): boolean {
+  const caps = asArray(para.textStyleRanges.everyItem().capitalization).map(String);
+  const text = asArray(para.textStyleRanges.everyItem().contents).map(String);
+  return caps.some((c, i) => /^(ALL_CAPS|SMALL_CAPS|CAP_TO_SMALL_CAP)$/.test(c) && text[i]!.includes('ß'));
+}
+
+/**
+ * The paragraph's width-relevant formatting, range by range. The first letter's attributes are not enough: small
+ * caps or a tracked word inside the paragraph reused the measurements of plain text (2026-10-27).
+ */
+function measureKey(para: Any): string {
+  const ranges = para.textStyleRanges.everyItem();
+  const parts = [PROBE_VERSION, asArray(ranges.length).join(',')];
+  for (const a of WIDTH_ATTRIBUTES) {
+    try {
+      parts.push(asArray(ranges[a]).map((v: Any) => String(v?.name ?? v)).join(','));
+    } catch {
+      parts.push('?');
+    }
+  }
+  return parts.join('|');
+}
 
 /**
  * Measurements kept while the plugin is loaded, keyed by the paragraph's formatting signature and
@@ -190,9 +227,7 @@ export class DomPort implements Port {
         // Measure on very wide lines in the probe frame (spike S2): exact, and independent of where
         // the story currently breaks (a letter before a break loses its kerning, a space at a line
         // end has an unreliable width).
-        // Tracking inside the paragraph changes the widths too; the probe key only sees the first letter's.
-        const tracking = asArray(para.textStyleRanges.everyItem().tracking).join(',');
-        const key = `${this.probeKey(para)}\u0000${tracking}\u0000${chars.join('')}`;
+        const key = `${measureKey(para)}\u0000${chars.join('')}`;
         let advances = measureCache.get(key);
         let trackedAdvances = measureCache.get(`tracked\u0000${key}`);
         if (!advances || !trackedAdvances) {
@@ -221,6 +256,7 @@ export class DomPort implements Port {
           columnWidth: column,
           hyphenation: hyphenationOn[p],
           firstLineIndent: first[p]!,
+          ...(chars.includes('ß') && sharpSInCapitals(para) ? { unsupported: [SHARP_S_CAPS] } : {}),
         });
       }
       start = end;
@@ -633,7 +669,7 @@ export class DomPort implements Port {
 
   private probeKey(para: Any): string {
     const c = para.characters.item(0);
-    return [PROBE_VERSION, c.appliedFont?.name, c.pointSize, para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale].join('|');
+    return [PROBE_VERSION, c.appliedFont?.name, c.pointSize, para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale, String(c.capitalization)].join('|');
   }
 
   private scratchFrame(para: Any): Any {

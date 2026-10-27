@@ -81,8 +81,7 @@ export interface ApplyResult {
  */
 export function compatibilityAlarms(r: ApplyResult): string[] {
   const out: string[] = [];
-  const unsupported = r.paragraphs.some((p) => p.unsupported.length);
-  if (!unsupported && r.linesPlanned >= 10 && r.linesAsPlanned / r.linesPlanned < 0.7) {
+  if (steeringFailed(r)) {
     out.push(`InDesign did not follow Flatter's line steering: only ${r.linesAsPlanned} of ${r.linesPlanned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Recompute and see whether this goes away.`);
   }
   const { checked, empty } = r.probeCheck;
@@ -90,6 +89,12 @@ export function compatibilityAlarms(r: ApplyResult): string[] {
     out.push(`InDesign returned no hyphenation points for ${empty} of ${checked} long words that normally have them.`);
   }
   return out;
+}
+
+/** Most visible lines not set as steered (at least 10, no unsupported content): stale measurements or a broken InDesign. */
+export function steeringFailed(r: ApplyResult): boolean {
+  const unsupported = r.paragraphs.some((p) => p.unsupported.length);
+  return !unsupported && r.linesPlanned >= 10 && r.linesAsPlanned / r.linesPlanned < 0.7;
 }
 
 /** Map an InDesign language name to the hyphenation module's language. */
@@ -255,7 +260,7 @@ export class FlatterSession {
       const got = current.filter((l) => l.paragraph === w.data.index);
       const bad = firstMismatch(w, got, this.overset);
       const visibleLines = this.overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
-      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set(w.measured.unsupported)], visibleLines };
+      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set([...w.measured.unsupported, ...(w.data.unsupported ?? [])])], visibleLines };
       if (bad >= 0) {
         const line = w.plan.lines[bad]!;
         const g = got[bad];

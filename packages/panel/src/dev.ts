@@ -3,7 +3,8 @@
  * loaded panel without clicks: write a JSON command to the application label
  * "flatter-dev-command"; the panel answers in "flatter-dev-result".
  * Commands: { "cmd": "ping" }, { "cmd": "s4", "ticks": 20 } (spike S4: live latency), { "cmd": "selfcheck" },
- * { "cmd": "alarm-demo" } and { "cmd": "panel-state" } (the compatibility alarm).
+ * { "cmd": "alarm-demo" } and { "cmd": "panel-state" } (the compatibility alarm), { "cmd": "recovery" } (automatic
+ * re-measure when the lines no longer match the measurements).
  */
 import { liveUpdate, liveVerify, openSession, removeFlatter } from '@flatter/indesign-adapter';
 
@@ -25,6 +26,11 @@ export interface DevHooks {
   runSelfCheck: (auto: boolean) => Promise<unknown>;
   showAlarm: (summary: string, lines: readonly string[], details: string) => void;
   alarmState: () => unknown;
+  setTarget: (story: Any) => void;
+  apply: () => void;
+  verify: () => void;
+  busy: () => boolean;
+  result: () => unknown;
 }
 
 export function startDevChannel(hooks?: DevHooks): void {
@@ -46,6 +52,7 @@ export function startDevChannel(hooks?: DevHooks): void {
         hooks.showAlarm('Demo: this is how the compatibility alarm looks.', ['Lines set where Flatter steers them: 3 of 40 lines as planned'], 'demo details');
         result = hooks.alarmState();
       } else if (cmd.cmd === 'panel-state' && hooks) result = hooks.alarmState();
+      else if (cmd.cmd === 'recovery' && hooks) result = await recovery(hooks);
       else result = { error: `unknown command ${cmd.cmd}` };
     } catch (e) {
       result = { error: String(e), stack: String((e as Error)?.stack ?? '') };
@@ -124,6 +131,43 @@ async function s4(ticks: number, visible: boolean, mergeFirst = false): Promise<
       pass: Math.max(...compose) < 100,
     };
   } finally {
+    doc.close(id.SaveOptions.NO);
+  }
+}
+
+/**
+ * After Apply, a formatting change the live session does not notice (capitalization) leaves the measurements
+ * stale; the next verify must measure again by itself and not raise the alarm. Hidden throwaway document.
+ */
+async function recovery(hooks: DevHooks): Promise<unknown> {
+  const id = require('indesign');
+  const doc = id.app.documents.add({ showingWindow: false });
+  const idle = async () => {
+    for (let k = 0; k < 200 && hooks.busy(); k++) await new Promise<void>((r) => setTimeout(r, 50));
+    await new Promise<void>((r) => setTimeout(r, 100));
+  };
+  try {
+    doc.viewPreferences.properties = { horizontalMeasurementUnits: id.MeasurementUnits.POINTS, verticalMeasurementUnits: id.MeasurementUnits.POINTS };
+    const frame = doc.pages.item(0).textFrames.add({ geometricBounds: [40, 40, 760, 300] });
+    // No ß: InDesign sets ß in Small Caps wider than it draws it, which no re-measure can cure.
+    frame.contents = TEXT.join(' ').replace(/ß/g, 'ss');
+    const story = frame.parentStory;
+    story.texts.item(0).properties = { appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13, appliedLanguage: 'German: 2006 Reform' };
+    hooks.setTarget(story);
+    hooks.apply();
+    await idle();
+    const applied = hooks.result();
+    story.texts.item(0).capitalization = id.Capitalization.SMALL_CAPS;
+    hooks.verify();
+    await idle();
+    await idle();
+    const after = hooks.result() as Any;
+    const panel = hooks.alarmState() as Any;
+    const [done, planned] = String(after?.asPlanned ?? '0/1').split('/').map(Number);
+    removeFlatter(story);
+    return { pass: !panel.visible && done === planned && /Measured again automatically/.test(after?.meta ?? ''), applied, after, alarm: panel.visible };
+  } finally {
+    hooks.setTarget(undefined);
     doc.close(id.SaveOptions.NO);
   }
 }

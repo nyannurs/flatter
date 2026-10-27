@@ -33,7 +33,7 @@ npm run package         # release build → dist/Flatter-<version>.ccx (bump "ve
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install "$PWD/dist/Flatter-<version>.ccx"   # install for the user (InDesign restart needed)
 node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)
 node tools/indesign/uxp-load.mjs reload   # after every panel build
-tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4)
+tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4, selfcheck, alarm-demo, panel-state, recovery)
 ```
 
 The user has the release build installed (Creative Cloud, `--list all` shows it). The dev build is "Flatter (dev)" with the id com.flatter.panel.dev, so it runs beside the installed release (com.flatter.panel) without clashing. Both show their version in the panel footer.
