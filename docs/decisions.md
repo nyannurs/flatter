@@ -212,3 +212,7 @@ The designer wants two algorithms: the strict long/short rhythm (aesthetic) and 
 ## ADR-022: The live session measures again when the story changed (2026-10-27)
 
 Flatter does not listen to edit events (ADR-012, S5: listeners belong in the panel, and per-keystroke work would be costly). Instead the live session remembers a signature of the story's text and width-relevant formatting; before a slider tick or a verify the panel compares it and, when it differs, applies again (fresh measurements, fixed settings). Planning with stale measurements set every line wrong and raised a false compatibility alarm.
+
+## ADR-023: Mixed tracking without a record counts as Flatter's leftover (2026-10-27)
+
+A duplicated frame carries Flatter's tracking but not the story label with the base tracking. When Laufweite is on, Apply treats a paragraph with mixed tracking and no record as such a leftover: it resets it to its base (the even value, else the paragraph style's tracking) before measuring and records that base. Flatter already overwrote mixed tracking in every line it tracked (`baseTrackingOf`), so a designer's own tracking inside such a paragraph was never kept; now the measurements match the text. With Laufweite off the tracking stays and is measured as it is.

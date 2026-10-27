@@ -167,3 +167,7 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 6. **Hyphenated line widths** are known to about ±0.16 pt (kerning against the hyphen); the margin and the read-back absorb this.
 7. **Edit detection** must live in the panel: `afterSelectionChanged` to note the active story, an idle task comparing content hashes, manual Recompute as fallback.
 8. **S4 (live latency)** passed with the panel (see above). If larger stories get slow, the plan's single-polygon teeth (one `entirePath` write per frame) remain the next optimisation.
+
+## Duplicated frames (2026-10-27, `i24`)
+
+- Duplicating a frame whose story Flatter set copies the text with Flatter's tracking but not the story's labels: the copy has no Flatter record. Teeth and band strips are not part of the story and are not duplicated with it.

@@ -272,6 +272,8 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     const port = new DomPort(doc, story, layer);
     // Measure without the tracking an earlier Apply added.
     if (state.tracking) port.resetTracking(state.tracking);
+    // A story duplicated from a Flatter story carries its tracking but not its record.
+    if (settings.tracking?.enabled) port.resetLeftoverTracking();
     const session = new FlatterSession(port);
     const tPrep = Date.now();
     try {

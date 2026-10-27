@@ -190,7 +190,9 @@ export class DomPort implements Port {
         // Measure on very wide lines in the probe frame (spike S2): exact, and independent of where
         // the story currently breaks (a letter before a break loses its kerning, a space at a line
         // end has an unreliable width).
-        const key = `${this.probeKey(para)}\u0000${chars.join('')}`;
+        // Tracking inside the paragraph changes the widths too; the probe key only sees the first letter's.
+        const tracking = asArray(para.textStyleRanges.everyItem().tracking).join(',');
+        const key = `${this.probeKey(para)}\u0000${tracking}\u0000${chars.join('')}`;
         let advances = measureCache.get(key);
         let trackedAdvances = measureCache.get(`tracked\u0000${key}`);
         if (!advances || !trackedAdvances) {
@@ -520,6 +522,30 @@ export class DomPort implements Port {
     }
     this.baseTracking = { ...base };
     this.written.clear();
+  }
+
+  /**
+   * Paragraphs with mixed tracking and no record are reset to their base before measuring. A frame
+   * duplicated from a Flatter story carries Flatter's tracking but not its record; measured as it is, the
+   * lines no longer match the plan once Flatter writes its own tracking (2026-10-27). Returns the count.
+   */
+  resetLeftoverTracking(): number {
+    const all = asArray(this.story.textStyleRanges.everyItem().tracking).map(Number);
+    if (all.every((v) => v === all[0])) return 0;
+    const paras = this.story.paragraphs;
+    let reset = 0;
+    for (let p = 0; p < paras.length; p++) {
+      const key = String(p);
+      if (key in this.baseTracking) continue;
+      const para = paras.item(p);
+      const values = asArray(para.textStyleRanges.everyItem().tracking).map(Number);
+      if (values.every((v) => v === values[0])) continue;
+      this.baseTracking[key] = baseTrackingOf(para);
+      para.texts.item(0).tracking = this.baseTracking[key];
+      reset++;
+    }
+    if (reset) this.written.clear();
+    return reset;
   }
 
   /** Remove the scratch frame used for probing and close the measuring bench. */

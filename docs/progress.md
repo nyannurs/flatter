@@ -2,6 +2,15 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-27 (later) — Duplicated Flatter frames measured without leftover tracking; release 0.5.2 (ADR-023)
+
+The designer got the alarm "only 22 of 46 visible lines were set as planned" (0.5.1, Layout1.indd, a story in Avara Bold 14/16); Recompute fixed it. The undo history showed Duplicate before the Apply, and the document holds a duplicated Flatter story (1636) that carries Flatter's tracking but no Flatter record: InDesign does not copy story labels when a frame is duplicated. Apply on such a copy measured the text with the leftover tracking, then wrote its own tracking over it, so the lines no longer matched the measurements. Recompute worked because the first Apply had recorded the base tracking and Recompute clears the measure cache.
+
+- Fix: when Laufweite is on, Apply resets paragraphs with mixed tracking and no record to their base (`DomPort.resetLeftoverTracking`, base from `baseTrackingOf`) before measuring and records it, so Remove restores it. The measure cache key now includes the tracking of the whole paragraph, not only of its first letter.
+- `i24-duplicate` in `test:indesign`: original 29/29, the duplicate 4/29 before the fix, 29/29 after; tracking 0 after Remove.
+- Spike helpers: `i21-font-mismatch.ts` copies any story (app labels `flatter-i21-story`, `-settings`, `-layout`) and now resets tracking on the copy (`flatter-i21-keep-tracking` = `yes` keeps it); without the reset its copies failed for the same reason (3/46, 30/46). `i23-tracking-features.ts`: in isolation the width model is exact for Avara and Minion with tracking.
+- Release 0.5.2 packaged, installed and published.
+
 ## 2026-10-27 — Edits after Apply are measured again; release 0.5.1
 
 The designer got the compatibility alarm "only 0 of 49 visible lines were set as planned" (Flatter 0.5.0, InDesign 21.6, a one-paragraph story in Avara Bold 14/16 in Untitled-1). On a copy the same story set 49/49 with all settings and the same facing-pages layout. Cause: the designer had deleted "Avara Bold 14/16 " from the start of the paragraph after Apply; the live session kept planning with the old measurements, so every line was off from the first one. Reproduced exactly (`i22-edit-after-apply.ts`: 49/49 before, 0/49 and the same alarm after the edit).

@@ -30,14 +30,19 @@ inNewDocument((doc: Any) => {
   });
   src.texts.item(0).duplicate(id.LocationOptions.AT_BEGINNING, f.insertionPoints.item(0));
   const story = f.parentStory;
+  // The source may carry tracking Flatter wrote there; the copy has no record of it, so start from none.
+  if (app.extractLabel('flatter-i21-keep-tracking') !== 'yes') story.texts.item(0).tracking = 0;
   const { live, report } = openSession(story, { showBands: false, ...settings });
   return inPoints(() => {
     const pr = report.paragraphs[0]!;
     const w0: Any = (live.session as Any).work[0];
     const para = story.paragraphs.item(0);
     const lines: Any[] = [];
+    // Lines around the first mismatch (or the first four).
+    const from = Math.max(0, (pr.mismatch?.line ?? 2) - 2);
     let start = 0;
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < from; k++) start += Number(para.lines.item(k).characters.length);
+    for (let k = from; k < from + 4; k++) {
       const pl = pr.plan.lines[k];
       const ln = para.lines.item(k);
       const chars = ln.characters;
@@ -47,7 +52,20 @@ inNewDocument((doc: Any) => {
       const actual = Number(chars.item(j).endHorizontalOffset) - Number(ln.horizontalOffset);
       let model = 0;
       for (let q = start; q <= start + j; q++) model += w0.data.advances[q]!;
-      lines.push({ k, got: String(ln.contents).slice(-28), planned: pl && pl.text.slice(-28), plannedWidth: pl && Math.round(pl.width * 100) / 100, steer: pl && Math.round(pl.steerWidth * 100) / 100,
+      // Where does InDesign's width drift from the measured advances? Per character, cumulative.
+      const xs = asArray(chars.everyItem().horizontalOffset).map(Number);
+      const xe = asArray(chars.everyItem().endHorizontalOffset).map(Number);
+      const tr = asArray(chars.everyItem().tracking).map(Number);
+      const drift: string[] = [];
+      let last = 0;
+      for (let q = 0; q <= j; q++) {
+        const actualAdv = xe[q]! - xs[q]!;
+        const d = actualAdv - w0.data.advances[start + q]! - (tr[q]! * 14) / 1000;
+        if (Math.abs(d) > 0.05) drift.push(`${JSON.stringify(String(chars.item(q).contents))}@${q}:${Math.round(d * 100) / 100}(tr ${tr[q]})`);
+        last = d;
+      }
+      void last;
+      lines.push({ k, drift: drift.slice(0, 12), got: String(ln.contents).slice(-28), planned: pl && pl.text.slice(-28), plannedWidth: pl && Math.round(pl.width * 100) / 100, steer: pl && Math.round(pl.steerWidth * 100) / 100, t: pl?.tracking, w: pl?.wordSpace, hy: pl?.endsWithHyphen, slack: pl && Math.round(pl.slack * 100) / 100, role: pl?.role,
         gotActualWidth: Math.round(actual * 100) / 100, gotModelWidth: Math.round(model * 100) / 100, diff: Math.round((actual - model) * 100) / 100 });
       start += n;
     }
