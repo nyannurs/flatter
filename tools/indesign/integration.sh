@@ -5,7 +5,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 node tools/indesign/build-spikes.mjs i >/dev/null
 status=0
-for t in i1-adapter i2-tracking i18-language i19-freeze i20-selfcheck i22-edit-after-apply i24-duplicate i27-capitals; do
+for t in i1-adapter i2-tracking i18-language i19-freeze i20-selfcheck i22-edit-after-apply i24-duplicate i27-capitals i29-mixed-paragraphs; do
   out="$(tools/indesign/run.sh "tools/indesign/spikes/dist/$t.idjs")"
   if printf '%s' "$out" | grep -q '"pass": true'; then echo "PASS $t"; else echo "FAIL $t"; printf '%s\n' "$out" | head -40; status=1; fi
 done

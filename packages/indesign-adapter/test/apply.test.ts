@@ -211,3 +211,34 @@ describe('overset stories', () => {
     expect(fake.teeth.every((t) => t.bounds[2] <= 13 * 10 + 1)).toBe(true);
   });
 });
+
+describe('paragraphs with unusual content', () => {
+  // A big story with several paragraph styles crashed in verify (designer's report, 2026-10-28): a paragraph that
+  // starts with a forced line break plans an empty first line.
+  const long = 'Ein guter Flattersatz entsteht nicht von selbst und braucht viel Pflege bei jedem einzelnen Wort';
+  const cases: Record<string, string> = {
+    'forced break first': '\u2028' + long,
+    'forced break last': long + '\u2028',
+    'two forced breaks': long + '\u2028\u2028' + long,
+    'only forced breaks': '\u2028\u2028',
+    'only spaces': '     ',
+    'only no-break spaces': '\u00a0\u00a0',
+    'only tabs': '\t\t',
+    'spaces first': '   ' + long,
+    'two characters': 'ab',
+  };
+  for (const [name, text] of Object.entries(cases)) {
+    it(`does not fail on a paragraph with ${name}`, () => {
+      const fake = new FakeInDesign([long + ' ' + long, text, long], { measure: 200, accepts: ourSafe });
+      const r = applyToPort(fake, { tracking: { enabled: true, mode: 'precise', max: 5 }, wordSpaceShare: 0.25 });
+      expect(r.paragraphs.length).toBeGreaterThan(0);
+    });
+  }
+
+  it('sets the lines of a paragraph that starts with a forced line break as planned', () => {
+    const fake = new FakeInDesign(['\u2028' + long + ' ' + long], { measure: 200, accepts: ourSafe });
+    const r = applyToPort(fake);
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+  });
+});
+

@@ -2,6 +2,18 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-28 — Crash on paragraphs that start with a forced line break; release 0.5.4
+
+The designer applied 0.5.3 to a long story with several paragraph styles and got the magenta alarm with "TypeError: Cannot read properties of undefined (reading '1') at plannedLastVisible … firstMismatch … FlatterSession.verify". Reproduced offline: a paragraph that starts with a forced line break plans an empty first line (no characters), and the comparison with the read-back looked up the character before item 0. Paragraphs of only spaces, no-break spaces or line breaks crashed in verify too (a planned line missing when InDesign set more lines than planned).
+
+- `plannedLastVisible` takes the planned line: a line without characters counts its first character, as the read-back does (a line of only a forced break reports that break as its last visible character). Tracking spans skip empty lines.
+- `prepare` leaves out paragraphs with nothing visible (only spaces or line breaks); they get no plan and no teeth.
+- `verify` and `result` no longer assume a planned line exists at the first difference (InDesign may set more lines than planned).
+- The fake composer in the adapter tests breaks at U+2028 like at "\n". New tests: nine unusual paragraphs (forced break first, last, twice, only breaks, only spaces, only no-break spaces, only tabs, spaces first, two characters) plus "sets the lines of a paragraph that starts with a forced line break as planned".
+- `i29-mixed-paragraphs` in `test:indesign`: three paragraph styles (16/19 Bold, 10/13 Regular, 8/10 Italic), an empty paragraph, one of spaces only, one starting with a forced line break, one with two forced breaks inside; aesthetic, aesthetic precise and functional all set every line as planned. The test can log progress to a file (app label `flatter-progress-file`; UXP's fs has no appendFileSync, so it rewrites the file).
+- A first run of i29 got no answer from InDesign for ten minutes; the designer found InDesign misbehaving and quit it. After a restart the same test ran in 4 s. Note: `pgrep -f ".../Adobe InDesign 2026$"` also matches AdobeIPCBroker (its command line ends with InDesign's path); use `pgrep -x "Adobe InDesign 2026"` for InDesign's own process.
+- Release 0.5.4 packaged, installed and published.
+
 ## 2026-10-27 (evening) — Automatic re-measure, measure cache keyed on all width settings, ß in capitals; release 0.5.3 (ADR-024)
 
 The designer got the alarm again (0.5.2): "only 18 of 53 visible lines were set as planned" on story 1636 in Layout1.indd, after Language → Apply → four slider moves; they pressed Remove afterwards. Nothing reproduced it outside their panel: copies of the story set 53/53 with and without leftover tracking, with the panel's slider sequence (`i25-ticks-copy.ts`), with the document's probe cache and the neighbouring frame, and with the whole history replayed (`i26-history.ts`: Flatter at 14/17 wide, duplicate, 12/15 narrower, language, Apply, ticks). Every earlier case was cured by Recompute, so the remaining suspect is measurements that no longer match the story.

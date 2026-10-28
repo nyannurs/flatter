@@ -138,7 +138,7 @@ export class FakeInDesign implements Port {
     let wordStart = start;
     for (let k = start; k < chars.length; k++) {
       const c = chars[k]!;
-      if (c === '\n') return { end: k + 1, hyphenated: false };
+      if (c === '\n' || c === '\u2028') return { end: k + 1, hyphenated: false };
       if (c === ' ') {
         if (width <= limit) best = { end: k, hyphenated: false };
         else break;

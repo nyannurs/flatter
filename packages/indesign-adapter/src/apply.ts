@@ -143,6 +143,8 @@ export class FlatterSession {
     this.work = [];
     this.probeCheck = { checked: 0, empty: 0 };
     for (const data of this.port.paragraphs()) {
+      // Only spaces or line breaks: nothing to rag (and no line to compare).
+      if (!/\S/u.test(data.chars.join(''))) continue;
       const lang = hyphenLanguage(data.language);
       const h = this.hyphenator(lang);
       const text = data.chars.join('');
@@ -231,9 +233,9 @@ export class FlatterSession {
           if (got.some((l, i) => used[i] && !sameSlot(l.slot, used[i]!))) changed = true;
           continue;
         }
-        const line = w.plan.lines[bad]!;
+        const line = w.plan.lines[bad];
         const at = got[bad];
-        if (line.endsWithHyphen && at && used[bad] && sameSlot(at.slot, used[bad]!)) {
+        if (line?.endsWithHyphen && at && used[bad] && sameSlot(at.slot, used[bad]!)) {
           const pen = w.items[line.breakAt]!;
           if (pen.type === 'penalty') {
             const e = w.measured.charRange[line.endItem - 1]![1];
@@ -261,12 +263,14 @@ export class FlatterSession {
       const bad = firstMismatch(w, got, this.overset);
       const visibleLines = this.overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
       const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set([...w.measured.unsupported, ...(w.data.unsupported ?? [])])], visibleLines };
-      if (bad >= 0) {
-        const line = w.plan.lines[bad]!;
+      // InDesign may set more lines than planned: the first extra line then has no plan to compare with.
+      const planned = w.plan.lines[Math.min(bad, w.plan.lines.length - 1)];
+      if (bad >= 0 && planned) {
+        const line = planned;
         const g = got[bad];
         const textOf = (a: number, b: number) => w.data.chars.slice(Math.max(0, a), b + 1).join('');
         const lineStart = (k: number) => (k === 0 ? 0 : got[k - 1] ? got[k - 1]!.lastVisible + 1 : 0);
-        const last = plannedLastVisible(w, line.endItem);
+        const last = plannedLastVisible(w, line);
         r.mismatch = {
           line: bad,
           planned: { lastVisible: last, hyphen: line.endsWithHyphen, steerWidth: line.steerWidth, text: textOf(last - 20, last) },
@@ -373,7 +377,7 @@ export function spaceWidthOf(data: ParagraphData): number {
 function trackingSpans(w: Working, slots: readonly (LineSlot | undefined)[]): TrackingSpan[] {
   const spans: TrackingSpan[] = [];
   w.plan.lines.forEach((l, i) => {
-    if (slots[i] === undefined || (l.tracking === 0 && l.wordSpace === 0)) return;
+    if (slots[i] === undefined || (l.tracking === 0 && l.wordSpace === 0) || l.endItem <= l.startItem) return;
     const from = w.measured.charRange[l.startItem]![0];
     const to = w.measured.charRange[l.endItem - 1]![1] - 1;
     if (l.tracking !== 0 && to > from) spans.push({ from, to, units: l.tracking });
@@ -418,12 +422,18 @@ function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {
   return lines.filter((l) => l.paragraph === paragraph).map((l) => l.slot);
 }
 
-function plannedLastVisible(w: Working, endItem: number): number {
-  return w.measured.charRange[endItem - 1]![1] - 1;
+/**
+ * The paragraph-relative index of a planned line's last visible character. A line without one (a forced line
+ * break at the start of a paragraph or right after another) counts its first character, as the read-back does.
+ */
+function plannedLastVisible(w: Working, line: Plan['lines'][number]): number {
+  const range = line.endItem > line.startItem ? w.measured.charRange[line.endItem - 1] : undefined;
+  if (range) return range[1] - 1;
+  return w.measured.charRange[line.startItem]?.[0] ?? 0;
 }
 
 function matches(w: Working, line: Plan['lines'][number], got: ReadLine | undefined): boolean {
-  return !!got && got.lastVisible === plannedLastVisible(w, line.endItem) && got.hyphenated === (line.endsWithHyphen && w.items[line.breakAt]?.type === 'penalty' && (w.items[line.breakAt] as { width: number }).width > 0);
+  return !!got && got.lastVisible === plannedLastVisible(w, line) && got.hyphenated === (line.endsWithHyphen && w.items[line.breakAt]?.type === 'penalty' && (w.items[line.breakAt] as { width: number }).width > 0);
 }
 
 function visibleCount(lines: readonly ReadLine[], paragraph: number): number {
