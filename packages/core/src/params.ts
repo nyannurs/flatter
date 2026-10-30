@@ -121,6 +121,12 @@ export interface FlatterSettings {
   lineMeasures?: readonly number[];
   /** aesthetic (default) or functional (ADR-021). */
   style?: RagStyle;
+  /**
+   * Shape ↔ Sense (ADR-025), 0 to 1, default 0.5: how much Sinneinheiten may cost the shape. 0 ignores them,
+   * 0.5 is the standard weight, up to 16 times that just below 1. At 1 (Sense first) a unit of meaning is never
+   * broken, even if the rhythm or the zone gives way.
+   */
+  senseBalance?: number;
   /** ε: steering margin added to the planned width (plan §3). */
   epsilon?: number;
   phase?: Phase;
@@ -152,6 +158,8 @@ export interface ResolvedParams {
   contrast: number;
   firstLineIndent: number;
   style: RagStyle;
+  /** Sense first (senseBalance 1): breaks inside Sinneinheiten are not candidates. */
+  senseFirst: boolean;
   /** Per-line measures (see FlatterSettings.lineMeasures); undefined when every line has `measure`. */
   lineMeasures: readonly number[] | undefined;
   epsilon: number;
@@ -299,6 +307,7 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     firstLineIndent: settings.firstLineIndent ?? 0,
     lineMeasures: lineMeasuresOf(settings.lineMeasures, measure),
     style: settings.style ?? 'aesthetic',
+    senseFirst: (settings.senseBalance ?? 0.5) >= 1,
     epsilon: settings.epsilon ?? 0.15,
     phase: settings.phase ?? 'long',
     startRole: settings.startRole,
@@ -313,10 +322,20 @@ export function resolveParams(settings: FlatterSettings, items: readonly Item[] 
     widthFactor,
     lastLine: { ...DEFAULT_LAST_LINE, ...settings.lastLine },
     // Functional style: Sinneinheiten weigh four times as much (they are the point of it).
-    weights: { ...LANGUAGE_WEIGHTS[language], ...(settings.style === 'functional' ? { sense: LANGUAGE_WEIGHTS[language].sense * 4 } : {}), ...settings.weights },
+    weights: {
+      ...LANGUAGE_WEIGHTS[language],
+      sense: LANGUAGE_WEIGHTS[language].sense * (settings.style === 'functional' ? 4 : 1) * senseMultiplier(settings.senseBalance ?? 0.5),
+      ...settings.weights,
+    },
     softBeam: settings.softBeam ?? 48,
     tracking,
   };
+}
+
+/** Shape ↔ Sense: 0 → ×0, 0.5 → ×1 (quadratic below), then ×16 towards 1 (exponential). */
+export function senseMultiplier(balance: number): number {
+  const b = Math.min(1, Math.max(0, balance));
+  return b <= 0.5 ? (b / 0.5) ** 2 : 16 ** ((b - 0.5) / 0.5);
 }
 
 export const opposite = (r: Role): Role => (r === 'long' ? 'short' : 'long');

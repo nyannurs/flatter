@@ -2,6 +2,17 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-30 (later) — Shape ↔ Sense slider (ADR-025); release 0.6.0
+
+From the same Instagram post ("here the shape won"): how much Sinneinheiten may cost the shape is a matter of taste, so it is now a slider in the panel and the playground.
+
+- **Core**: `senseBalance` (0 to 1, default 0.5 = unchanged behaviour, snapshots unchanged) scales the Sinneinheiten weight with `senseMultiplier`: ×0 at 0, ×1 at 0.5 (quadratic below), up to ×16 towards 1 (exponential). At 1, Sense first: spaces that carry a Sinneinheiten cost are no longer break candidates (`ResolvedParams.senseFirst`), so the solver lets the rhythm or the zone give way instead (strict may fail and fall back to the other phase or soft).
+- Measured on the German sample at 60 characters: plain aesthetic hardly changes with the weight (its bands are hard, few alternatives), precise aesthetic goes from 7 broken units (edges within 14.6 pt) to 1 at ×16 (edges within 26.2 pt), functional from 9 to 0. Sense first: 0 broken units, the playground shows 32/33 lines in rhythm.
+- **Playground**: slider under Sinneinheiten ("Shape only", "Balanced", "weight ×n", "Sense first"); artifact republished.
+- **Panel**: slider "Shape ↔ Sense" under Sinneinheiten with a hint line; disabled when Sinneinheiten is off; stored per story with the other settings.
+- Tests: `sense-balance.test.ts` (multiplier ends, Sense first never breaks a unit in any style, fewer broken units towards Sense); `i30-sense-balance` in `test:indesign` (aesthetic, precise, functional × 0 / 0.5 / 1: all lines as planned, Sense first 0 broken units).
+- Release 0.6.0 packaged, installed and published.
+
 ## 2026-10-30 — Playground: "Watch Flatter choose"
 
 The designer saw an Instagram post by someone with a private InDesign script built on the same idea (score whole-paragraph variants, keep the best; his video shows the variants sorted worst to best) and wanted a similar animation in the playground.

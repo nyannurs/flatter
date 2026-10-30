@@ -43,7 +43,7 @@ export class ParagraphMetrics {
 
   constructor(
     items: readonly Item[],
-    opts: { hyphenation: HyphenationMode; hyphenCountsTowardWidth: boolean },
+    opts: { hyphenation: HyphenationMode; hyphenCountsTowardWidth: boolean; senseFirst?: boolean },
     /** Restrict the candidates to these breaks (to score one given set of breaks). */
     only?: readonly number[],
   ) {
@@ -69,7 +69,7 @@ export class ParagraphMetrics {
       this.charPrefix[k + 1] =
         this.charPrefix[k]! + (it.type === 'glue' ? 1 : it.type === 'box' && it.text ? [...it.text].length : 0);
       if (this.isPotentialBreak(k)) this.potential.push(k);
-      if (this.isCandidateBreak(k, opts.hyphenation)) this.candidates.push(k);
+      if (this.isCandidateBreak(k, opts.hyphenation, opts.senseFirst ?? false)) this.candidates.push(k);
     }
     this.candidates.push(this.n);
     this.potential.push(this.n);
@@ -84,9 +84,10 @@ export class ParagraphMetrics {
   }
 
   /** A break the solver is allowed to plan. Correctness rules are never relaxed. */
-  private isCandidateBreak(k: number, mode: HyphenationMode): boolean {
+  private isCandidateBreak(k: number, mode: HyphenationMode, senseFirst: boolean): boolean {
     const it = this.items[k]!;
-    if (it.type === 'glue') return !it.noBreak && this.items[k - 1]?.type === 'box';
+    // Sense first: never inside a unit of meaning (a space that carries a Sinneinheiten cost).
+    if (it.type === 'glue') return !it.noBreak && this.items[k - 1]?.type === 'box' && !(senseFirst && (it.breakCost ?? 0) > 0);
     if (it.type !== 'penalty') return false;
     if (it.forced) return true;
     if (it.quality === 'X') return false;

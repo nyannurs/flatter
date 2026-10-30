@@ -220,3 +220,7 @@ A duplicated frame carries Flatter's tracking but not the story label with the b
 ## ADR-024: Measure again automatically before the compatibility alarm (2026-10-27)
 
 Every "lines not as planned" alarm the designer saw so far came from measurements that no longer matched the story, and Recompute cured each. The live session cannot notice every edit (ADR-022 covers text, size, font, scale, kerning and language). So when most lines miss, the panel measures again once by itself and shows the magenta alarm only if the lines still miss; a broken InDesign still raises it. Content InDesign sets differently from how it draws (ß in synthetic capitals) is reported as unsupported, not as an alarm.
+
+## ADR-025: Shape ↔ Sense is the designer's choice (2026-10-30)
+
+How far Sinneinheiten may cost the shape is taste, not a rule (seen in public reactions to another rag script: readers notice "Every" or "the" at a line end, the author answered that in a narrow column the shape won). One slider, `senseBalance`, default in the middle (the weights used so far). Towards Shape the Sinneinheiten weight falls to zero; towards Sense it grows to 16 times, enough to outweigh exact edges and hyphen costs. The far end, Sense first, makes Sinneinheiten a hard rule by removing those breaks; correctness rules for hyphenation stay as they are at every position, and the rhythm or the zone gives way instead.

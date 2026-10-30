@@ -1,4 +1,4 @@
-import { modeLabel } from '@flatter/core';
+import { modeLabel, senseMultiplier } from '@flatter/core';
 import fontBytes from '@fontsource/source-serif-4/files/source-serif-4-latin-400-normal.woff';
 import deText from '../../../test/fixtures/texts/de.txt';
 import enText from '../../../test/fixtures/texts/en.txt';
@@ -28,6 +28,14 @@ function schedule(): void {
   });
 }
 
+/** Shape ↔ Sense slider (ADR-025): its two ends and the Sinneinheiten weight in between. */
+function senseLabel(v: number): string {
+  if (v <= 0) return 'Shape only';
+  if (v >= 100) return 'Sense first';
+  const m = senseMultiplier(v / 100);
+  return v === 50 ? 'Balanced' : `weight ×${m < 1 ? m.toFixed(2) : m.toFixed(1)}`;
+}
+
 /** The last result and its view options, for the variants animation. */
 let last: { result: SimResult; view: Parameters<typeof renderSvg>[1] } | undefined;
 
@@ -52,6 +60,8 @@ function render(): void {
   $<HTMLSelectElement>('phase').disabled = functionalStyle;
   $<HTMLInputElement>('continuous').disabled = functionalStyle;
   $('maxHyphOut').textContent = String(num('maxHyph'));
+  $('senseBalOut').textContent = senseLabel(num('senseBal'));
+  $<HTMLInputElement>('senseBal').disabled = !checked('sense');
   $('trackMaxOut').textContent = `±${num('trackMax')}/1000 em`;
   $<HTMLInputElement>('trackMax').disabled = !checked('tracking');
   $('wordMaxOut').textContent = `±${num('wordMax')} %`;
@@ -72,6 +82,7 @@ function render(): void {
     noHyphenation: checked('noHyph'),
     hyphenation: val('hyphMode') as 'safe' | 'normal',
     sense: checked('sense'),
+    senseBalance: num('senseBal') / 100,
     tracking: { enabled: checked('tracking'), mode: 'precise', max: num('trackMax') },
     wordSpaceShare: num('wordMax') / 100,
   });
@@ -171,7 +182,7 @@ function watch(): void {
 
 $('watch').addEventListener('click', watch);
 
-for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'trackMax', 'wordMax']) $(id).addEventListener('input', schedule);
+for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'senseBal', 'trackMax', 'wordMax']) $(id).addEventListener('input', schedule);
 for (const id of ['style', 'phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;

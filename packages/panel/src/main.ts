@@ -3,7 +3,7 @@
  * on cached measurements → move teeth (one undo step per drag); after a pause,
  * read back and verify.
  */
-import { modeLabel, type Violation } from '@flatter/core';
+import { modeLabel, senseMultiplier, type Violation } from '@flatter/core';
 import {
   clearMeasureCache,
   liveUpdate,
@@ -83,6 +83,7 @@ export function settingsFromUI(): ApplySettings {
     hyphenation: picked('hyphenation', 'safe') as ApplySettings['hyphenation'],
     maxConsecutiveHyphens: num('maxHyph'),
     sense: checked('sense'),
+    senseBalance: num('senseBal') / 100,
     continuous: checked('continuous'),
     showBands: checked('showBands'),
     style: state.style,
@@ -99,6 +100,7 @@ function settingsToUI(s: ApplySettings): void {
   if (s.hyphenation) $('hyphenation').value = s.hyphenation;
   if (s.maxConsecutiveHyphens) $('maxHyph').value = s.maxConsecutiveHyphens;
   if (s.sense !== undefined) $('sense').checked = s.sense;
+  $('senseBal').value = (s.senseBalance ?? 0.5) * 100;
   if (s.continuous !== undefined) $('continuous').checked = s.continuous;
   if (s.showBands !== undefined) $('showBands').checked = s.showBands;
   state.style = s.style ?? 'aesthetic';
@@ -261,6 +263,17 @@ function syncLabels(): void {
     : 'Per line: letter tracking and word spaces, within the limits below.';
   $('trackMax').disabled = !checked('tracking');
   $('wordMax').disabled = !checked('tracking');
+  $('senseBal').disabled = !checked('sense');
+  $('senseHint').textContent = senseHint(num('senseBal'));
+}
+
+/** Shape ↔ Sense (ADR-025): what the slider position means. */
+function senseHint(v: number): string {
+  if (v <= 0) return 'Shape only: units of meaning are ignored.';
+  if (v >= 100) return 'Sense first: a unit of meaning is never broken, even if the rhythm gives way.';
+  if (v === 50) return 'Balanced: units of meaning weigh as usual.';
+  const m = senseMultiplier(v / 100);
+  return `Units of meaning weigh ×${m < 1 ? m.toFixed(2) : m.toFixed(1)}${v > 50 ? ': the edge may give a little.' : ': the shape comes first.'}`;
 }
 
 function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = ''): void {
@@ -719,7 +732,7 @@ function onSelectionChanged(): void {
 }
 
 function init(): void {
-  for (const id of ['zone', 'band', 'maxHyph', 'trackMax', 'wordMax']) {
+  for (const id of ['zone', 'band', 'maxHyph', 'senseBal', 'trackMax', 'wordMax']) {
     $(id).addEventListener('input', onInput);
     $(id).addEventListener('change', onInput);
   }
