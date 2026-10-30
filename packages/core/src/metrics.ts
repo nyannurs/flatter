@@ -36,7 +36,7 @@ export class ParagraphMetrics {
   /** Prefix sums of Box.trackedExtra. */
   private readonly extraPrefix: Float64Array;
   /** Breaks the solver may choose, ascending, ending with n. */
-  readonly candidates: number[];
+  candidates: number[];
   /** Breaks a composer might take regardless of our vetoes, ascending, ending with n. */
   readonly potential: number[];
   private readonly hyphenCountsTowardWidth: boolean;
@@ -44,6 +44,8 @@ export class ParagraphMetrics {
   constructor(
     items: readonly Item[],
     opts: { hyphenation: HyphenationMode; hyphenCountsTowardWidth: boolean },
+    /** Restrict the candidates to these breaks (to score one given set of breaks). */
+    only?: readonly number[],
   ) {
     this.items = items;
     this.n = items.length;
@@ -71,6 +73,7 @@ export class ParagraphMetrics {
     }
     this.candidates.push(this.n);
     this.potential.push(this.n);
+    if (only) this.candidates = [...new Set(only.filter((b) => b >= 0 && b < this.n)), this.n].sort((x, y) => x - y);
   }
 
   /** A break a greedy composer could take (we cannot veto it by steering alone). */

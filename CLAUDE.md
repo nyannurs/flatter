@@ -58,7 +58,8 @@ packages/indesign-adapter/  InDesign side. Pure, Node-tested: items.ts (items fr
 packages/panel/       UXP panel: plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
                       loop: debounce 30 ms, verify after 250 ms), src/dev.ts (dev-build command channel and the S4 test).
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
-                      CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs)
+                      CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs),
+                      variants for the playground's "Watch Flatter choose" animation (src/variants.ts, core scoreBreaks)
 test/fixtures/texts/  German and English reference texts (written for this project, seeded with hard hyphenation cases)
 test/hyphenation/     golden corpora de.tsv, en-US.tsv, en-GB.tsv ("=" main joint, "-" acceptable break)
 docs/plan.md          architecture and implementation plan (source of truth for intent)

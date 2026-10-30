@@ -1,7 +1,7 @@
 /**
  * Text in, plans out: the simulator pipeline (plan §4.6).
  */
-import { buildParagraph, solveStory, type Item, type Plan, type StorySettings } from '@flatter/core';
+import { buildParagraph, solveStory, type FlatterSettings, type Item, type Plan, type StorySettings } from '@flatter/core';
 import type { SimFont } from './font.ts';
 import { createHyphenator, createSenseRule } from '@flatter/hyphenation';
 import { coreLanguage, type SimLanguage } from './hyphenator.ts';
@@ -26,6 +26,8 @@ export interface SimParagraph {
   text: string;
   items: Item[];
   plan: Plan;
+  /** The settings this paragraph was solved with (to score other break sets the same way). */
+  settings: FlatterSettings;
 }
 
 export interface SimResult {
@@ -74,10 +76,11 @@ export function simulate(text: string, opts: SimulateOptions): SimResult {
   const tracking = settings.tracking?.enabled
     ? { ...settings.tracking, emSize: settings.tracking.emSize ?? size, ...(wordSpaceMax !== undefined ? { wordSpaceMax } : {}) }
     : settings.tracking;
-  const plans = solveStory(itemsList, { ...settings, ...(tracking ? { tracking } : {}), measure, language });
+  const { continuous: _co, ...solved } = { ...settings, ...(tracking ? { tracking } : {}), measure, language };
+  const plans = solveStory(itemsList, { ...solved, continuous: settings.continuous });
   const t2 = performance.now();
   return {
-    paragraphs: paragraphs.map((text, i) => ({ text, items: itemsList[i]!, plan: plans[i]! })),
+    paragraphs: paragraphs.map((text, i) => ({ text, items: itemsList[i]!, plan: plans[i]!, settings: solved })),
     measure,
     buildMs: t1 - t0,
     solveMs: t2 - t1,

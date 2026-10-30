@@ -114,7 +114,8 @@ function isPause(item: Item | undefined): boolean {
   return item?.type === 'box' && /[.,;:!?)\]»«"”“–—]$/.test(item.text ?? '');
 }
 
-function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean): DPResult | null {
+/** exact: every line ends at the next candidate (scores one given set of breaks, see scoreBreaks). */
+function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: boolean, allowTracking: boolean, exact = false): DPResult | null {
   const precise = allowTracking && P.tracking.enabled && P.tracking.mode === 'precise';
   const functional = P.style === 'functional';
   // Functional style: Laufweite (letters and word spaces) rescues lines that would end outside the zone.
@@ -373,7 +374,8 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
 
     let pendingShort = -1;
     for (let i = fromIdx; i < candidates.length; i++) {
-      const r = consider(i, !hard);
+      const r = consider(i, !hard && !exact);
+      if (exact) break;
       if (r === 'short') pendingShort = i;
       else if (r === 'added' || M.isForced(candidates[i]!)) pendingShort = -1;
       // Never run past a forced break: the line must end there.
@@ -537,6 +539,33 @@ export function evaluateBreaks(
   const lines = buildLines(M, P, specs);
   const violations = checkPlan(lines, items, P);
   return { lines, violations, feasible: !violations.some((v) => v.severity === 'error') };
+}
+
+export interface ScoredBreaks extends Evaluation {
+  /** The solver's cost for these lines (soft costs: rule breaks are priced, not excluded). */
+  cost: number;
+}
+
+/**
+ * Score one given set of breaks with the solver's own costs: the dynamic program runs with only these breaks,
+ * each line ending at the next one. Rank variants by rule breaks first, then cost, as the solver does (strict
+ * before soft). Used by the playground to show the variants Flatter weighs. Returns null for no content.
+ */
+export function scoreBreaks(
+  items: readonly Item[],
+  settings: FlatterSettings,
+  breaks: readonly number[],
+  startRole: Role = 'long',
+  /** Let lines take Laufweite (as the solver does in precise mode). */
+  tracking = false,
+): ScoredBreaks | null {
+  const P = resolveParams(settings, items);
+  const M = new ParagraphMetrics(items, P, breaks);
+  const res = runDP(M, P, startRole, false, tracking && P.tracking.enabled, true);
+  if (!res) return null;
+  const lines = buildLines(M, P, specsFromNode(res.node));
+  const violations = checkPlan(lines, items, P);
+  return { lines, violations, feasible: !violations.some((v) => v.severity === 'error'), cost: res.node.cost };
 }
 
 /** Solve one paragraph. Never throws for difficult text: it reports violations instead. */

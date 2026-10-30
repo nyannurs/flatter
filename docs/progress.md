@@ -2,6 +2,16 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-30 — Playground: "Watch Flatter choose"
+
+The designer saw an Instagram post by someone with a private InDesign script built on the same idea (score whole-paragraph variants, keep the best; his video shows the variants sorted worst to best) and wanted a similar animation in the playground.
+
+- **Core**: `scoreBreaks(items, settings, breaks, startRole, tracking)` scores one given set of breaks with the solver's own costs: the dynamic program runs with only those breaks as candidates (`ParagraphMetrics` takes an optional `only` list) and every line ending at the next one (`runDP(..., exact)`), in soft mode so rule breaks are priced. For Flatter's own breaks it returns exactly the plan's cost.
+- **Simulator**: `paragraphVariants` (src/variants.ts) builds up to 300 plausible break sets per paragraph (greedy first-fit, as a plain composer would set it, and random rags of varying looseness), scores each, sorts them worst to best (rule breaks first, then cost, as the solver tries strict before soft) and puts Flatter's plan last. `simulate` now returns each paragraph's solve settings. Test `variants.test.ts`: Flatter's breaks score the solver's cost, and no variant beats a strictly solved plan (German and English; plain, precise, functional).
+- **Playground**: a "Watch Flatter choose" button above the preview plays all paragraphs' variants from worst to best in 8 s (slowing towards the end; ten still steps with reduced motion), with a counter (variant, rule breaks, cost in compact notation) and a progress bar, ending on Flatter's choice and its solve time. Any control change stops it. Checked in the browser at desktop and phone width. Artifact republished (same link).
+
+Idea from the same post, not built: a Shape ↔ Sense slider (how much Sinneinheiten may cost the shape), since readers notice short words at line ends.
+
 ## 2026-10-28 — Crash on paragraphs that start with a forced line break; release 0.5.4
 
 The designer applied 0.5.3 to a long story with several paragraph styles and got the magenta alarm with "TypeError: Cannot read properties of undefined (reading '1') at plannedLastVisible … firstMismatch … FlatterSession.verify". Reproduced offline: a paragraph that starts with a forced line break plans an empty first line (no characters), and the comparison with the read-back looked up the character before item 0. Paragraphs of only spaces, no-break spaces or line breaks crashed in verify too (a planned line missing when InDesign set more lines than planned).
