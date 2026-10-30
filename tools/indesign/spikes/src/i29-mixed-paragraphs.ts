@@ -15,9 +15,9 @@ const log = (m: string) => {
 inNewDocument((doc: Any) => {
   log('start');
   const styles = [
-    doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Minion Pro\tBold', pointSize: 16, leading: 19, justification: id.Justification.CENTER_ALIGN }),
-    doc.paragraphStyles.add({ name: 'Body', appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13 }),
-    doc.paragraphStyles.add({ name: 'Small', appliedFont: 'Minion Pro\tItalic', pointSize: 8, leading: 10 }),
+    doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Source Serif Pro\tBold', pointSize: 16, leading: 19, justification: id.Justification.CENTER_ALIGN }),
+    doc.paragraphStyles.add({ name: 'Body', appliedFont: 'Source Serif Pro\tRegular', pointSize: 10, leading: 13 }),
+    doc.paragraphStyles.add({ name: 'Small', appliedFont: 'Source Serif Pro\tItalic', pointSize: 8, leading: 10 }),
   ];
   const paras: [string, number][] = [
     ['Ein Titel über zwei Zeilen, der lang genug ist, um zu brechen', 0],

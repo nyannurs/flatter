@@ -56,10 +56,10 @@ inNewDocument((doc: Any) => {
     doc.documentPreferences.properties = { pageWidth: 595, pageHeight: 842, facingPages: true, pagesPerDocument: pagesNeeded };
     doc.viewPreferences.rulerOrigin = id.RulerOrigin.PAGE_ORIGIN;
   });
-  const head = doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Minion Pro\tBold', pointSize: 16, leading: 19, spaceBefore: 12, spaceAfter: 4, justification: id.Justification.CENTER_ALIGN });
-  const lead = doc.paragraphStyles.add({ name: 'Lead', appliedFont: 'Minion Pro\tItalic', pointSize: 12, leading: 15, spaceAfter: 6 });
-  const body = doc.paragraphStyles.add({ name: 'Body', appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13, firstLineIndent: 10 });
-  const small = doc.paragraphStyles.add({ name: 'Small', appliedFont: 'Minion Pro\tRegular', pointSize: 8, leading: 10, spaceBefore: 4 });
+  const head = doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Source Serif Pro\tBold', pointSize: 16, leading: 19, spaceBefore: 12, spaceAfter: 4, justification: id.Justification.CENTER_ALIGN });
+  const lead = doc.paragraphStyles.add({ name: 'Lead', appliedFont: 'Source Serif Pro\tItalic', pointSize: 12, leading: 15, spaceAfter: 6 });
+  const body = doc.paragraphStyles.add({ name: 'Body', appliedFont: 'Source Serif Pro\tRegular', pointSize: 10, leading: 13, firstLineIndent: 10 });
+  const small = doc.paragraphStyles.add({ name: 'Small', appliedFont: 'Source Serif Pro\tRegular', pointSize: 8, leading: 10, spaceBefore: 4 });
   head.nextStyle = lead;
   lead.nextStyle = body;
   body.nextStyle = body;

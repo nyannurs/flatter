@@ -5,6 +5,8 @@
 import { inPoints } from '@flatter/indesign-adapter';
 import { DE_TEXT, EN_TEXT, app, id, type Any } from './lib.ts';
 
+/** Typeface of the whole document; needs Regular, Italic and Bold. */
+const FAMILY = 'Source Serif Pro';
 const W = 595.28;
 const H = 841.89;
 const SPECIALS = [
@@ -33,16 +35,24 @@ try {
   const textLayer = doc.layers.item(0);
   textLayer.name = 'Test text';
   const notes = doc.layers.add({ name: 'Test notes', printable: false, layerColor: id.UIColors.GRAY });
-  const minion = (style: string) => `Minion Pro\t${style}`;
+  // Source Serif Pro: installed with Regular, Italic and Bold (Minion Pro may have only Regular), and the same
+  // design the playground uses.
+  const face = (style: string) => `${FAMILY}\t${style}`;
   const styles = {
-    head: doc.paragraphStyles.add({ name: 'Head (centred)', appliedFont: minion('Bold'), pointSize: 16, leading: 19, spaceBefore: 12, spaceAfter: 4, justification: id.Justification.CENTER_ALIGN }),
-    lead: doc.paragraphStyles.add({ name: 'Lead', appliedFont: minion('Italic'), pointSize: 12, leading: 15, spaceAfter: 6 }),
-    body: doc.paragraphStyles.add({ name: 'Body', appliedFont: minion('Regular'), pointSize: 10, leading: 13, firstLineIndent: 10 }),
-    small: doc.paragraphStyles.add({ name: 'Small', appliedFont: minion('Regular'), pointSize: 8, leading: 10, spaceBefore: 4 }),
-    plain: doc.paragraphStyles.add({ name: 'Plain', appliedFont: minion('Regular'), pointSize: 10, leading: 13 }),
-    note: doc.paragraphStyles.add({ name: 'Test note', appliedFont: minion('Regular'), pointSize: 9, leading: 12 }),
-    noteHead: doc.paragraphStyles.add({ name: 'Test note head', appliedFont: minion('Bold'), pointSize: 13, leading: 16, spaceAfter: 3 }),
+    head: doc.paragraphStyles.add({ name: 'Head (centred)', appliedFont: face('Bold'), pointSize: 16, leading: 19, spaceBefore: 12, spaceAfter: 4, justification: id.Justification.CENTER_ALIGN }),
+    lead: doc.paragraphStyles.add({ name: 'Lead', appliedFont: face('Italic'), pointSize: 12, leading: 15, spaceAfter: 6 }),
+    body: doc.paragraphStyles.add({ name: 'Body', appliedFont: face('Regular'), pointSize: 10, leading: 13, firstLineIndent: 10 }),
+    small: doc.paragraphStyles.add({ name: 'Small', appliedFont: face('Regular'), pointSize: 8, leading: 10, spaceBefore: 4 }),
+    plain: doc.paragraphStyles.add({ name: 'Plain', appliedFont: face('Regular'), pointSize: 10, leading: 13 }),
+    note: doc.paragraphStyles.add({ name: 'Test note', appliedFont: face('Regular'), pointSize: 9, leading: 12 }),
+    noteHead: doc.paragraphStyles.add({ name: 'Test note head', appliedFont: face('Bold'), pointSize: 13, leading: 16, spaceAfter: 3 }),
   };
+  // Every style's font must be installed (Minion Pro Bold and Italic were missing on the designer's Mac).
+  const missing = ['Regular', 'Italic', 'Bold'].map(face).filter((name) => {
+    const font = app.fonts.itemByName(name);
+    return !font.isValid || String(font.status) !== 'INSTALLED';
+  });
+  if (missing.length) throw new Error(`fonts not installed: ${missing.join(', ')}`);
   styles.head.nextStyle = styles.lead;
   styles.lead.nextStyle = styles.body;
   styles.body.nextStyle = styles.body;
@@ -255,7 +265,8 @@ try {
   }
   notes.locked = true;
   doc.save(path);
-  out = { saved: path, pages: Number(doc.pages.length), cases };
+  const used = [...new Set(doc.stories.everyItem().getElements().flatMap((st: Any) => [].concat(st.textStyleRanges.everyItem().appliedFont).map((f: Any) => `${String(f.name)} (${String(f.status)})`)))];
+  out = { saved: path, pages: Number(doc.pages.length), fonts: used, cases };
 } catch (e) {
   out = { error: String(e), stack: String((e as Error)?.stack ?? '') };
 } finally {
