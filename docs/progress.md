@@ -2,6 +2,12 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-30 (evening) — Stress test with long, mixed stories
+
+The designer asked how Flatter copes with very long threaded stories, varied layouts, paragraph styles in sequence, special characters and every kind of break. `i31-stress.ts` (not in `test:indesign`, it takes minutes) builds such a story; results in `docs/spike-results.md` ("Long stories with mixed layout"). In short: an article of about 40 paragraphs works (19 s Apply, 1–2 s per slider move, 389/399 lines), a 150-paragraph story is too slow (3 min Apply, 3–9 s per slider move) and less exact (622/913 lines).
+
+Next, proposed to the designer: speed for long stories; discretionary line breaks; leave centred and right-aligned paragraphs alone instead of forcing them left; keep the alarm and automatic re-measure working when one paragraph contains a tab; find the cause of the long story's mismatches.
+
 ## 2026-10-30 (later) — Shape ↔ Sense slider (ADR-025); release 0.6.0
 
 From the same Instagram post ("here the shape won"): how much Sinneinheiten may cost the shape is a matter of taste, so it is now a slider in the panel and the playground.

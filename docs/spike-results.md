@@ -176,3 +176,21 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 
 - In All Caps, Small Caps and Cap To Small Cap, InDesign draws ß as one glyph ("draußen" in Minion Pro 10 pt small caps: 34.91 pt, "draussen" 40.71 pt) but its line breaker needs more room: a line with one ß fits only 6.5 pt (small caps) or 1.9 pt (all caps) wider than drawn, four ß 37 pt / 24 pt. Without ß, capitals fit exactly at their drawn width. OpenType All Small Caps is not affected.
 - Character offsets in synthetic capitals are consistent within a line; the sum of the advances equals the drawn width.
+
+## Long stories with mixed layout (2026-10-30, `i31-stress`)
+
+Throwaway document: four paragraph styles in a fixed order (Head 16/19 Bold centred, Lead 12/15 Italic, Body 10/13 with first-line indent, Small 8/10), threaded frames of different widths, 2- and 3-column frames, an image with bounding-box text wrap inside a column, one 12-times-long paragraph, column, frame and page breaks (one column break inside a paragraph), forced line breaks, no-break and thin spaces, dashes, quotes, soft hyphens, a non-breaking hyphen, a URL with discretionary line breaks (U+200B) and tabs. Precise Laufweite with word spaces, bands shown.
+
+| | 40 paragraphs, 16,700 characters, 15 frames | 152 paragraphs, 51,600 characters, 22 frames |
+|---|---|---|
+| Apply | 19 s (prepare 11.6 s, steer and verify 7.2 s, 6 rounds) | 181 s (prepare 105 s, steer and verify 74 s, 6 rounds) |
+| Lines as planned after Apply | 389/399 | 622/913 |
+| Slider tick (draft, then full) | 1.1 s, 2.0 s | 3.1 s, 6.1 s |
+| Verify after the tick | 1.2 s, 325/396 | 2.4 s, 682/910 |
+| Remove | 0.6 s | 2.9 s |
+
+- **Time grows faster than the text**: prepare 0.29 s per paragraph at 40 paragraphs, 0.69 s at 152. Every DOM call on a long threaded story costs more; the rounds re-read all lines of all frames.
+- **Discretionary line breaks (U+200B) are not modelled**: InDesign breaks the URL there, Flatter plans the URL as one word; that paragraph never converges, which also spends all six verify rounds.
+- **The short story is otherwise exact** (frames of different widths, columns, the image wrap, column/frame/page breaks, special spaces and hyphens); the long one has 55 mismatching paragraphs, not yet explained.
+- **A single tab switches the alarm off for the whole story**: `steeringFailed` ignores stories with any unsupported paragraph, so 622/913 raised no alarm and no automatic re-measure.
+- **Centred headings become left-aligned** while Flatter is on (required setting for every paragraph of the story); Remove restores them.
