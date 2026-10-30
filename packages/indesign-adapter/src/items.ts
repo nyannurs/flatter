@@ -39,6 +39,8 @@ const NO_BREAK_SPACE = /^[\u00a0\u202f\u2007]$/;
 const FORCED_BREAK = /^[\n\u2028]$/;
 const SPACE = /^[ \u2002-\u200a\u00a0\u202f\u2007]$/;
 const DISCRETIONARY = '\u00ad';
+/** InDesign's discretionary line break: a break opportunity without a hyphen (URLs, slashes). */
+const DISCRETIONARY_LINE_BREAK = '\u200b';
 /** InDesign may break after these without adding a hyphen. */
 const BREAK_AFTER = /^[-–—]$/;
 const LETTER = /\p{L}/u;
@@ -134,6 +136,10 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
         }
       }
     }
+    // Discretionary line breaks: InDesign may break after them, with no hyphen (2026-10-30).
+    local.forEach((ch, i) => {
+      if (ch === DISCRETIONARY_LINE_BREAK && i < local.length - 1) cuts.set(i + 1, { type: 'penalty', width: 0, flagged: false });
+    });
     const lead = word.match(/^[^\p{L}]*/u)![0].length;
     const trail = word.match(/[^\p{L}]*$/u)![0].length;
     const key = word.slice(lead, word.length - trail).toLowerCase() || undefined;

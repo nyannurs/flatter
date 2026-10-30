@@ -2,6 +2,25 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-10-30 (night) — Long stories: faster, exact beside images, headings left alone; stress-test file; release 0.6.1
+
+Fixes for what the stress test (`i31-stress.ts`) found, plus a stress-test document for the designer.
+
+- **Measuring in one copy** (`DomPort.measureParagraphs`): all paragraphs that are not cached are copied to the hidden bench document at once (chunks of up to 200,000 characters), with column, frame and page breaks turned into returns and keep options, drop caps and baseline-grid alignment off; leading 2 pt. Was one copy per paragraph at about 0.5 s each in a long threaded story. 80 paragraphs: 38 s → 3.4 s.
+- **Discretionary line breaks** (U+200B) are break opportunities without a hyphen; URLs no longer keep a paragraph from settling.
+- **Text wrap of other objects** (images, other frames; not Flatter's teeth or band strips): read once per session; a line beside an object is planned at the width InDesign leaves it (object at the column's left edge moves the start, any other ends the line). Jump-object and next-column wraps are left out (InDesign moves those lines).
+- **Centred, right-aligned and binding-side paragraphs are left alone** (ADR-026): no plan, no forced settings, alignment part of the edit signature. Justified paragraphs are still set ragged.
+- **Read-back rounds**: up to 12 (was 6), stopping after three rounds without progress (fewer paragraphs off plan, or a newly refused hyphenation point). Multi-column stories settle a column boundary at a time.
+- **Tracking writes**: a paragraph whose spans are the same as last written is skipped without reading the document; a paragraph whose lines come back wrong is forgotten and read again (`forgetTracking`). Remaining cost is the writes themselves (about 2 ms each; one per line plus one per adjusted word space).
+- **Alarm with a tab**: `steeringFailed` counts the paragraphs without unsupported content instead of switching off for the whole story.
+- **Property test**: the "tracking only as a rescue" check applies to the aesthetic style only; the functional style may rescue a line outside the zone although an untracked plan exists (ADR-021). Found by a random seed that also fails on older code.
+- **Correction**: "OpenType All Small Caps" is `CAP_TO_SMALL_CAP` in scripting; the name used in `i27` did not exist, so that case had run in normal case. It is affected by the ß problem like the others.
+- Results, story of 152 paragraphs / 51,600 characters / 22 frames: Apply 181 s → 44 s, lines as planned 622/913 → 875/904, after one slider move 901/904. 80 paragraphs: 57 s → 21 s, 593/593. The few remaining lines oscillate by one line at a column top in a 3-column frame (open).
+- **Stress-test document** for the designer: `tools/indesign/spikes/src/i40-stress-file.ts` writes `InDesign Test File/Flatter Stress Test.indd` (git-ignored; app label `flatter-stress-path` = the path). 24 pages in millimetres, twelve cases each with a note on the locked, non-printing layer "Test notes" (what to do, what to expect), and a contents page.
+- Release 0.6.1 packaged, installed and published.
+
+Open: slider moves on very long stories with word spaces are still slow (152 paragraphs: about 3 s for the draft, 6 s for the word spaces, 3 s verify); a further step would be to steer only the pages in view.
+
 ## 2026-10-30 (evening) — Stress test with long, mixed stories
 
 The designer asked how Flatter copes with very long threaded stories, varied layouts, paragraph styles in sequence, special characters and every kind of break. `i31-stress.ts` (not in `test:indesign`, it takes minutes) builds such a story; results in `docs/spike-results.md` ("Long stories with mixed layout"). In short: an article of about 40 paragraphs works (19 s Apply, 1–2 s per slider move, 389/399 lines), a 150-paragraph story is too slow (3 min Apply, 3–9 s per slider move) and less exact (622/913 lines).
@@ -48,7 +67,7 @@ The designer got the alarm again (0.5.2): "only 18 of 53 visible lines were set 
 - **Automatic re-measure** (panel): when most lines miss (`steeringFailed`, the same test as the alarm), the panel measures again once, as Recompute does, and raises the alarm only if that does not help. The status then says "Measured again automatically". Tested in the real panel through the dev channel (`{"cmd":"recovery"}`: a capitalization change after Apply, which the live session does not notice; 22/22, then 25/25 after the automatic re-measure, no alarm).
 - **Alarm details** now say what led to the result (Apply, slider, language change, automatic re-measure…), the story id, the document units, rounds, the first line that differs (planned and actual end, widths) and the settings, plus the first failure when the automatic re-measure did not help.
 - **Measure cache key**: all width-relevant character attributes of every style range (capitalization, OpenType features, position, ligatures, kerning method, tracking, …), not only the first letter's font, size and tracking. Small caps reused the measurements of plain text before (0/22). The probe key includes capitalization; probe cache version v3.
-- **ß in All Caps and Small Caps**: InDesign's line breaker needs more room for ß than it draws (one ß: +6.5 pt in Minion Pro 10 pt small caps, +1.9 pt in all caps; four ß: +37 pt / +24 pt; not additive), so those lines break early. Flatter reports it as unsupported content ("ß in All Caps or Small Caps") instead of raising the alarm. OpenType All Small Caps is not affected; capitals without ß set exactly (`i27-capitals` in `test:indesign`).
+- **ß in All Caps and Small Caps**: InDesign's line breaker needs more room for ß than it draws (one ß: +6.5 pt in Minion Pro 10 pt small caps, +1.9 pt in all caps; four ß: +37 pt / +24 pt; not additive), so those lines break early. Flatter reports it as unsupported content ("ß in All Caps or Small Caps") instead of raising the alarm. Capitals without ß set exactly. (Correction 2026-10-30: "OpenType All Small Caps" in InDesign's menu is `CAP_TO_SMALL_CAP` in scripting and is affected too; the test's `OPENTYPE_ALL_SMALL_CAPS` does not exist, so that case had run in normal case.) (`i27-capitals` in `test:indesign`).
 - Spikes: `i25-ticks-copy.ts` (copy plus the panel's slider sequence; app label `flatter-i25-extras` = `probes`, `neighbours`), `i26-history.ts`, `i28-caps-drift.ts` (letter-by-letter comparison of a line).
 - Release 0.5.3 packaged, installed and published.
 

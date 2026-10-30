@@ -3,9 +3,9 @@
  * as one undo step ("Flatter: …") through app.doScript (spike S8).
  */
 import { FlatterUserError } from './errors.ts';
-import { FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
+import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
 import { asArray, controlLayer, DomPort, indesign, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
-import { checkParagraph, checkStory, FIXED_FROM_AUTO, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
+import { checkParagraph, checkStory, FIXED_FROM_AUTO, keepsAlignment, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
 export const STORY_LABEL = 'flatter';
 
@@ -104,7 +104,10 @@ function readSettings(story: Any): Check {
   const doc = story.parent;
   const paras = story.paragraphs;
   const issues: SettingIssue[] = [];
+  const alignments = asArray(paras.everyItem().justification).map(String);
   for (let p = 0; p < paras.length; p++) {
+    // Centred and right-aligned paragraphs are left alone (ADR-026).
+    if (keepsAlignment(alignments[p]!)) continue;
     const para = paras.item(p);
     const current: Record<string, SettingValue> = {};
     for (const s of REQUIRED_SETTINGS) {
@@ -212,6 +215,7 @@ export function storySignature(story: Any): string {
       asArray(paras.horizontalScale).join(','),
       asArray(paras.kerningMethod).map(String).join(','),
       asArray(paras.appliedLanguage).map((l: Any) => String(l?.name ?? l)).join(','),
+      asArray(paras.justification).map(String).join(','),
     ];
     return parts.join('\u0000');
   } catch {
@@ -285,7 +289,7 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     session.plan(settings);
     const tSteer = Date.now();
     session.steer();
-    const result = session.verify(settings.maxRounds ?? 6);
+    const result = session.verify(settings.maxRounds ?? DEFAULT_MAX_ROUNDS);
     port.dropParkedTeeth();
     saveState(story, state, port);
     const tCheck = Date.now();
@@ -310,7 +314,7 @@ export function liveUpdate(live: LiveSession, settings: ApplySettings, firstOfDr
 /** After a pause: read back, re-plan refused points, move misplaced teeth. Merges into the current step. */
 export function liveVerify(live: LiveSession): ApplyResult {
   return undoableMode('Flatter: Adjust', 'merge', () => {
-    const r = live.session.verify(live.state.settings.maxRounds ?? 6);
+    const r = live.session.verify(live.state.settings.maxRounds ?? DEFAULT_MAX_ROUNDS);
     live.port.dropParkedTeeth();
     saveState(live.story, live.state, live.port);
     return r;

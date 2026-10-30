@@ -139,6 +139,8 @@ export class FakeInDesign implements Port {
     for (let k = start; k < chars.length; k++) {
       const c = chars[k]!;
       if (c === '\n' || c === '\u2028') return { end: k + 1, hyphenated: false };
+      // After a discretionary line break (U+200B), no hyphen.
+      if (k > start && chars[k - 1] === '\u200b' && width <= limit) best = { end: k, hyphenated: false };
       if (c === ' ') {
         if (width <= limit) best = { end: k, hyphenated: false };
         else break;

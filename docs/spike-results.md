@@ -174,7 +174,7 @@ The user's TestFile has one 11,800-character paragraph (about 360 lines) in a fr
 
 ## Capitals and ß (2026-10-27, `i27`, `i28`)
 
-- In All Caps, Small Caps and Cap To Small Cap, InDesign draws ß as one glyph ("draußen" in Minion Pro 10 pt small caps: 34.91 pt, "draussen" 40.71 pt) but its line breaker needs more room: a line with one ß fits only 6.5 pt (small caps) or 1.9 pt (all caps) wider than drawn, four ß 37 pt / 24 pt. Without ß, capitals fit exactly at their drawn width. OpenType All Small Caps is not affected.
+- In All Caps, Small Caps and Cap To Small Cap, InDesign draws ß as one glyph ("draußen" in Minion Pro 10 pt small caps: 34.91 pt, "draussen" 40.71 pt) but its line breaker needs more room: a line with one ß fits only 6.5 pt (small caps) or 1.9 pt (all caps) wider than drawn, four ß 37 pt / 24 pt. Without ß, capitals fit exactly at their drawn width. Cap To Small Cap is what InDesign's menu calls "OpenType All Small Caps", so that is affected as well (corrected 2026-10-30: an earlier test used a name the scripting interface does not have and ran in normal case).
 - Character offsets in synthetic capitals are consistent within a line; the sum of the advances equals the drawn width.
 
 ## Long stories with mixed layout (2026-10-30, `i31-stress`)
@@ -194,3 +194,18 @@ Throwaway document: four paragraph styles in a fixed order (Head 16/19 Bold cent
 - **The short story is otherwise exact** (frames of different widths, columns, the image wrap, column/frame/page breaks, special spaces and hyphens); the long one has 55 mismatching paragraphs, not yet explained.
 - **A single tab switches the alarm off for the whole story**: `steeringFailed` ignores stories with any unsupported paragraph, so 622/913 raised no alarm and no automatic re-measure.
 - **Centred headings become left-aligned** while Flatter is on (required setting for every paragraph of the story); Remove restores them.
+
+### After the fixes (2026-10-30, night)
+
+| | 80 paragraphs, 29,100 characters | 152 paragraphs, 51,600 characters |
+|---|---|---|
+| Apply | 21 s (was 57 s), 593/593 lines | 44 s (was 181 s), 875/904 lines |
+| Measuring | 3.4 s (was 38 s) | 7.3 s (was 105 s) |
+| Slider tick (draft, then word spaces), verify | | 2.6 s, 6.2 s, 2.8 s; 901/904 lines |
+
+- Copying paragraph by paragraph into the bench was the slow part (about 0.5 s per copy from a long threaded story); one copy of the whole range costs about as much as one paragraph did.
+- In the copy, column, frame and page breaks must become returns: they read as "\r" in `contents` but as `SpecialCharacters` enumerations per character, and would push the rest out of the single bench frame. Discretionary line break is U+200B, forced line break "\n", indent-to-here U+0007, right indent tab U+0008, end nested style U+0003.
+- Text wrap of an image narrows the lines beside it; InDesign reports the shorter line, not the reason. Flatter now reads wrap objects itself (bounding box plus offsets; the line band is baseline − 0.75 × size to baseline + 0.25 × size).
+- Tracking writes cost about 2 ms each in a long story; word spaces make up most of them.
+- `pgrep -f` on InDesign's path also matches AdobeIPCBroker; use `pgrep -x "Adobe InDesign 2026"`.
+

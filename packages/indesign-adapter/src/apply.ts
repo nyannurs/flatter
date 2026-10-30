@@ -9,6 +9,9 @@ import { bandsFor, slotsForPlan, toothFor, sameSlot, type BandSpec, type LineSlo
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
+/** Read-back rounds after steering (see FlatterSession.verify). */
+export const DEFAULT_MAX_ROUNDS = 12;
+
 export interface ApplySettings extends Omit<FlatterSettings, 'measure' | 'language' | 'firstLineIndent' | 'startRole'> {
   /** Flatterzone as a share of each paragraph's measure (panel slider). Overrides flatterzone. */
   zoneShare?: number;
@@ -45,6 +48,8 @@ export interface ParagraphResult {
   unsupported: string[];
   /** Lines of the plan that are visible in a frame; the rest are overset. */
   visibleLines: number;
+  /** Visible lines InDesign set as planned. */
+  linesAsPlanned: number;
   /** The first line InDesign did not set as planned, for diagnosis. */
   mismatch?: {
     line: number;
@@ -82,7 +87,8 @@ export interface ApplyResult {
 export function compatibilityAlarms(r: ApplyResult): string[] {
   const out: string[] = [];
   if (steeringFailed(r)) {
-    out.push(`InDesign did not follow Flatter's line steering: only ${r.linesAsPlanned} of ${r.linesPlanned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Recompute and see whether this goes away.`);
+    const { planned, asPlanned } = supportedLines(r);
+    out.push(`InDesign did not follow Flatter's line steering: only ${asPlanned} of ${planned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Recompute and see whether this goes away.`);
   }
   const { checked, empty } = r.probeCheck;
   if (checked >= 10 && empty / checked >= 0.8) {
@@ -91,10 +97,19 @@ export function compatibilityAlarms(r: ApplyResult): string[] {
   return out;
 }
 
-/** Most visible lines not set as steered (at least 10, no unsupported content): stale measurements or a broken InDesign. */
+/**
+ * Visible lines of the paragraphs without unsupported content (tabs, anchored objects…), and how many of them were set
+ * as planned. One paragraph with a tab used to switch the check off for the whole story (2026-10-30).
+ */
+function supportedLines(r: ApplyResult): { planned: number; asPlanned: number } {
+  const ok = r.paragraphs.filter((p) => !p.unsupported.length);
+  return { planned: ok.reduce((s, p) => s + p.visibleLines, 0), asPlanned: ok.reduce((s, p) => s + Math.min(p.linesAsPlanned, p.visibleLines), 0) };
+}
+
+/** Most visible lines not set as steered (at least 10, unsupported content left out): stale measurements or a broken InDesign. */
 export function steeringFailed(r: ApplyResult): boolean {
-  const unsupported = r.paragraphs.some((p) => p.unsupported.length);
-  return !unsupported && r.linesPlanned >= 10 && r.linesAsPlanned / r.linesPlanned < 0.7;
+  const { planned, asPlanned } = supportedLines(r);
+  return planned >= 10 && asPlanned / planned < 0.7;
 }
 
 /** Map an InDesign language name to the hyphenation module's language. */
@@ -211,12 +226,18 @@ export class FlatterSession {
   /**
    * Read back and correct until every line is set as planned (or maxRounds).
    * Each round: read lines; re-plan points InDesign refused; if anything changed, steer again.
+   * Long stories in several columns settle a column boundary at a time, so up to 12 rounds, but stop when three
+   * rounds in a row bring no improvement (2026-10-30).
    */
-  verify(maxRounds = this.settings.maxRounds ?? 6): ApplyResult {
+  verify(maxRounds = this.settings.maxRounds ?? DEFAULT_MAX_ROUNDS): ApplyResult {
+    let best = Infinity;
+    let stale = 0;
     for (let round = 0; round < maxRounds; round++) {
       this.rounds++;
       this.current = this.port.readLines();
       let changed = false;
+      let open = 0;
+      let learned = false;
       for (const w of this.work) {
         const got = this.current.filter((l) => l.paragraph === w.data.index);
         // The paragraph's lines sit in frames of other widths than planned for: plan again.
@@ -225,6 +246,7 @@ export class FlatterSession {
           w.widths = widths;
           w.plan = solve(w.items, w.data, this.settings, w.plan.startRole, widths);
           changed = true;
+          open++;
           continue;
         }
         const used = this.usedSlots.get(w.data.index) ?? [];
@@ -233,6 +255,7 @@ export class FlatterSession {
           if (got.some((l, i) => used[i] && !sameSlot(l.slot, used[i]!))) changed = true;
           continue;
         }
+        this.port.forgetTracking?.(w.data.index);
         const line = w.plan.lines[bad];
         const at = got[bad];
         if (line?.endsWithHyphen && at && used[bad] && sameSlot(at.slot, used[bad]!)) {
@@ -240,6 +263,7 @@ export class FlatterSession {
           if (pen.type === 'penalty') {
             const e = w.measured.charRange[line.endItem - 1]![1];
             w.refused.push((w.data.chars.slice(0, e).join('').split(/\s/).pop() ?? '') + (pen.width > 0 ? '-' : ''));
+            learned = true;
             // InDesign decides per word: refuse the same point in every occurrence of the word, so a
             // repeated word costs one round, not one round per occurrence (2026-10-17).
             const same = new Set(sameWordPoints(w.items, line.breakAt));
@@ -248,8 +272,14 @@ export class FlatterSession {
           }
         }
         changed = true;
+        open++;
       }
       if (!changed) break;
+      // Progress: fewer paragraphs off their plan, or a hyphenation point InDesign refused is now known.
+      if (open < best || learned) {
+        best = Math.min(best, open);
+        stale = 0;
+      } else if (++stale >= 3) break;
       this.steer();
     }
     return this.result();
@@ -262,7 +292,8 @@ export class FlatterSession {
       const got = current.filter((l) => l.paragraph === w.data.index);
       const bad = firstMismatch(w, got, this.overset);
       const visibleLines = this.overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
-      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set([...w.measured.unsupported, ...(w.data.unsupported ?? [])])], visibleLines };
+      const linesAsPlanned = w.plan.lines.filter((line, i) => matches(w, line, got[i])).length;
+      const r: ParagraphResult = { index: w.data.index, plan: w.plan, steered: bad < 0, refused: w.refused, unsupported: [...new Set([...w.measured.unsupported, ...(w.data.unsupported ?? [])])], visibleLines, linesAsPlanned };
       // InDesign may set more lines than planned: the first extra line then has no plan to compare with.
       const planned = w.plan.lines[Math.min(bad, w.plan.lines.length - 1)];
       if (bad >= 0 && planned) {
@@ -305,7 +336,7 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
   session.prepare(settings);
   session.plan(settings);
   session.steer();
-  return session.verify(settings.maxRounds ?? 6);
+  return session.verify(settings.maxRounds ?? DEFAULT_MAX_ROUNDS);
 }
 
 /**

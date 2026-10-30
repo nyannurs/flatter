@@ -1,6 +1,6 @@
 import { createHyphenator } from '@flatter/hyphenation';
 import { describe, expect, it } from 'vitest';
-import { applyToPort, compatibilityAlarms } from '../src/index.ts';
+import { applyToPort, compatibilityAlarms, steeringFailed, type ApplyResult } from '../src/index.ts';
 import { FakeInDesign } from './fake-indesign.ts';
 
 const DE = [
@@ -242,3 +242,26 @@ describe('paragraphs with unusual content', () => {
   });
 });
 
+
+describe('discretionary line breaks', () => {
+  it('lets a URL break after a discretionary line break, without a hyphen', () => {
+    const url = 'Mehr unter https://www.example.org/\u200bverzeichnis/\u200bausstellungen/\u200b2026/\u200bstaubecken-der-muehle im Netz und noch etwas mehr Text danach.';
+    const fake = new FakeInDesign([url], { measure: 160, accepts: ourSafe });
+    const r = applyToPort(fake);
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+    const ends = r.paragraphs[0]!.plan.lines.map((l) => l.text);
+    expect(ends.some((t) => /\/\u200b$/.test(t.trimEnd()))).toBe(true);
+    expect(r.paragraphs[0]!.plan.lines.every((l) => !l.endsWithHyphen || !/\u200b$/.test(l.text))).toBe(true);
+  });
+});
+
+describe('steering check with unsupported content', () => {
+  it('still notices a failed story when one paragraph has a tab', () => {
+    const para = (unsupported: string[], visibleLines: number, linesAsPlanned: number) => ({ unsupported, visibleLines, linesAsPlanned }) as unknown as ApplyResult['paragraphs'][number];
+    const r = { paragraphs: [para(['tab'], 5, 5), para([], 20, 4)], linesPlanned: 25, linesAsPlanned: 9 } as unknown as ApplyResult;
+    expect(steeringFailed(r)).toBe(true);
+    expect(compatibilityAlarms({ ...r, probeCheck: { checked: 0, empty: 0 } })[0]).toContain('only 4 of 20');
+    const fine = { paragraphs: [para(['tab'], 5, 0), para([], 20, 20)], linesPlanned: 25, linesAsPlanned: 20 } as unknown as ApplyResult;
+    expect(steeringFailed(fine)).toBe(false);
+  });
+});

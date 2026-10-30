@@ -168,7 +168,9 @@ describe('solver invariants for any paragraph', () => {
           if ((P.tracking.mode !== 'precise' && P.style !== 'functional') || !P.tracking.enabled || line.kind !== 'band') expect(line.wordSpace).toBe(0);
           expect(Math.abs(line.wordSpace)).toBeLessThanOrEqual(P.tracking.wordSpaceMax + 1e-9);
         }
-        if (P.tracking.enabled && P.tracking.mode === 'rescue' && P.mode === 'strict') {
+        // Aesthetic: tracking only when strict fails without it (ADR-010). Functional: Laufweite may rescue a line
+        // that would end outside the zone even when an untracked plan exists (ADR-021).
+        if (P.tracking.enabled && P.tracking.mode === 'rescue' && P.mode === 'strict' && P.style !== 'functional') {
           const untracked = solveParagraph(items, { ...settings, tracking: { enabled: false } });
           if (untracked.solvedAs === 'strict' && !untracked.phaseFlipped) expect(plan.stats.trackedLines).toBe(0);
         }

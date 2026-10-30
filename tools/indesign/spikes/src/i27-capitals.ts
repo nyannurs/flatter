@@ -7,7 +7,8 @@ inNewDocument((doc: Any) => {
   const plain = DE_TEXT.join(' ').replace(/ß/g, 'ss');
   const out: Record<string, string> = {};
   let pass = true;
-  for (const cap of ['NORMAL', 'SMALL_CAPS', 'ALL_CAPS', 'CAP_TO_SMALL_CAP', 'OPENTYPE_ALL_SMALL_CAPS']) {
+  // CAP_TO_SMALL_CAP is the menu's "OpenType All Small Caps".
+  for (const cap of ['NORMAL', 'SMALL_CAPS', 'ALL_CAPS', 'CAP_TO_SMALL_CAP']) {
     for (const [name, text] of [['plain', plain], ['with ß', DE_TEXT.join(' ')]] as const) {
       const f = doc.pages.item(0).textFrames.add({ geometricBounds: [40, 40, 760, 300] });
       f.contents = text;

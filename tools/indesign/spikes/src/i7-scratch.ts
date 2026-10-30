@@ -56,7 +56,7 @@ inNewDocument((doc: Any) => {
   {
     const port: Any = new DomPort(doc, story, layer);
     const n = Number(para.characters.length) - 1;
-    time('D measureParagraph', () => port.measureParagraph(para, n));
+    time('D measureParagraphs', () => port.measureParagraphs([{ index: 0, start: 0, length: n, para }], Array.from(String(story.contents))));
     const frame = port.scratchFrame(para);
     t['D frame bounds after measure'] = frame.geometricBounds.map(Number);
     t['D scratch chars after measure'] = Number(frame.parentStory.characters.length);

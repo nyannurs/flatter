@@ -2,7 +2,7 @@
 
 A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in one of two styles: **Aesthetic**, a strict long, short, long, short rhythm, or **Functional**, a free rag set for reading. It can also adjust each line with letter tracking and word spaces.
 
-**Status: version 0.6.0, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.6.1, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
 
 ## What it does
 
@@ -14,7 +14,7 @@ A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flatte
 - **Live panel.** Sliders for Flatterzone and band, as a percentage of the measure, plus hyphens in a row and the tracking and word-space limits. Results update while you drag. An optional band view shows where long lines (blue) and short lines (orange) should end, on a non-printing layer. The report lists one entry per visible line, and clicking an entry selects that line in the document.
 - **Freeze for hand-off.** Freeze fixes the current line breaks in the text: forced line breaks, plus real hyphens where InDesign hyphenated, all tagged with the condition "Flatter frozen". The file then keeps its rag on any computer, whatever its hyphenation dictionary. Unfreeze removes exactly those characters and brings the live rag back. You don't need Freeze for PDF output.
 - **Compatibility alarm.** After every InDesign or Flatter update, the panel checks once, in a hidden test document, that InDesign still behaves the way Flatter relies on. If a check fails, or something happens that should never happen (an unexpected error, InDesign ignoring the steering, no hyphenation points), a hot-magenta box appears at the top of the panel with the details to copy. **Run self-check** at the bottom of the panel runs it any time.
-- **Real layouts.** Stories threaded through frames of different widths, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
+- **Real layouts.** Long stories threaded through frames of different widths and column counts, lines beside images with text wrap, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Centred and right-aligned paragraphs, such as headings, keep their alignment and are left alone. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
 
 ## Install
 

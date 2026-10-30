@@ -48,6 +48,16 @@ export interface SettingIssue {
   required: boolean;
 }
 
+/**
+ * Alignments Flatter leaves alone (ADR-026): a centred heading or a right-aligned caption inside a ragged story keeps
+ * its alignment and is not planned. Left-aligned and justified paragraphs are set ragged.
+ */
+const KEPT_ALIGNMENTS = new Set(['CENTER_ALIGN', 'RIGHT_ALIGN', 'TO_BINDING_SIDE', 'AWAY_FROM_BINDING_SIDE']);
+
+export function keepsAlignment(justification: string): boolean {
+  return KEPT_ALIGNMENTS.has(justification);
+}
+
 /** Compare one paragraph's current attributes with what the plugin needs. */
 export function checkParagraph(paragraph: number, current: Record<string, SettingValue>, language: string): SettingIssue[] {
   const out: SettingIssue[] = [];

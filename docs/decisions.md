@@ -224,3 +224,15 @@ Every "lines not as planned" alarm the designer saw so far came from measurement
 ## ADR-025: Shape ↔ Sense is the designer's choice (2026-10-30)
 
 How far Sinneinheiten may cost the shape is taste, not a rule (seen in public reactions to another rag script: readers notice "Every" or "the" at a line end, the author answered that in a narrow column the shape won). One slider, `senseBalance`, default in the middle (the weights used so far). Towards Shape the Sinneinheiten weight falls to zero; towards Sense it grows to 16 times, enough to outweigh exact edges and hyphen costs. The far end, Sense first, makes Sinneinheiten a hard rule by removing those breaks; correctness rules for hyphenation stay as they are at every position, and the rhythm or the zone gives way instead.
+
+## ADR-026: Centred and right-aligned paragraphs are left alone (2026-10-30)
+
+A story often mixes ragged body text with centred headings or right-aligned captions (paragraph styles in sequence). Flatter used to force left alignment and its other required settings on every paragraph of the story. Now paragraphs aligned centre, right, towards or away from the spine are not planned and not changed; left-aligned and justified paragraphs are set ragged (justified ones become left-aligned, as before, since ragging them is what Apply asks for).
+
+## ADR-027: Long stories: one bench copy, wrap objects, more rounds (2026-10-30)
+
+- Paragraphs are measured together in one copy to the bench document (chunked), not one copy each.
+- Text wrap of objects that are not Flatter's narrows the planned width of the lines beside them (read once per session; bounding box with offsets).
+- Read-back runs up to 12 rounds and stops after three rounds without progress, because multi-column stories settle one column boundary at a time.
+- Tracking that is unchanged since the last write is not read or written again; a paragraph whose lines come back wrong is read again.
+

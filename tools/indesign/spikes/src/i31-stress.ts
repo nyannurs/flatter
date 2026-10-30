@@ -3,7 +3,26 @@
 // break. Measures Apply, a slider tick and the verify after it. App label "flatter-i31-groups" sets the length
 // (default 19 groups of 8 paragraphs); progress goes to the file in "flatter-progress-file".
 import { DE_TEXT, app, id, inNewDocument, type Any } from './lib.ts';
-import { compatibilityAlarms, inPoints, liveUpdate, liveVerify, openSession, removeFlatter } from '@flatter/indesign-adapter';
+import { compatibilityAlarms, DomPort, inPoints, liveUpdate, liveVerify, openSession, removeFlatter } from '@flatter/indesign-adapter';
+
+// Time every DomPort method (ms and calls).
+const profile: Record<string, { ms: number; calls: number }> = {};
+for (const name of Object.getOwnPropertyNames(DomPort.prototype)) {
+  const proto = DomPort.prototype as Any;
+  const orig = proto[name];
+  if (name === 'constructor' || typeof orig !== 'function') continue;
+  proto[name] = function (this: Any, ...args: Any[]) {
+    const t = Date.now();
+    try {
+      return orig.apply(this, args);
+    } finally {
+      const p = (profile[name] ??= { ms: 0, calls: 0 });
+      p.ms += Date.now() - t;
+      p.calls++;
+    }
+  };
+}
+const top = () => Object.fromEntries(Object.entries(profile).sort((a, b) => b[1].ms - a[1].ms).slice(0, 14).map(([k, v]) => [k, `${v.ms} ms / ${v.calls}`]));
 
 const progressFile = String(app.extractLabel('flatter-progress-file') || '');
 const fsModule = 'fs'; // UXP's own fs, not bundled
@@ -19,12 +38,12 @@ const timed = <T>(f: () => T): [T, number] => {
 };
 
 const SPECIALS = [
-  ' Siehe S. 123 und Abb. 4, dazu 10 km Fußweg.',
+  ' Siehe S.\u00a0123 und Abb.\u00a04, dazu 10\u2009km Fußweg.',
   ' Dazwischen – ein Gedanke — und noch einer … am Ende.',
   ' Sie sagte: „Das ist ein ‚Zitat‘ im Zitat“ und »so weiter«.',
-  ' Die Donau­dampf­schiff­fahrts­gesellschaft fuhr weiter.',
-  ' Mehr unter https://www.example.org/​verzeichnis/​ausstellungen/​2026/​staubecken-der-muehle im Netz.',
-  ' Schreiben Sie eine E‑Mail an die Max-Planck-Gesellschaft.',
+  ' Die Donau\u00addampf\u00adschiff\u00adfahrts\u00adgesellschaft fuhr weiter.',
+  ' Mehr unter https://www.example.org/\u200bverzeichnis/\u200bausstellungen/\u200b2026/\u200bstaubecken-der-muehle im Netz.',
+  ' Schreiben Sie eine E\u2011Mail an die Max-Planck-Gesellschaft.',
   ' Hier folgt ein erzwungener\nZeilenumbruch mitten im Absatz.',
   ' Eine Tabelle:\tSpalte eins\tSpalte zwei.',
 ];
@@ -98,12 +117,16 @@ inNewDocument((doc: Any) => {
   log(`breaks after paragraphs ${[0.13, 0.3, 0.46, 0.63].map(at).join(', ')} (column, frame, page, column inside)`);
   log(`text set: ${paras.length} paragraphs, ${chars} characters, ${frames.length} frames, overset ${story.overflows}`);
 
-  const settings = { showBands: true, sense: true, zoneShare: 0.15, bandShare: 0.6, tracking: { enabled: true, mode: 'precise' as const, max: 5 }, wordSpaceShare: 0.25 };
+  const rounds = app.extractLabel('flatter-i31-rounds');
+  const settings = { ...(rounds ? { maxRounds: Number(rounds) } : {}), showBands: true, sense: true, zoneShare: 0.15, bandShare: 0.6, tracking: { enabled: true, mode: 'precise' as const, max: 5 }, wordSpaceShare: 0.25 };
   log('apply');
   const [{ live, report }, applyMs] = timed(() => openSession(story, settings));
   const headAlign = String(story.paragraphs.item(0).justification);
   log(`applied in ${applyMs} ms: ${report.linesAsPlanned}/${report.linesPlanned}`);
-  const where = (m: Any) => (m.slotGot ? `page ${m.slotGot.page + 1} col ${Math.round(m.slotGot.columnLeft)}-${Math.round(m.slotGot.columnRight)} y ${Math.round(m.slotGot.baseline)}` : 'no slot');
+  const slot = (sl: Any) => (sl ? `p${sl.page + 1} x${Math.round(sl.columnLeft)}-${Math.round(sl.columnRight)} y${Math.round(sl.baseline * 10) / 10}` : '-');
+  const where = (m: Any) => `got ${slot(m.slotGot)} used ${slot(m.slotUsed)}`;
+  const applyProfile = { ...top(), tracking: `writes ${live.port.trackingWrites}, skips ${live.port.trackingSkips}, stats ${JSON.stringify(live.port.trackingStats)}` };
+  for (const k of Object.keys(profile)) delete profile[k];
   const mismatches = report.paragraphs.filter((p) => p.mismatch).map((p) => ({ p: p.index, line: p.mismatch!.line, where: where(p.mismatch), planned: p.mismatch!.planned.text.slice(-24), got: p.mismatch!.got?.text.slice(-24) }));
   const unsupported = report.paragraphs.filter((p) => p.unsupported.length).map((p) => `¶${p.index + 1}: ${p.unsupported.join(', ')}`);
   log('tick');
@@ -122,6 +145,7 @@ inNewDocument((doc: Any) => {
     applyMs, timings: report.timings, probes: report.probes, rounds: report.rounds,
     apply: `${report.linesAsPlanned}/${report.linesPlanned}`, alarms: compatibilityAlarms(report),
     tick: { draftMs, fullMs, verifyMs, verified: `${verified.linesAsPlanned}/${verified.linesPlanned}`, alarms: compatibilityAlarms(verified) },
+    applyProfile, tickProfile: top(),
     removeMs, headingAlignment: { before: 'CENTER_ALIGN (style)', whileApplied: headAlign, afterRemove: headAlignAfter },
     unsupported, mismatches: mismatches.slice(0, 30), mismatchCount: mismatches.length, verifyMismatches: vMismatches.slice(0, 2), verifyMismatchCount: vMismatches.length,
   };

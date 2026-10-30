@@ -7,6 +7,7 @@
 import { FlatterUserError } from './errors.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
+import { keepsAlignment } from './settings.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
@@ -35,6 +36,18 @@ export function baseTrackingOf(para: Any): number {
 
 export const asArray = <T>(v: T | T[]): T[] => (Array.isArray(v) ? v : [v]);
 
+/** A paragraph to measure: its index, where it starts in the story, its length without the return. */
+export interface MeasureJob {
+  index: number;
+  start: number;
+  length: number;
+  para: Any;
+}
+
+/** One copy to the bench holds at most this much text (leading 2 pt: about 7,000 lines fit the frame). */
+const MEASURE_CHUNK_CHARS = 200_000;
+const MEASURE_CHUNK_PARAGRAPHS = 2_000;
+
 /** Character attributes that change glyph widths: a cached measurement is reused only when all of them match. */
 const WIDTH_ATTRIBUTES = [
   'appliedFont', 'fontStyle', 'pointSize', 'tracking', 'kerningMethod', 'horizontalScale', 'capitalization', 'position', 'ligatures',
@@ -47,7 +60,7 @@ const SHARP_S_CAPS = 'ß in All Caps or Small Caps (InDesign reserves more room 
 /**
  * ß in All Caps or Small Caps: InDesign's line breaker needs several points more room for it than the drawn
  * line takes (6.5 pt for one ß in Minion Pro 10 pt small caps, 37 pt for four), so lines with it break early
- * (2026-10-27). OpenType All Small Caps is not affected.
+ * (2026-10-27). The same for Cap To Small Cap (the menu's "OpenType All Small Caps").
  */
 function sharpSInCapitals(para: Any): boolean {
   const caps = asArray(para.textStyleRanges.everyItem().capitalization).map(String);
@@ -209,9 +222,11 @@ export class DomPort implements Port {
     const left = asArray(paras.everyItem().leftIndent).map(Number);
     const right = asArray(paras.everyItem().rightIndent).map(Number);
     const first = asArray(paras.everyItem().firstLineIndent).map(Number);
+    const alignments = asArray(paras.everyItem().justification).map(String);
     const column = this.columnWidth();
     const visibleEnd = this.visibleEnd();
     const out: ParagraphData[] = [];
+    const jobs: (MeasureJob & { key: string })[] = [];
     let start = 0;
     this.paraStarts = [];
     for (let p = 0; p < n; p++) {
@@ -220,7 +235,8 @@ export class DomPort implements Port {
       const end = start + len;
       // Leave out paragraphs that start in the overset text: none of their lines can be steered.
       // A paragraph that starts in a frame is planned whole; only its visible lines get teeth.
-      if (start <= visibleEnd && len > 1) {
+      // Centred and right-aligned paragraphs are left alone (ADR-026).
+      if (start <= visibleEnd && len > 1 && !keepsAlignment(alignments[p]!)) {
         let chars = text.slice(start, end);
         if (chars[chars.length - 1] === '\r') chars = chars.slice(0, -1);
         const para = paras.item(p);
@@ -228,13 +244,9 @@ export class DomPort implements Port {
         // the story currently breaks (a letter before a break loses its kerning, a space at a line
         // end has an unreliable width).
         const key = `${measureKey(para)}\u0000${chars.join('')}`;
-        let advances = measureCache.get(key);
-        let trackedAdvances = measureCache.get(`tracked\u0000${key}`);
-        if (!advances || !trackedAdvances) {
-          ({ advances, trackedAdvances } = this.measureParagraph(para, chars.length));
-          measureCache.set(key, advances);
-          measureCache.set(`tracked\u0000${key}`, trackedAdvances);
-        }
+        const advances = measureCache.get(key) ?? [];
+        const trackedAdvances = measureCache.get(`tracked\u0000${key}`) ?? [];
+        if (!advances.length || !trackedAdvances.length) jobs.push({ index: p, start, length: chars.length, para, key });
         const size = sizes[p]!;
         const lead = typeof leadings[p] === 'number' ? (leadings[p] as number) : (size * autoLeading[p]!) / 100;
         const hKey = `hyphen\u0000${this.probeKey(para)}`;
@@ -260,6 +272,18 @@ export class DomPort implements Port {
         });
       }
       start = end;
+    }
+    // Measure every paragraph not cached yet, in as few copies to the bench as possible.
+    if (jobs.length) {
+      const measured = this.measureParagraphs(jobs, text);
+      for (const j of jobs) {
+        const m = measured.get(j.index)!;
+        measureCache.set(j.key, m.advances);
+        measureCache.set(`tracked\u0000${j.key}`, m.trackedAdvances);
+        const data = out.find((d) => d.index === j.index)!;
+        data.advances = m.advances;
+        data.trackedAdvances = m.trackedAdvances;
+      }
     }
     this.paragraphsCache = out;
     return out;
@@ -308,7 +332,9 @@ export class DomPort implements Port {
         const lastChar = text[first + len - 1] ?? '';
         const nextChar = text[first + len] ?? '';
         const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
-        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: col.left, columnRight: col.right, gutter: col.gutter, size: sizeOf.get(p) ?? 10, limit: frame.bottom };
+        const size = sizeOf.get(p) ?? 10;
+        const [left, right] = this.wrapNarrowed(frame.page, baselines[i]!, size, col.left, col.right);
+        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: left, columnRight: right, gutter: col.gutter, size, limit: frame.bottom };
         const k = lineInPara.get(p) ?? 0;
         lineInPara.set(p, k + 1);
         out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });
@@ -316,6 +342,60 @@ export class DomPort implements Port {
       }
     });
     return out;
+  }
+
+  /**
+   * Text-wrap objects that are not Flatter's (images, other frames), per page index, as boxes [top, left, bottom,
+   * right] including their wrap offsets. Read once per session; Flatter planned full-width lines beside an image
+   * before (2026-10-30). Jump-object and next-column wraps are left out: InDesign moves those lines, it does not
+   * shorten them, and the read-back already shows where they went.
+   */
+  private obstacles: Map<number, number[][]> | undefined;
+
+  private wrapObstacles(): Map<number, number[][]> {
+    if (this.obstacles) return this.obstacles;
+    const out = new Map<number, number[][]>();
+    const own = new Set(asArray(this.story.textContainers).map((f: Any) => Number(f.id)));
+    for (const layer of asArray(this.doc.layers.everyItem().getElements()) as Any[]) {
+      const name = String(layer.name);
+      if (name === CONTROL_LAYER || name === BAND_LAYER) continue;
+      if (!layer.visible && layer.suppressTextWrapWhenHidden) continue;
+      for (const it of asArray(layer.allPageItems) as Any[]) {
+        try {
+          const wrap = it.textWrapPreferences;
+          const mode = String(wrap.textWrapMode);
+          if (mode === 'NONE' || mode === 'JUMP_OBJECT_TEXT_WRAP' || mode === 'NEXT_COLUMN_TEXT_WRAP' || wrap.inverse) continue;
+          if (own.has(Number(it.id)) || !it.parentPage) continue;
+          const b = asArray(it.geometricBounds).map(Number);
+          const off = asArray(wrap.textWrapOffset).map(Number);
+          const page = Number(it.parentPage.documentOffset);
+          const boxes = out.get(page) ?? [];
+          boxes.push([b[0]! - (off[0] ?? 0), b[1]! - (off[1] ?? 0), b[2]! + (off[2] ?? 0), b[3]! + (off[3] ?? 0)]);
+          out.set(page, boxes);
+        } catch {
+          /* an item without wrap preferences */
+        }
+      }
+    }
+    this.obstacles = out;
+    return out;
+  }
+
+  /**
+   * The part of a column a line beside a text-wrap object may use: an object at the column's left edge moves the
+   * line's start, any other one ends the line where the object begins (bounding box, both sides treated as right).
+   */
+  private wrapNarrowed(page: number, baseline: number, size: number, left: number, right: number): [number, number] {
+    const boxes = this.wrapObstacles().get(page);
+    if (!boxes) return [left, right];
+    const top = baseline - size * 0.75;
+    const bottom = baseline + size * 0.25;
+    for (const [t, l, b, r] of boxes) {
+      if (b! <= top || t! >= bottom || r! <= left || l! >= right) continue;
+      if (l! <= left + 0.5) left = Math.max(left, r!);
+      else right = Math.min(right, l!);
+    }
+    return [left, right];
   }
 
   /** Teeth of this story with the bounds last written; filled on first use (one label scan). */
@@ -462,8 +542,17 @@ export class DomPort implements Port {
   baseTracking: Record<string, number> = {};
   /** Paragraphs Flatter has tracked in this session. */
   private trackedNow = new Set<number>();
-  /** Tracking writes made (for timing reports). */
+  /** The spans last written per paragraph (see setTracking). */
+  private lastSpans = new Map<number, string>();
+
+  /** Read and write this paragraph's tracking again next time (its lines did not come back as planned). */
+  forgetTracking(paragraph: number): void {
+    this.lastSpans.delete(paragraph);
+    this.written.delete(paragraph);
+  }
+  /** Tracking writes made, and paragraphs skipped as unchanged (for timing reports). */
   trackingWrites = 0;
+  trackingSkips = 0;
   /** Where setTracking spends its time (diagnosis). */
   trackingStats = { readMs: 0, writeMs: 0, countMs: 0 };
 
@@ -475,6 +564,14 @@ export class DomPort implements Port {
    */
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void {
     if (!spans.length && !this.trackedNow.has(paragraph)) return;
+    // The same spans as last written in this session: nothing to do, not even a read (three reads per paragraph
+    // and round took 18 s of a 150-paragraph Apply, 2026-10-30). verify() forgets a paragraph whose lines came
+    // back wrong (Undo, edits), so it is read and written again.
+    const signature = spans.map((sp) => `${sp.from}:${sp.to}:${sp.units}`).join(',');
+    if (this.lastSpans.get(paragraph) === signature) {
+      this.trackingSkips++;
+      return;
+    }
     const st = this.trackingStats;
     let t0 = Date.now();
     const para = this.story.paragraphs.item(paragraph);
@@ -522,6 +619,7 @@ export class DomPort implements Port {
     }
     st.writeMs += Date.now() - t0;
     t0 = Date.now();
+    this.lastSpans.set(paragraph, signature);
     if (spans.length) {
       this.trackedNow.add(paragraph);
       this.written.set(paragraph, { want, ranges: Number(para.textStyleRanges.length) });
@@ -558,6 +656,7 @@ export class DomPort implements Port {
     }
     this.baseTracking = { ...base };
     this.written.clear();
+    this.lastSpans.clear();
   }
 
   /**
@@ -580,7 +679,10 @@ export class DomPort implements Port {
       para.texts.item(0).tracking = this.baseTracking[key];
       reset++;
     }
-    if (reset) this.written.clear();
+    if (reset) {
+      this.written.clear();
+      this.lastSpans.clear();
+    }
     return reset;
   }
 
@@ -713,39 +815,80 @@ export class DomPort implements Port {
    * width (spike S2), so it gets the paragraph's normal space width.
    */
   /**
-   * Advances of the paragraph's characters, measured twice: as set, and with ligatures off, which is
-   * how InDesign sets tracked text (it breaks ligatures up when tracking is applied, 2026-10-17).
+   * Advances of these paragraphs' characters, measured twice: as set, and with ligatures off, which is how
+   * InDesign sets tracked text (it breaks ligatures up when tracking is applied, 2026-10-17). Measured in a hidden
+   * bench document, closed in dispose(): reading the positions of thousands of characters in a frame of the user's
+   * document made every later change to that frame slow (2026-10-17). One copy per chunk of paragraphs: copying
+   * them one by one took half a second each in a long threaded story (2026-10-30).
    */
-  measureParagraph(para: Any, length: number): { advances: number[]; trackedAdvances: number[] } {
-    const space = this.spaceWidth(para);
-    // Measured in a hidden bench document, closed in dispose(): reading the positions of thousands of
-    // characters in a frame of the user's document made every later change to that frame slow (removing
-    // it took 12 s after a 12,000-character paragraph, probing 140 ms per word; 2026-10-17).
-    const frame = this.benchFrame();
-    const story = frame.parentStory;
+  measureParagraphs(jobs: readonly MeasureJob[], text: readonly string[]): Map<number, { advances: number[]; trackedAdvances: number[] }> {
+    const out = new Map<number, { advances: number[]; trackedAdvances: number[] }>();
+    let chunk: MeasureJob[] = [];
+    for (const j of jobs) {
+      const from = chunk[0]?.start ?? j.start;
+      if (chunk.length && (j.start + j.length - from > MEASURE_CHUNK_CHARS || chunk.length >= MEASURE_CHUNK_PARAGRAPHS)) {
+        this.measureChunk(chunk, text, out);
+        chunk = [];
+      }
+      chunk.push(j);
+    }
+    if (chunk.length) this.measureChunk(chunk, text, out);
+    return out;
+  }
+
+  private measureChunk(jobs: readonly MeasureJob[], text: readonly string[], out: Map<number, { advances: number[]; trackedAdvances: number[] }>): void {
+    const id = this.id;
+    const story = this.benchFrame().parentStory;
     story.texts.item(0).contents = '';
-    para.texts.item(0).duplicate(this.id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
+    const a = jobs[0]!.start;
+    const last = jobs[jobs.length - 1]!;
+    const b = last.start + last.length;
+    const chars = text.slice(a, b);
+    this.story.insertionPoints.itemByRange(a, b).texts.item(0).duplicate(id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
+    if (Number(story.characters.length) !== chars.length) throw new Error('paragraphs did not copy into the measuring frame');
+    // Column, frame and page breaks read as paragraph returns but would push the rest out of the bench frame.
+    chars.forEach((c, k) => {
+      if (c !== '\r') return;
+      const ch = story.characters.item(k);
+      if (typeof ch.contents !== 'string') ch.contents = '\r';
+    });
     const all = story.texts.item(0);
-    all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: this.id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0 };
-    if (story.overflows) throw new FlatterUserError('A paragraph is too long to measure (more than about 1,000 lines of 9,000 pt).');
-    const chars = Array.from(String(story.contents));
+    all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0, leading: 2 };
+    // Nothing that moves text to another column or frame, or indents the first letters (no effect on widths).
+    for (const [k, v] of [['startParagraph', id.StartParagraph?.ANYWHERE], ['keepWithNext', 0], ['keepLinesTogether', false], ['dropCapCharacters', 0], ['dropCapLines', 0], ['alignToBaseline', false]] as const) {
+      try {
+        if (v !== undefined) all[k] = v;
+      } catch {
+        /* not available */
+      }
+    }
+    const tooLong = () => new FlatterUserError('A paragraph is too long to measure (more than about 7,000 lines of 9,000 pt).');
+    if (story.overflows) throw tooLong();
+    const spaces = new Map<number, number>();
     const read = (): number[] => {
       const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
       const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
-      if (xs.length < length) throw new Error('paragraph did not copy into the measuring frame');
       const lineEnds = new Set<number>();
       let at = -1;
       for (const len of asArray(story.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length)) {
         at += len;
         lineEnds.add(at);
       }
-      return Array.from({ length }, (_, i) => (lineEnds.has(i) && /^\s$/.test(chars[i] ?? '') ? space : xe[i]! - xs[i]!));
+      return chars.map((c, k) => (lineEnds.has(k) && /^\s$/.test(c) ? -1 : xe[k]! - xs[k]!));
     };
-    const advances = read();
+    // A space at the end of a bench line (a paragraph longer than 9,000 pt) has an unreliable width: use the
+    // paragraph's own space width there.
+    const finish = (raw: number[], j: MeasureJob): number[] =>
+      raw.slice(j.start - a, j.start - a + j.length).map((w) => {
+        if (w >= 0) return w;
+        if (!spaces.has(j.index)) spaces.set(j.index, this.spaceWidth(j.para));
+        return spaces.get(j.index)!;
+      });
+    const plain = read();
     all.ligatures = false;
-    if (story.overflows) throw new FlatterUserError('A paragraph is too long to measure (more than about 1,000 lines of 9,000 pt).');
-    const trackedAdvances = read();
-    return { advances, trackedAdvances };
+    if (story.overflows) throw tooLong();
+    const tracked = read();
+    for (const j of jobs) out.set(j.index, { advances: finish(plain, j), trackedAdvances: finish(tracked, j) });
   }
 
   spaceWidth(para: Any): number {

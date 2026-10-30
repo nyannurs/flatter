@@ -15,7 +15,7 @@ const log = (m: string) => {
 inNewDocument((doc: Any) => {
   log('start');
   const styles = [
-    doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Minion Pro\tBold', pointSize: 16, leading: 19 }),
+    doc.paragraphStyles.add({ name: 'Head', appliedFont: 'Minion Pro\tBold', pointSize: 16, leading: 19, justification: id.Justification.CENTER_ALIGN }),
     doc.paragraphStyles.add({ name: 'Body', appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13 }),
     doc.paragraphStyles.add({ name: 'Small', appliedFont: 'Minion Pro\tItalic', pointSize: 8, leading: 10 }),
   ];
@@ -45,7 +45,9 @@ inNewDocument((doc: Any) => {
     log(`apply ${name}`);
     try {
       const r = applyFlatter(story, { zoneShare: 0.2, bandShare: 0.5, ...settings });
-      const ok = r.linesAsPlanned === r.linesPlanned && compatibilityAlarms(r).length === 0;
+      // The centred heading (ADR-026) keeps its alignment and is not planned.
+      const headKept = String(story.paragraphs.item(0).justification) === 'CENTER_ALIGN' && !r.paragraphs.some((p) => p.index === 0);
+      const ok = r.linesAsPlanned === r.linesPlanned && compatibilityAlarms(r).length === 0 && headKept;
       if (!ok) pass = false;
       out[name] = `${r.linesAsPlanned}/${r.linesPlanned}, paragraphs ${r.paragraphs.length}, rounds ${r.rounds}${ok ? '' : ' FAIL ' + JSON.stringify(r.paragraphs.find((p) => p.mismatch)?.mismatch?.planned.text ?? '')}`;
     } catch (e) {
@@ -55,6 +57,5 @@ inNewDocument((doc: Any) => {
     log(`done ${name}: ${out[name]}`);
     removeFlatter(story);
   }
-  void id;
   return { pass, out };
 });
