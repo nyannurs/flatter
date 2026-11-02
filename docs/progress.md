@@ -23,6 +23,7 @@ Next, from the editorial review: footnotes, tables and GREP/nested styles that d
 - **Variants drawn without Laufweite**: with Laufweite on, the animation drew each variant with the tracking its scoring gave it, and since random lines miss the bands most were pushed to the largest tracking and word spaces (10,861 of 13,457 lines in the German sample). That stretched lines and pushed some past the edge. Variants are still scored with Laufweite but drawn as a composer sets them; only Flatter's plan shows tracking. Artifact version 12.
 - **No one-word lines in the variants**: random walks could break after a single word when the rest of a paragraph was short ("der", "Blick", "vor" on lines of their own). Variant lines other than a paragraph's last are now at least 60 % of the measure (`MIN_LINE_SHARE`; the longest fitting line when nothing qualifies); `variants.test.ts` checks it. Artifact version 13.
 - **Before / After switch** next to the play button: Before shows the plain composer's version, After Flatter's (preview, status and report). The page opens on Before; the animation ends on After; the switch sets either at any time, e.g. back to Before after tweaking settings, then play. Artifact version 14.
+- The closing "Flatter's choice" message is gone, and the line beside the play button is one line high at most (ellipsis): the message wrapped and pushed the preview down at the end of the designer's screen recordings. The preview now stays in place from start to end. Artifact version 15.
 
 ## 2026-11-02 — Playground: colour pickers
 

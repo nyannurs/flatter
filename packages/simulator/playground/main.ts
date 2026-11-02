@@ -232,8 +232,9 @@ function watch(): void {
         const errors = current.reduce((s2, v) => s2 + (v?.errors ?? 0), 0);
         const cost = current.reduce((s2, v) => s2 + (v?.cost ?? 0), 0);
         const done = linear >= 1;
+        // No closing message: it wrapped onto more lines and pushed the preview down at the end of a screen recording.
         $('watchInfo').innerHTML = done
-          ? `<strong>Flatter's choice</strong>: the best of ${total.toLocaleString('en')} variants shown, cost ${compact.format(cost)}, ${errors} rule ${errors === 1 ? 'break' : 'breaks'}. The solver found it without trying them one by one, in ${result.solveMs.toFixed(0)} ms.`
+          ? ''
           : `Variant ${(k + 1).toLocaleString('en')} of ${total.toLocaleString('en')} · ${errors} rule ${errors === 1 ? 'break' : 'breaks'} · cost ${compact.format(cost)}`;
         $('watchBar').style.setProperty('--p', String(u));
       }
