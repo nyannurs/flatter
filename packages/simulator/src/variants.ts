@@ -42,31 +42,8 @@ export function paragraphVariants(items: readonly Item[], settings: FlatterSetti
   if (!plan.lines.length) return { variants: [], beatsFlatter: 0 };
   const P = resolveParams(settings, items);
   const M = new ParagraphMetrics(items, P);
-  const n = M.n;
-  // Score the way the solver solved: with Laufweite when it may use it from the start, or when the plan used it.
-  const precise = P.tracking.enabled && (P.tracking.mode === 'precise' || P.style === 'functional');
-  const tracking = precise || plan.lines.some((l) => l.tracking !== 0 || l.wordSpace !== 0);
+  const tracking = scoresWithTracking(P, plan);
   const rand = random(seed);
-
-  // Walk the paragraph: at each break, list the breaks whose line still fits, then let `pick` choose one.
-  const walk = (pick: (fits: number[]) => number): number[] => {
-    const breaks: number[] = [];
-    let a = -1;
-    for (;;) {
-      const avail = P.measure - (a < 0 ? P.firstLineIndent : 0);
-      const fits: number[] = [];
-      for (const c of M.candidates) {
-        if (c <= a) continue;
-        if (fits.length && M.geometry(a, c).width > avail) break;
-        fits.push(c);
-        if (c === n || M.isForced(c)) break;
-      }
-      const b = pick(fits);
-      if (b >= n) return breaks;
-      breaks.push(b);
-      a = b;
-    }
-  };
 
   const seen = new Set<string>();
   const out: Variant[] = [];
@@ -74,29 +51,76 @@ export function paragraphVariants(items: readonly Item[], settings: FlatterSetti
     const key = breaks.join(',');
     if (seen.has(key)) return;
     seen.add(key);
-    const s = source === 'flatter' ? undefined : scoreBreaks(items, settings, breaks, plan.startRole, tracking);
-    if (source !== 'flatter' && !s) return;
-    const own = source === 'flatter' ? scoreBreaks(items, settings, breaks, plan.startRole, tracking) : s;
-    const shown: Plan = source === 'flatter' ? plan : { ...plan, lines: s!.lines, violations: s!.violations, feasible: s!.feasible, cost: s!.cost, phaseFlipped: false, stats: { ...planStats(s!.lines), states: 0 } };
-    out.push({
-      plan: shown,
-      breaks,
-      cost: own?.cost ?? plan.cost,
-      errors: shown.violations.filter((v) => v.severity === 'error').length,
-      source,
-    });
+    const v = scoreVariant(items, settings, plan, breaks, source, tracking);
+    if (v) out.push(v);
   };
 
   add(plan.lines.slice(0, -1).map((l) => l.breakAt), 'flatter');
-  add(walk((fits) => fits[fits.length - 1]!), 'greedy');
+  add(walk(M, P, (fits) => fits[fits.length - 1]!), 'greedy');
   for (let k = 0; out.length < count && k < count * 4; k++) {
     // Looseness: how many of the longest fitting breaks a line may choose from.
     const loose = 1 + Math.floor(rand() * 7);
-    add(walk((fits) => fits[Math.max(0, fits.length - 1 - Math.floor(rand() * loose))]!), 'random');
+    add(walk(M, P, (fits) => fits[Math.max(0, fits.length - 1 - Math.floor(rand() * loose))]!), 'random');
   }
 
   const flatter = out[0]!;
   const others = out.slice(1).sort(compareVariants);
   const beatsFlatter = others.filter((v) => compareVariants(v, flatter) > 0).length;
   return { variants: [...others, flatter], beatsFlatter };
+}
+
+/**
+ * The paragraph as a plain composer sets it (greedy first fit), scored like the other variants: what the playground
+ * shows before Flatter has been watched once.
+ */
+export function plainVariant(items: readonly Item[], settings: FlatterSettings, plan: Plan): Variant | undefined {
+  if (!plan.lines.length) return undefined;
+  const P = resolveParams(settings, items);
+  const M = new ParagraphMetrics(items, P);
+  return scoreVariant(items, settings, plan, walk(M, P, (fits) => fits[fits.length - 1]!), 'greedy', scoresWithTracking(P, plan));
+}
+
+/** Score the way the solver solved: with Laufweite when it may use it from the start, or when the plan used it. */
+function scoresWithTracking(P: ReturnType<typeof resolveParams>, plan: Plan): boolean {
+  const precise = P.tracking.enabled && (P.tracking.mode === 'precise' || P.style === 'functional');
+  return precise || plan.lines.some((l) => l.tracking !== 0 || l.wordSpace !== 0);
+}
+
+/** Walk the paragraph: at each break, list the breaks whose line still fits, then let `pick` choose one. */
+function walk(M: ParagraphMetrics, P: ReturnType<typeof resolveParams>, pick: (fits: number[]) => number): number[] {
+  const breaks: number[] = [];
+  let a = -1;
+  for (;;) {
+    const avail = P.measure - (a < 0 ? P.firstLineIndent : 0);
+    const fits: number[] = [];
+    for (const c of M.candidates) {
+      if (c <= a) continue;
+      if (fits.length && M.geometry(a, c).width > avail) break;
+      fits.push(c);
+      if (c === M.n || M.isForced(c)) break;
+    }
+    const b = pick(fits);
+    if (b >= M.n) return breaks;
+    breaks.push(b);
+    a = b;
+  }
+}
+
+/**
+ * One break set as a variant. Other variants than Flatter's are scored with Laufweite (the cost Flatter weighs) but
+ * drawn without it, as a composer sets those breaks: their lines miss the bands, so the scoring pushes most of them to
+ * the largest tracking and word spaces, which looked like broken lines in the animation (2026-11-02).
+ */
+function scoreVariant(items: readonly Item[], settings: FlatterSettings, plan: Plan, breaks: number[], source: Variant['source'], tracking: boolean): Variant | undefined {
+  const s = scoreBreaks(items, settings, breaks, plan.startRole, tracking);
+  if (source !== 'flatter' && !s) return undefined;
+  const lines = source === 'flatter' ? plan.lines : s!.lines.map((l) => ({ ...l, tracking: 0, wordSpace: 0 }));
+  const shown: Plan = source === 'flatter' ? plan : { ...plan, lines, violations: s!.violations, feasible: s!.feasible, cost: s!.cost, phaseFlipped: false, stats: { ...planStats(lines), states: 0 } };
+  return {
+    plan: shown,
+    breaks,
+    cost: s?.cost ?? plan.cost,
+    errors: shown.violations.filter((v) => v.severity === 'error').length,
+    source,
+  };
 }

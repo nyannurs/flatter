@@ -47,8 +47,9 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
   const top = 24;
   const markerX = left + measure + 14;
   const noteSize = Math.max(6, size * 0.6);
-  // The page grows to fit the longest tracking label (estimated at 0.6 em per character of the UI font).
-  let width = left + measure + 72;
+  // Room for tracking labels of up to 14 characters ("+30 w+125.25"; 0.6 em per character of the UI font), always
+  // the same so the page keeps its size from frame to frame in the animation; a longer label widens it.
+  let width = left + measure + Math.max(72, 14 + 18 + 14 * noteSize * 0.6 + 12);
   const parts: string[] = [];
   let y = top;
 

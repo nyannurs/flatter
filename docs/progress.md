@@ -18,7 +18,9 @@ Next, from the editorial review: footnotes, tables and GREP/nested styles that d
 ## 2026-11-02 (evening) — Playground: animation duration
 
 - "Duration" slider next to "Watch Flatter choose" (2 to 60 s, default 8 s, remembered per browser). Moving it while the animation plays keeps the current position and plays the rest at the new speed. Fix: the final frame ("Flatter's choice") is always drawn, also when the last variant was reached before the end. Artifact republished (version 10).
-- The preview page grows to fit the longest tracking and word-space label (`render.ts`); with large word-space changes the labels were cut off at the right edge. Artifact version 11.
+- The preview page leaves fixed room for tracking labels of up to 14 characters (`render.ts`); they were cut off with large word-space changes. Fixed room, not a width per frame: a width that followed the labels made the page change size between animation frames.
+- **Before Flatter**: until the animation has played through once (per page load), the preview, status and report show the text as a plain composer sets it (greedy first fit, `plainVariant` in `variants.ts`), with a hint to press ▶. The animation starts from that version and ends on Flatter's; from then on the playground shows Flatter's result. Stopping the animation early returns to the plain version. For showing Flatter to others.
+- **Variants drawn without Laufweite**: with Laufweite on, the animation drew each variant with the tracking its scoring gave it, and since random lines miss the bands most were pushed to the largest tracking and word spaces (10,861 of 13,457 lines in the German sample). That stretched lines and pushed some past the edge. Variants are still scored with Laufweite but drawn as a composer sets them; only Flatter's plan shows tracking. Artifact version 12.
 
 ## 2026-11-02 — Playground: colour pickers
 

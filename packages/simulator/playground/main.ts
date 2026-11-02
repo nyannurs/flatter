@@ -2,7 +2,7 @@ import { modeLabel, senseMultiplier } from '@flatter/core';
 import fontBytes from '@fontsource/source-serif-4/files/source-serif-4-latin-400-normal.woff';
 import deText from '../../../test/fixtures/texts/de.txt';
 import enText from '../../../test/fixtures/texts/en.txt';
-import { averageCharWidth, fontFromBytes, paragraphVariants, renderSvg, type RenderColors, SIM_LANGUAGES, simulate, splitParagraphs, summarise, type SimLanguage, type SimResult, type Variant } from '../src/index.ts';
+import { averageCharWidth, fontFromBytes, paragraphVariants, plainVariant, renderSvg, type RenderColors, SIM_LANGUAGES, simulate, splitParagraphs, summarise, type SimLanguage, type SimResult, type Variant } from '../src/index.ts';
 
 const font = fontFromBytes(fontBytes);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -71,7 +71,13 @@ function colors(): Partial<RenderColors> {
 /** The last result and its view options, for the variants animation. */
 let last: { result: SimResult; view: Parameters<typeof renderSvg>[1] } | undefined;
 
-function render(): void {
+/**
+ * Until the animation has played through once, the preview shows the text as a plain composer sets it (greedy first
+ * fit), for showing Flatter to others: before, then the animation, then Flatter's result from then on.
+ */
+let playedThrough = false;
+
+function render(keepInfo = false): void {
   stopWatching();
   const lang = val('lang') as SimLanguage;
   const size = num('size');
@@ -121,8 +127,9 @@ function render(): void {
     tracking: { enabled: checked('tracking'), mode: 'precise', max: num('trackMax') },
     wordSpaceShare: num('wordMax') / 100,
   });
-  const s = summarise(result);
-  const plans = result.paragraphs.map((p) => p.plan);
+  const shownResult = playedThrough ? result : { ...result, paragraphs: result.paragraphs.map((p) => ({ ...p, plan: plainVariant(p.items, p.settings, p.plan)?.plan ?? p.plan })) };
+  const s = summarise(shownResult);
+  const plans = shownResult.paragraphs.map((p) => p.plan);
   const edge = {
     long: Math.max(0, ...plans.map((p) => p.stats.longEdgeRange)),
     short: Math.max(0, ...plans.map((p) => p.stats.shortEdgeRange)),
@@ -135,13 +142,12 @@ function render(): void {
 
   const view = { font, fontSize: size, leading: size * 1.3, measure, showBands: checked('bands'), showMarkers: checked('markers'), colors: colors() };
   last = { result, view };
-  $('preview').innerHTML = renderSvg(
-    result.paragraphs.map((p) => p.plan),
-    view,
-  );
+  $('preview').innerHTML = renderSvg(plans, view);
+  if (!playedThrough) $('watchInfo').textContent = 'Before Flatter: the text as a plain composer sets it. Press ▶ to watch Flatter choose.';
+  else if (!keepInfo) $('watchInfo').textContent = '';
 
   const items: string[] = [];
-  result.paragraphs.forEach(({ plan }, pi) => {
+  shownResult.paragraphs.forEach(({ plan }, pi) => {
     for (const v of plan.violations) {
       if (v.kind === 'tight-steering') continue;
       const where = v.line >= 0 ? `¶${pi + 1}, line ${v.line + 1}` : `¶${pi + 1}`;
@@ -192,7 +198,11 @@ function watch(): void {
   $('watchInfo').textContent = 'Preparing variants…';
   watching = { frame: 0 };
   watching.timer = setTimeout(() => {
-    const lists = result.paragraphs.map((p, i) => paragraphVariants(p.items, p.settings, p.plan, VARIANTS, i + 1).variants);
+    // Start from the plain composer's version (what the preview showed before), then worst to best.
+    const lists = result.paragraphs.map((p, i) => {
+      const all = paragraphVariants(p.items, p.settings, p.plan, VARIANTS, i + 1).variants;
+      return [...all.filter((v) => v.source === 'greedy'), ...all.filter((v) => v.source !== 'greedy')];
+    });
     const total = lists.reduce((s2, l) => s2 + l.length, 0);
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     $('watch').textContent = '■ Stop';
@@ -221,6 +231,9 @@ function watch(): void {
       if (linear >= 1) {
         watching = undefined;
         $('watch').textContent = '▶ Watch again';
+        // From now on the preview, status and report show Flatter's result.
+        playedThrough = true;
+        render(true);
         return;
       }
       watching.frame = requestAnimationFrame(step);
