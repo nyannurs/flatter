@@ -70,6 +70,11 @@
   .watch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 10px; }
   .watch button { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 500; }
   .watch button:hover { border-color: var(--text); }
+  .seg { display: inline-flex; }
+  .watch .seg button { background: var(--bg); color: var(--text); border-color: var(--line); font-weight: 400; border-radius: 0; }
+  .watch .seg button:first-child { border-radius: 6px 0 0 6px; }
+  .watch .seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+  .watch .seg button[aria-pressed="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
   .watch-speed { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .watch-speed input { width: 120px; }
   .watch-speed span:last-child { color: var(--muted); font: 12px/1.45 var(--font-data); min-width: 3.5ch; }
@@ -170,6 +175,7 @@
       <span>±n: tracking in 1/1000 em · w±n: word spaces</span>
     </div>
     <div class="watch">
+      <div class="seg" role="group" aria-label="Show the text"><button id="showBefore" type="button" aria-pressed="true">Before</button><button id="showAfter" type="button" aria-pressed="false">After</button></div>
       <button id="watch" type="button">▶ Watch Flatter choose</button>
       <label class="watch-speed" for="watchSecs"><span>Duration</span><input id="watchSecs" type="range" min="2" max="60" step="1" value="8"><span id="watchSecsOut"></span></label>
       <span class="watch-info" id="watchInfo" aria-live="polite"></span>

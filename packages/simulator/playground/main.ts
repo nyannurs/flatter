@@ -72,10 +72,17 @@ function colors(): Partial<RenderColors> {
 let last: { result: SimResult; view: Parameters<typeof renderSvg>[1] } | undefined;
 
 /**
- * Until the animation has played through once, the preview shows the text as a plain composer sets it (greedy first
- * fit), for showing Flatter to others: before, then the animation, then Flatter's result from then on.
+ * Before: the text as a plain composer sets it (greedy first fit). After: Flatter's result. For showing Flatter to
+ * others: the page opens on Before; the Before / After switch sets it (e.g. back to Before after tweaking), and the
+ * animation plays from Before and ends on After.
  */
-let playedThrough = false;
+let showAfter = false;
+
+function setView(after: boolean): void {
+  stopWatching();
+  showAfter = after;
+  render();
+}
 
 function render(keepInfo = false): void {
   stopWatching();
@@ -127,7 +134,7 @@ function render(keepInfo = false): void {
     tracking: { enabled: checked('tracking'), mode: 'precise', max: num('trackMax') },
     wordSpaceShare: num('wordMax') / 100,
   });
-  const shownResult = playedThrough ? result : { ...result, paragraphs: result.paragraphs.map((p) => ({ ...p, plan: plainVariant(p.items, p.settings, p.plan)?.plan ?? p.plan })) };
+  const shownResult = showAfter ? result : { ...result, paragraphs: result.paragraphs.map((p) => ({ ...p, plan: plainVariant(p.items, p.settings, p.plan)?.plan ?? p.plan })) };
   const s = summarise(shownResult);
   const plans = shownResult.paragraphs.map((p) => p.plan);
   const edge = {
@@ -143,7 +150,9 @@ function render(keepInfo = false): void {
   const view = { font, fontSize: size, leading: size * 1.3, measure, showBands: checked('bands'), showMarkers: checked('markers'), colors: colors() };
   last = { result, view };
   $('preview').innerHTML = renderSvg(plans, view);
-  if (!playedThrough) $('watchInfo').textContent = 'Before Flatter: the text as a plain composer sets it. Press ▶ to watch Flatter choose.';
+  $('showBefore').setAttribute('aria-pressed', String(!showAfter));
+  $('showAfter').setAttribute('aria-pressed', String(showAfter));
+  if (!showAfter) $('watchInfo').textContent = 'Before Flatter: the text as a plain composer sets it. Press ▶ to watch Flatter choose.';
   else if (!keepInfo) $('watchInfo').textContent = '';
 
   const items: string[] = [];
@@ -232,7 +241,7 @@ function watch(): void {
         watching = undefined;
         $('watch').textContent = '▶ Watch again';
         // From now on the preview, status and report show Flatter's result.
-        playedThrough = true;
+        showAfter = true;
         render(true);
         return;
       }
@@ -243,6 +252,8 @@ function watch(): void {
 }
 
 $('watch').addEventListener('click', watch);
+$('showBefore').addEventListener('click', () => setView(false));
+$('showAfter').addEventListener('click', () => setView(true));
 // Changing the duration while it plays keeps the current position and plays the rest at the new speed.
 secsInput.addEventListener('input', () => {
   showSecs();
