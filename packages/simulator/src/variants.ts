@@ -86,19 +86,31 @@ function scoresWithTracking(P: ReturnType<typeof resolveParams>, plan: Plan): bo
   return precise || plan.lines.some((l) => l.tracking !== 0 || l.wordSpace !== 0);
 }
 
-/** Walk the paragraph: at each break, list the breaks whose line still fits, then let `pick` choose one. */
+/** A line shorter than this share of the measure is no rag a composer would set (except a paragraph's last line). */
+const MIN_LINE_SHARE = 0.6;
+
+/**
+ * Walk the paragraph: at each break, list the breaks whose line still fits and is not implausibly short, then let
+ * `pick` choose one. Without the lower limit, random walks set lines of one word ("der", "Blick") when the rest of a
+ * paragraph was short, which looked broken in the animation (2026-11-02).
+ */
 function walk(M: ParagraphMetrics, P: ReturnType<typeof resolveParams>, pick: (fits: number[]) => number): number[] {
   const breaks: number[] = [];
   let a = -1;
   for (;;) {
     const avail = P.measure - (a < 0 ? P.firstLineIndent : 0);
     const fits: number[] = [];
+    let longest = -1;
     for (const c of M.candidates) {
       if (c <= a) continue;
-      if (fits.length && M.geometry(a, c).width > avail) break;
-      fits.push(c);
+      const w = M.geometry(a, c).width;
+      if (longest >= 0 && w > avail) break;
+      longest = c;
+      if (c === M.n || M.isForced(c) || w >= MIN_LINE_SHARE * avail) fits.push(c);
       if (c === M.n || M.isForced(c)) break;
     }
+    // Nothing long enough (a very long word follows): the longest line that fits.
+    if (!fits.length) fits.push(longest);
     const b = pick(fits);
     if (b >= M.n) return breaks;
     breaks.push(b);

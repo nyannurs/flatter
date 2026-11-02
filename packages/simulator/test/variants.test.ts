@@ -30,6 +30,11 @@ describe('variants for the playground animation', () => {
           expect(variants.at(-1)!.source).toBe('flatter');
           expect(variants.length).toBeGreaterThan(20);
           if (p.plan.solvedAs === 'strict') expect(beatsFlatter).toBe(0);
+          // Only lines a composer could set: none shorter than 60 % of the measure but a paragraph's last.
+          for (const v of variants) {
+            if (v.source === 'flatter') continue;
+            for (const l of v.plan.lines.slice(0, -1)) expect(l.width, `${v.source} "${l.text}"`).toBeGreaterThanOrEqual(0.6 * p.plan.params.measure - 0.01);
+          }
         }
       });
     }
