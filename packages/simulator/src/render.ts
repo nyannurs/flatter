@@ -46,7 +46,9 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
   const left = 24;
   const top = 24;
   const markerX = left + measure + 14;
-  const width = left + measure + 72;
+  const noteSize = Math.max(6, size * 0.6);
+  // The page grows to fit the longest tracking label (estimated at 0.6 em per character of the UI font).
+  let width = left + measure + 72;
   const parts: string[] = [];
   let y = top;
 
@@ -91,13 +93,14 @@ export function renderSvg(plans: readonly Plan[], opts: RenderOptions): string {
         if (line.tracking || line.wordSpace) {
           const sign = (v: number) => `${v > 0 ? '+' : '−'}${Math.abs(v)}`;
           const label = [line.tracking ? sign(line.tracking) : '', line.wordSpace ? `w${sign(line.wordSpace)}` : ''].filter(Boolean).join(' ');
+          width = Math.max(width, markerX + 18 + label.length * noteSize * 0.6 + 12);
           parts.push(
-            `<text x="${markerX + 18}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${Math.max(6, size * 0.6)}" fill="${c.note}"><title>Tracking ${line.tracking}/1000 em, word spaces ${line.wordSpace}/1000 em</title>${label}</text>`,
+            `<text x="${markerX + 18}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${noteSize}" fill="${c.note}"><title>Tracking ${line.tracking}/1000 em, word spaces ${line.wordSpace}/1000 em</title>${label}</text>`,
           );
         }
         if (line.hyphenClass) {
           parts.push(
-            `<text x="${markerX + 8}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${Math.max(6, size * 0.6)}" fill="${c.note}">${line.hyphenClass}</text>`,
+            `<text x="${markerX + 8}" y="${baseline}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="${noteSize}" fill="${c.note}">${line.hyphenClass}</text>`,
           );
         }
       }

@@ -18,6 +18,7 @@ Next, from the editorial review: footnotes, tables and GREP/nested styles that d
 ## 2026-11-02 (evening) — Playground: animation duration
 
 - "Duration" slider next to "Watch Flatter choose" (2 to 60 s, default 8 s, remembered per browser). Moving it while the animation plays keeps the current position and plays the rest at the new speed. Fix: the final frame ("Flatter's choice") is always drawn, also when the last variant was reached before the end. Artifact republished (version 10).
+- The preview page grows to fit the longest tracking and word-space label (`render.ts`); with large word-space changes the labels were cut off at the right edge. Artifact version 11.
 
 ## 2026-11-02 — Playground: colour pickers
 
