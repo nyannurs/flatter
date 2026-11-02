@@ -4,6 +4,7 @@
  * the tests implement it with a small greedy composer.
  */
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
+import type { LanguageRun } from './languages.ts';
 
 export interface ParagraphData {
   /** Index of the paragraph in the story. */
@@ -14,8 +15,10 @@ export interface ParagraphData {
   advances: number[];
   /** Advances with ligatures broken up, as InDesign sets tracked text (same length; optional). */
   trackedAdvances?: number[];
-  /** InDesign language name, e.g. "German: 2006 Reform". */
+  /** InDesign language name, e.g. "German: 2006 Reform": the one most of the paragraph's letters carry. */
   language: string;
+  /** Language runs (paragraph-relative), only when the paragraph uses more than one language. */
+  languages?: LanguageRun[];
   hyphenWidth: number;
   size: number;
   leading: number;
@@ -43,8 +46,11 @@ export interface ReadLine {
 
 export interface Port {
   paragraphs(): ParagraphData[];
-  /** InDesign's hyphenation points per word (S3 probing), or undefined when probing is unavailable. */
-  probe(words: readonly string[], paragraph: ParagraphData): Map<string, number[]> | undefined;
+  /**
+   * InDesign's hyphenation points per word (S3 probing), or undefined when probing is unavailable. The words are
+   * probed in `language` when given (words set in another language than the paragraph), else in the paragraph's.
+   */
+  probe(words: readonly string[], paragraph: ParagraphData, language?: string): Map<string, number[]> | undefined;
   /** Lines visible in the story's frames (overset lines have no position and are left out). */
   readLines(): ReadLine[];
   /** The story continues beyond its last frame. */

@@ -2,6 +2,19 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-02 (later) — Languages inside a paragraph (ADR-028); scope (ADR-029)
+
+The designer asked where Flatter could misbehave in larger editorial projects. The main risk is architectural: teeth are fixed to the page, so text or layout changed while Flatter is not watching (no Apply, a colleague without the plugin, InCopy, placed text updated) breaks the rhythm. Untested so far: footnotes, tables, text on a path, GREP and nested styles that depend on breaks, span columns, Books, IDML round trips, packaging, other languages. The designer decided Flatter stays a bespoke tool for them and a few colleagues (ADR-029) and asked to look at mixed fonts and languages inside one word first.
+
+- **Spike `i32-mixed-inline`** (now in `test:indesign`): a German paragraph in Source Serif Pro at two widths with English words, an English opening quote, English halves of compounds, [No Language] words, bold/italic/other font/bigger size inside words, and a bold run-in head.
+  - Before: fonts, styles and sizes inside words were already fine (all lines as planned, one round). Languages were not: the paragraph opening in English was planned as English (no hyphenation at all at 190 pt); English words were classified as German and probed in German ("reada-" refused); [No Language] words cost 9 to 11 rounds of refusals.
+  - After: every case sets all lines as planned, in one round (three for "Corporate-Design-", where InDesign refuses breaks after typed hyphens in a mixed compound). English words break by English rules ("readabil-ity", "commu-nication"); the paragraph opening in English hyphenates German again.
+- **Adapter**: `languages.ts` (pure): `paragraphLanguages` (runs clipped to a paragraph, language of most letters), `languageOf`. `readLanguageRuns(story)` in `dom-port.ts` reads the runs from text style ranges (6,400 ranges in a tracked 60-paragraph story: 0.3 s, after InDesign composed it). `ParagraphData.languages`, `Port.probe(words, paragraph, language?)`, `PointSource(word, at)`, `knownHyphenLanguage`. `readSettings` uses the paragraph's main language.
+- **Tests**: `languages.test.ts` (main language, runs, English word by English rules and probed in English, no points in [No Language] or mixed words, class C only for other languages). The fake InDesign takes language runs and records its probes.
+- Not in the edit signature: changing only the language of some characters (without other edits) is not noticed until Recompute; tracking writes split text style ranges, so the ranges cannot be part of the signature cheaply.
+
+Next, from the editorial review: footnotes, tables and GREP/nested styles that depend on breaks are the untested cases most likely in the designer's and colleagues' projects. Not built: a release with this change (needs `npm run package` and a version bump).
+
 ## 2026-11-02 — Playground: colour pickers
 
 - New "Colours" section in the playground sidebar: background (paper), text, long band, short band (in functional style the one zone uses the long band's colour), and one "Band strength" slider for the bands' opacity (default 12 %, as before). The page edge line and the marker labels follow the text colour. The legend swatches follow the band colours. "Reset colours" restores the defaults.

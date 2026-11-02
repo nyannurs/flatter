@@ -6,6 +6,7 @@
  */
 import { FlatterUserError } from './errors.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
+import { paragraphLanguages, type LanguageRun } from './languages.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 import { keepsAlignment } from './settings.ts';
 
@@ -225,6 +226,7 @@ export class DomPort implements Port {
     const alignments = asArray(paras.everyItem().justification).map(String);
     const column = this.columnWidth();
     const visibleEnd = this.visibleEnd();
+    const languageRuns = readLanguageRuns(story);
     const out: ParagraphData[] = [];
     const jobs: (MeasureJob & { key: string })[] = [];
     let start = 0;
@@ -255,12 +257,14 @@ export class DomPort implements Port {
           hyphenWidth = this.hyphenWidth(para);
           measureCache.set(hKey, [hyphenWidth]);
         }
+        const { language, runs } = paragraphLanguages(languageRuns, chars, start);
         out.push({
           index: p,
           chars,
           advances,
           trackedAdvances,
-          language: String(para.appliedLanguage.name),
+          language,
+          ...(runs ? { languages: runs } : {}),
           hyphenWidth,
           size,
           leading: lead,
@@ -289,13 +293,13 @@ export class DomPort implements Port {
     return out;
   }
 
-  probe(words: readonly string[], data: ParagraphData): Map<string, number[]> {
+  probe(words: readonly string[], data: ParagraphData, language = data.language): Map<string, number[]> {
     const para = this.story.paragraphs.item(data.index);
-    const key = this.probeKey(para);
+    const key = this.probeKey(para, language);
     const cache = (this.probeCache[key] ??= {});
     const missing = words.filter((w) => !(w in cache));
     if (missing.length) {
-      const frame = this.scratchFrame(para);
+      const frame = this.scratchFrame(para, language);
       for (const w of missing) cache[w] = w.includes('-') ? this.probeCompound(frame, w) : this.probeWord(frame, w);
       this.doc.insertLabel(PROBE_LABEL, JSON.stringify(this.probeCache));
     }
@@ -769,12 +773,13 @@ export class DomPort implements Port {
     return f.columns[0]!.right - f.columns[0]!.left;
   }
 
-  private probeKey(para: Any): string {
+  /** Probe results depend on these; `language` replaces the paragraph's (whose name comes from its first letter). */
+  private probeKey(para: Any, language?: string): string {
     const c = para.characters.item(0);
-    return [PROBE_VERSION, c.appliedFont?.name, c.pointSize, para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale, String(c.capitalization)].join('|');
+    return [PROBE_VERSION, c.appliedFont?.name, c.pointSize, language ?? para.appliedLanguage?.name, para.hyphenateAfterFirst, para.hyphenateBeforeLast, para.hyphenateWordsLongerThan, para.hyphenateCapitalizedWords, String(para.providerHyphenationStyle), c.tracking, c.horizontalScale, String(c.capitalization)].join('|');
   }
 
-  private scratchFrame(para: Any): Any {
+  private scratchFrame(para: Any, language?: string): Any {
     if (!this.scratch?.isValid) {
       const page = this.doc.pages.item(0);
       const [, , , right] = page.bounds.map(Number);
@@ -787,7 +792,7 @@ export class DomPort implements Port {
     const props: Record<string, unknown> = {};
     for (const a of PROBE_ATTRIBUTES) {
       try {
-        props[a] = a === 'appliedLanguage' ? String(src.appliedLanguage.name) : a === 'appliedFont' ? String(src.appliedFont.name) : src[a];
+        props[a] = a === 'appliedLanguage' ? (language ?? String(src.appliedLanguage.name)) : a === 'appliedFont' ? String(src.appliedFont.name) : src[a];
       } catch {
         /* attribute not available: keep the default */
       }
@@ -955,6 +960,33 @@ export class DomPort implements Port {
     }
     return points;
   }
+}
+
+/**
+ * The story's languages as runs of story character indices, read from its text style ranges (one call each for their
+ * starts, lengths and languages; 6,000 ranges take about 0.1 s).
+ */
+export function readLanguageRuns(story: Any): LanguageRun[] {
+  const ranges = story.textStyleRanges.everyItem();
+  const starts = asArray(ranges.index).map(Number);
+  const lengths = asArray(ranges.length).map(Number);
+  const languages = asArray(ranges.appliedLanguage);
+  // Names by object specifier: a tracked story has thousands of ranges but only a few languages.
+  const names = new Map<string, string>();
+  const nameOf = (l: Any): string => {
+    const spec = typeof l?.toSpecifier === 'function' ? String(l.toSpecifier()) : undefined;
+    if (spec === undefined) return String(l?.name ?? l);
+    if (!names.has(spec)) names.set(spec, String(l.name));
+    return names.get(spec)!;
+  };
+  const out: LanguageRun[] = [];
+  starts.forEach((from, k) => {
+    const language = nameOf(languages[k]);
+    const prev = out[out.length - 1];
+    if (prev && prev.language === language && prev.to === from) prev.to = from + lengths[k]!;
+    else out.push({ from, to: from + lengths[k]!, language });
+  });
+  return out;
 }
 
 function parseJson<T>(s: string): T | undefined {

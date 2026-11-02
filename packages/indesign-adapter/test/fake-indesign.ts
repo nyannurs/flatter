@@ -3,15 +3,17 @@
  * loop in Node: greedy line breaking, teeth limit a line's width by baseline,
  * InDesign's squeeze tolerance (spike S2), and a dictionary that may refuse points.
  */
-import type { BandSpec, LineSlot, ParagraphData, Port, ReadLine, ToothSpec, TrackingSpan } from '../src/index.ts';
+import { paragraphLanguages, type BandSpec, type LanguageRun, type LineSlot, type ParagraphData, type Port, type ReadLine, type ToothSpec, type TrackingSpan } from '../src/index.ts';
 
 export interface FakeOptions {
   measure: number;
   size?: number;
   leading?: number;
   language?: string;
-  /** Points the fake dictionary accepts in a word (break before word[index]). */
-  accepts: (word: string) => number[];
+  /** Points the fake dictionary accepts in a word (break before word[index]), probed in this language. */
+  accepts: (word: string, language: string) => number[];
+  /** Language runs per paragraph (paragraph-relative); paragraphs without runs are in `language`. */
+  runs?: (LanguageRun[] | undefined)[];
   /** Whether probing is available (spike S3). */
   probing?: boolean;
   /** Squeeze tolerance: a line may be this much wider than allowed. */
@@ -35,7 +37,9 @@ export class FakeInDesign implements Port {
   /** Tracking units per paragraph and character (1/1000 em). */
   tracking = new Map<number, number[]>();
   private readonly texts: string[];
-  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number } };
+  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom' | 'runs'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number }; runs?: (LanguageRun[] | undefined)[] };
+  /** Every probe call: the language asked for (undefined = the paragraph's) and the words. */
+  probes: { language: string | undefined; words: string[] }[] = [];
 
   constructor(texts: string[], o: FakeOptions) {
     this.texts = texts;
@@ -47,7 +51,7 @@ export class FakeInDesign implements Port {
       index,
       chars: [...t],
       advances: [...t].map(advance),
-      language: this.o.language,
+      ...(this.o.runs?.[index] ? (({ language, runs }) => ({ language, ...(runs ? { languages: runs } : {}) }))(paragraphLanguages(this.o.runs[index]!, [...t], 0)) : { language: this.o.language }),
       hyphenWidth: HYPHEN,
       size: this.o.size,
       leading: this.o.leading,
@@ -61,9 +65,10 @@ export class FakeInDesign implements Port {
     return this.o.maxLines !== undefined && this.allLines().length > this.o.maxLines;
   }
 
-  probe(words: readonly string[]): Map<string, number[]> | undefined {
+  probe(words: readonly string[], paragraph: ParagraphData, language?: string): Map<string, number[]> | undefined {
+    this.probes.push({ language, words: [...words] });
     if (!this.o.probing) return undefined;
-    return new Map(words.map((w) => [w, w.includes('-') ? this.hyphenBreaks(w) : this.o.accepts(w)]));
+    return new Map(words.map((w) => [w, w.includes('-') ? this.hyphenBreaks(w) : this.o.accepts(w, language ?? paragraph.language)]));
   }
 
   private hyphenBreaks(compound: string): number[] {
@@ -157,7 +162,7 @@ export class FakeInDesign implements Port {
         // Hyphenation point before chars[k]?
         const wordEnd = (() => { let e = k; while (e < chars.length && /\p{L}/u.test(chars[e]!)) e++; return e; })();
         const word = chars.slice(wordStart, wordEnd).join('');
-        if (/^\p{L}+$/u.test(word) && this.o.accepts(word).includes(k - wordStart) && width + HYPHEN + this.trackOf(chars, k) <= limit) best = { end: k, hyphenated: true };
+        if (/^\p{L}+$/u.test(word) && this.o.accepts(word, this.o.language).includes(k - wordStart) && width + HYPHEN + this.trackOf(chars, k) <= limit) best = { end: k, hyphenated: true };
       }
       width += adv(k);
       if (width > limit && best) return best;

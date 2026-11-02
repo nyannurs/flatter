@@ -6,8 +6,11 @@
 import type { BreakCostRule, HyphenClass, Item } from '@flatter/core';
 
 export interface PointSource {
-  /** Hyphenation points of a bare word (letters only), already merged with InDesign's (see mergePoints). */
-  (word: string): { index: number; quality: HyphenClass }[];
+  /**
+   * Hyphenation points of a bare word (letters only), already merged with InDesign's (see mergePoints). `at` is the
+   * word's first character in the paragraph, so words in another language can be told apart.
+   */
+  (word: string, at: number): { index: number; quality: HyphenClass }[];
 }
 
 export interface BuildFromMeasuredOptions {
@@ -132,7 +135,7 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
         const trail = word.match(/[^\p{L}]*$/u)![0].length;
         const core = word.slice(lead, word.length - trail);
         if (/^\p{L}+$/u.test(core)) {
-          for (const p of opts.points(core)) cuts.set(lead + p.index, { type: 'penalty', width: opts.hyphenWidth, flagged: true, quality: p.quality });
+          for (const p of opts.points(core, start + lead)) cuts.set(lead + p.index, { type: 'penalty', width: opts.hyphenWidth, flagged: true, quality: p.quality });
         }
       }
     }

@@ -4,7 +4,8 @@
  */
 import { FlatterUserError } from './errors.ts';
 import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
-import { asArray, controlLayer, DomPort, indesign, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
+import { asArray, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
+import { paragraphLanguages } from './languages.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, keepsAlignment, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
 export const STORY_LABEL = 'flatter';
@@ -105,6 +106,10 @@ function readSettings(story: Any): Check {
   const paras = story.paragraphs;
   const issues: SettingIssue[] = [];
   const alignments = asArray(paras.everyItem().justification).map(String);
+  // The language most letters carry decides the language-dependent settings, not the first letter's.
+  const runs = readLanguageRuns(story);
+  const starts = asArray(paras.everyItem().index).map(Number);
+  const text = Array.from(String(story.contents));
   for (let p = 0; p < paras.length; p++) {
     // Centred and right-aligned paragraphs are left alone (ADR-026).
     if (keepsAlignment(alignments[p]!)) continue;
@@ -117,7 +122,8 @@ function readSettings(story: Any): Check {
         /* attribute missing in this version */
       }
     }
-    issues.push(...checkParagraph(p, current, String(para.appliedLanguage.name)));
+    const { language } = paragraphLanguages(runs, text.slice(starts[p]!, starts[p + 1] ?? text.length), starts[p]!);
+    issues.push(...checkParagraph(p, current, language));
   }
   const frames = asArray(story.textContainers);
   const layer = doc.layers.itemByName('Flatter (Steuerung)');

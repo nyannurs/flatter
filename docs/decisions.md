@@ -124,7 +124,7 @@ The designer asked whether the solver uses Laufweite, then decided: add tracking
 - **Fix settings** records every original value in the story label `flatter` (per paragraph attribute, optical margin alignment, frames' ignore-wrap, base tracking) so Remove restores the original composition exactly. Auto leading is fixed to the value it currently produces.
 - **Tracking rescue**: planned tracking is applied to the tracked lines' characters relative to the paragraph's base tracking, reset before measuring on re-apply, and restored on Remove.
 - **Undo**: Apply and Remove each run inside `app.doScript(…, UndoModes.ENTIRE_SCRIPT)`: one undo step.
-- **Not yet handled**: paragraphs with mixed fonts or languages inside a word (the probe uses the paragraph's first character), tabs and anchored objects (reported as unsupported), threaded frames of different widths, live updates on edit (needs the panel).
+- **Not yet handled**: paragraphs with mixed fonts or languages inside a word (the probe uses the paragraph's first character; languages handled since ADR-028, fonts measure correctly as they are), tabs and anchored objects (reported as unsupported), threaded frames of different widths, live updates on edit (needs the panel).
 
 ## ADR-012: Panel and live loop (2026-10-16)
 
@@ -236,3 +236,15 @@ A story often mixes ragged body text with centred headings or right-aligned capt
 - Read-back runs up to 12 rounds and stops after three rounds without progress, because multi-column stories settle one column boundary at a time.
 - Tracking that is unchanged since the last write is not read or written again; a paragraph whose lines come back wrong is read again.
 
+## ADR-028: Every word is hyphenated in its own language (2026-11-02)
+
+InDesign reports a paragraph's language from its first character, and Flatter used it for the whole paragraph. A German paragraph that opened with an English quote was planned as English: no German points, no Sinneinheiten, capitalised words not hyphenated. Words set in another language were classified by the paragraph's rules and probed with the wrong dictionary, so InDesign refused points one round at a time (words in [No Language]: up to 11 rounds).
+
+- A paragraph's language is the one most of its letters carry (language runs from the story's text style ranges). It decides the solver's language, Sinneinheiten and the language-dependent required settings.
+- Each word is classified by its own language's rules and probed with InDesign in that language. Words in [No Language] and words whose letters carry two languages ("[Layout]entscheidungen") get no hyphenation points: InDesign never hyphenates the former and hyphenates the latter unpredictably.
+- Words in a language our rules do not cover (anything but German and English) keep only InDesign's points, as class C, so Safe mode does not hyphenate them. Before, they were rated with the US English rules. This also applies to whole paragraphs in such languages.
+- Mixed fonts, styles and sizes inside a word need nothing: widths are measured from a copy of the real text (spike i32: all lines as planned in one round).
+
+## ADR-029: Flatter stays a bespoke tool, set when the text is final (2026-11-02)
+
+The designer's assessment after reviewing where Flatter can break in large editorial projects: an InDesign plugin cannot follow every edit in real time, so Flatter is not meant to keep a rag live while editors change the text. It stays a tool for the designer and a few colleagues, used when the text is final, with Apply after edits and Freeze before handing a file on. Work goes into making that use reliable (correct results on the content such projects contain), not into real-time tracking of edits, InCopy workflows or hands-off operation.

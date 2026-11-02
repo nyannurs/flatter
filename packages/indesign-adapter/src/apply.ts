@@ -7,6 +7,7 @@ import { opposite, solveParagraph, type FlatterSettings, type HyphenClass, type 
 import { createHyphenator, createSenseRule, type Hyphenator, type HyphenLanguage } from '@flatter/hyphenation';
 import { bandsFor, slotsForPlan, toothFor, sameSlot, type BandSpec, type LineSlot, type ToothSpec } from './geometry.ts';
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
+import { languageOf, MIXED_LANGUAGES, NO_LANGUAGE } from './languages.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
 /** Read-back rounds after steering (see FlatterSession.verify). */
@@ -112,11 +113,19 @@ export function steeringFailed(r: ApplyResult): boolean {
   return planned >= 10 && asPlanned / planned < 0.7;
 }
 
-/** Map an InDesign language name to the hyphenation module's language. */
+const LETTER = /\p{L}/u;
+
+/** Map an InDesign language name to the hyphenation module's language (English: USA for any other). */
 export function hyphenLanguage(name: string): HyphenLanguage {
+  return knownHyphenLanguage(name) ?? 'en-US';
+}
+
+/** The hyphenation module's language for an InDesign language name, or undefined when our rules do not cover it. */
+export function knownHyphenLanguage(name: string): HyphenLanguage | undefined {
   if (/German|Deutsch/i.test(name)) return /Swiss|Schweiz/i.test(name) ? 'de-CH' : 'de';
   if (/UK|British/i.test(name)) return 'en-GB';
-  return 'en-US';
+  if (/English|Englisch/i.test(name)) return 'en-US';
+  return undefined;
 }
 
 interface Working {
@@ -163,20 +172,52 @@ export class FlatterSession {
       const lang = hyphenLanguage(data.language);
       const h = this.hyphenator(lang);
       const text = data.chars.join('');
-      const words = [...new Set(text.match(/\p{L}+/gu) ?? [])].filter((w) => w.length >= 5);
+      // Words by their own language (2026-11-02): a word set in English inside a German paragraph is hyphenated by
+      // the English rules and probed with InDesign's English dictionary; a word in [No Language] or in more than one
+      // language is not hyphenated (InDesign does not hyphenate the former; the latter it hyphenates unpredictably).
+      const wordsByLanguage = new Map<string, Set<string>>();
+      const wordLanguage = (at: number, length: number) => languageOf(data.languages, data.language, at, at + length);
+      for (let k = 0; k < data.chars.length; ) {
+        if (!LETTER.test(data.chars[k]!)) {
+          k++;
+          continue;
+        }
+        let e = k;
+        while (e < data.chars.length && LETTER.test(data.chars[e]!)) e++;
+        if (e - k >= 5) {
+          const language = wordLanguage(k, e - k);
+          if (language !== MIXED_LANGUAGES && language !== NO_LANGUAGE) {
+            if (!wordsByLanguage.has(language)) wordsByLanguage.set(language, new Set());
+            wordsByLanguage.get(language)!.add(data.chars.slice(k, e).join(''));
+          }
+        }
+        k = e;
+      }
+      const words = [...(wordsByLanguage.get(data.language) ?? [])];
       // Compounds with typed hyphens: InDesign decides per word whether it breaks after the hyphen.
       const compounds = [...new Set(text.match(/\p{L}+(?:-\p{L}+)+/gu) ?? [])];
       const probed = this.port.probe([...words, ...compounds], data);
+      const probedIn = new Map<string, Map<string, number[]> | undefined>([[data.language, probed]]);
+      for (const [language, set] of wordsByLanguage) if (language !== data.language) probedIn.set(language, this.port.probe([...set], data, language));
       if (probed && data.hyphenation !== false) {
         const sure = words.filter((w) => w.length >= 8 && w === w.toLowerCase() && h.points(w).some((p) => p.quality === 'A' || p.quality === 'B'));
         this.probeCheck.checked += sure.length;
         this.probeCheck.empty += sure.filter((w) => !(probed.get(w)?.length)).length;
       }
+      const points = (w: string, at: number) => {
+        const language = wordLanguage(at, Array.from(w).length);
+        if (language === MIXED_LANGUAGES || language === NO_LANGUAGE) return [];
+        // Languages our rules do not cover: InDesign's points only, as class C (Normal mode).
+        const known = knownHyphenLanguage(language);
+        const ours = known ? this.hyphenator(known).points(w) : [];
+        const theirs = probedIn.get(language);
+        return mergePoints(ours, theirs ? (theirs.get(w) ?? []) : undefined);
+      };
       const sense = settings.sense ?? lang.startsWith('de');
       const measured = itemsFromMeasured(data.chars, data.advances, {
         hyphenWidth: data.hyphenWidth,
         ...(data.trackedAdvances?.length === data.advances.length ? { trackedAdvances: data.trackedAdvances } : {}),
-        points: (w) => mergePoints(h.points(w), probed ? (probed.get(w) ?? []) : undefined),
+        points,
         hardBreaks: (c) => probed?.get(c),
         ...(sense ? { breakCost: createSenseRule(lang) } : {}),
       });
