@@ -13,7 +13,7 @@ The designer asked where Flatter could misbehave in larger editorial projects. T
 - **Tests**: `languages.test.ts` (main language, runs, English word by English rules and probed in English, no points in [No Language] or mixed words, class C only for other languages). The fake InDesign takes language runs and records its probes.
 - Not in the edit signature: changing only the language of some characters (without other edits) is not noticed until Recompute; tracking writes split text style ranges, so the ranges cannot be part of the signature cheaply.
 
-Next, from the editorial review: footnotes, tables and GREP/nested styles that depend on breaks are the untested cases most likely in the designer's and colleagues' projects. Not built: a release with this change (needs `npm run package` and a version bump).
+Next, from the editorial review: footnotes, tables and GREP/nested styles that depend on breaks are the untested cases most likely in the designer's and colleagues' projects. Release 0.6.2 with this change packaged, installed and published (2026-11-02).
 
 ## 2026-11-02 (evening) — Playground: animation duration
 
