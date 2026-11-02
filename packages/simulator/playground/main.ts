@@ -2,7 +2,7 @@ import { modeLabel, senseMultiplier } from '@flatter/core';
 import fontBytes from '@fontsource/source-serif-4/files/source-serif-4-latin-400-normal.woff';
 import deText from '../../../test/fixtures/texts/de.txt';
 import enText from '../../../test/fixtures/texts/en.txt';
-import { averageCharWidth, fontFromBytes, paragraphVariants, renderSvg, SIM_LANGUAGES, simulate, splitParagraphs, summarise, type SimLanguage, type SimResult, type Variant } from '../src/index.ts';
+import { averageCharWidth, fontFromBytes, paragraphVariants, renderSvg, type RenderColors, SIM_LANGUAGES, simulate, splitParagraphs, summarise, type SimLanguage, type SimResult, type Variant } from '../src/index.ts';
 
 const font = fontFromBytes(fontBytes);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -36,6 +36,38 @@ function senseLabel(v: number): string {
   return v === 50 ? 'Balanced' : `weight ×${m < 1 ? m.toFixed(2) : m.toFixed(1)}`;
 }
 
+// Colours of the preview: background, text and the two bands (one alpha for both). Remembered per browser.
+const COLOR_INPUTS = { cPaper: '#ffffff', cInk: '#1b1b1b', cLong: '#2563eb', cShort: '#ea580c', cAlpha: '12' } as const;
+const COLOR_KEY = 'flatter-playground-colours';
+try {
+  const saved = JSON.parse(localStorage.getItem(COLOR_KEY) ?? '{}') as Record<string, string>;
+  for (const id of Object.keys(COLOR_INPUTS)) if (typeof saved[id] === 'string') $<HTMLInputElement>(id).value = saved[id];
+} catch {
+  // No storage: start with the defaults.
+}
+
+const rgba = (hex: string, alpha: number) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+};
+
+function colors(): Partial<RenderColors> {
+  const ink = val('cInk');
+  const alpha = num('cAlpha') / 100;
+  const long = rgba(val('cLong'), alpha);
+  const short = rgba(val('cShort'), alpha);
+  $('cAlphaOut').textContent = `${num('cAlpha')} %`;
+  // The legend's swatches follow the bands.
+  $('legend').style.setProperty('--long-band', long);
+  $('legend').style.setProperty('--short-band', short);
+  try {
+    localStorage.setItem(COLOR_KEY, JSON.stringify(Object.fromEntries(Object.keys(COLOR_INPUTS).map((id) => [id, val(id)]))));
+  } catch {
+    // Not remembered; fine.
+  }
+  return { paper: val('cPaper'), ink, longBand: long, shortBand: short, edge: rgba(ink, 0.25), note: rgba(ink, 0.55) };
+}
+
 /** The last result and its view options, for the variants animation. */
 let last: { result: SimResult; view: Parameters<typeof renderSvg>[1] } | undefined;
 
@@ -66,6 +98,9 @@ function render(): void {
   $<HTMLInputElement>('trackMax').disabled = !checked('tracking');
   $('wordMaxOut').textContent = `±${num('wordMax')} %`;
   $<HTMLInputElement>('wordMax').disabled = !checked('tracking');
+  // Functional style draws one zone in the long band's colour.
+  $('cLongName').textContent = functionalStyle ? 'Zone' : 'Long band';
+  $<HTMLInputElement>('cShort').disabled = functionalStyle;
 
   const result = simulate(text, {
     font,
@@ -98,7 +133,7 @@ function render(): void {
     `<span class="big ${allGood ? 'ok' : 'bad'}">${allGood ? '✓' : '⚠'} ${s.inRhythm}/${s.bandLines} lines in rhythm</span>` +
     `<span class="meta">edges: long ±${edge.long.toFixed(1)} pt, short ±${edge.short.toFixed(1)} pt, worst ${edge.worst.toFixed(1)} pt off · ${s.perfect}/${s.paragraphs} paragraphs strict · ${s.hyphens} hyphens · ${s.tracked} tracked lines, ${s.spaced} with adjusted word spaces · ${s.errors} errors · ${s.warnings} warnings · solved in ${result.solveMs.toFixed(1)} ms</span>`;
 
-  const view = { font, fontSize: size, leading: size * 1.3, measure, showBands: checked('bands'), showMarkers: checked('markers') };
+  const view = { font, fontSize: size, leading: size * 1.3, measure, showBands: checked('bands'), showMarkers: checked('markers'), colors: colors() };
   last = { result, view };
   $('preview').innerHTML = renderSvg(
     result.paragraphs.map((p) => p.plan),
@@ -182,7 +217,7 @@ function watch(): void {
 
 $('watch').addEventListener('click', watch);
 
-for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'senseBal', 'trackMax', 'wordMax']) $(id).addEventListener('input', schedule);
+for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'senseBal', 'trackMax', 'wordMax', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('input', schedule);
 for (const id of ['style', 'phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);
 textArea.addEventListener('input', () => {
   textEdited = true;
@@ -192,6 +227,10 @@ langSel.addEventListener('change', () => {
   if (!textEdited) textArea.value = sample(langSel.value as SimLanguage);
   // Sinneinheiten default: on for German, off for English (plan §2A.6).
   $<HTMLInputElement>('sense').checked = langSel.value.startsWith('de');
+  schedule();
+});
+$('cReset').addEventListener('click', () => {
+  for (const [id, v] of Object.entries(COLOR_INPUTS)) $<HTMLInputElement>(id).value = v;
   schedule();
 });
 $('reset').addEventListener('click', () => {

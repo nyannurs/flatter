@@ -2,6 +2,13 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-02 — Playground: colour pickers
+
+- New "Colours" section in the playground sidebar: background (paper), text, long band, short band (in functional style the one zone uses the long band's colour), and one "Band strength" slider for the bands' opacity (default 12 %, as before). The page edge line and the marker labels follow the text colour. The legend swatches follow the band colours. "Reset colours" restores the defaults.
+- The choice is remembered per browser (localStorage, wrapped in try/catch). The "Watch Flatter choose" animation uses the same colours.
+- Only the preview page changes colour; the sidebar keeps the light/dark theme.
+- Published to the same artifact link (version 9).
+
 ## 2026-10-30 (night) — Long stories: faster, exact beside images, headings left alone; stress-test file; release 0.6.1
 
 Fixes for what the stress test (`i31-stress.ts`) found, plus a stress-test document for the designer.

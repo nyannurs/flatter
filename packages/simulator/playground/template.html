@@ -51,6 +51,9 @@
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; min-width: 0; }
   .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 0 0 8px; }
+  .swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+  .swatches label { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; cursor: pointer; }
+  .swatches input[type=color] { flex: none; width: 34px; height: 26px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); cursor: pointer; }
   textarea { width: 100%; min-height: 160px; padding: 8px; font-size: 12.5px; line-height: 1.4; resize: vertical; }
   button { padding: 5px 10px; cursor: pointer; }
   button:hover { border-color: var(--muted); }
@@ -139,11 +142,23 @@
       <label class="check"><input id="bands" type="checkbox" checked> Show bands</label>
       <label class="check"><input id="markers" type="checkbox" checked> Show markers</label>
     </fieldset>
+
+    <fieldset>
+      <legend>Colours</legend>
+      <div class="swatches">
+        <label for="cPaper"><input id="cPaper" type="color" value="#ffffff"><span>Background</span></label>
+        <label for="cInk"><input id="cInk" type="color" value="#1b1b1b"><span>Text</span></label>
+        <label for="cLong"><input id="cLong" type="color" value="#2563eb"><span id="cLongName">Long band</span></label>
+        <label for="cShort"><input id="cShort" type="color" value="#ea580c"><span>Short band</span></label>
+      </div>
+      <div class="ctl"><label for="cAlpha"><span>Band strength</span><span id="cAlphaOut"></span></label><input id="cAlpha" type="range" min="4" max="60" step="1" value="12"></div>
+      <div class="row"><button id="cReset" type="button">Reset colours</button></div>
+    </fieldset>
   </aside>
 
   <main>
     <div class="status" id="status"></div>
-    <div class="legend">
+    <div class="legend" id="legend">
       <span><span class="sw long"></span>Long band</span>
       <span><span class="sw short"></span>Short band</span>
       <span><span class="sw err"></span>Breaks a strict rule</span>
