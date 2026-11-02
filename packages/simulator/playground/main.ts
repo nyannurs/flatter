@@ -155,8 +155,21 @@ function render(): void {
 // never lists variants (its dynamic program finds the cheapest at once); this shows what it weighed.
 const VARIANTS = 300;
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-const DURATION_MS = 8000;
-let watching: { frame: number; timer?: ReturnType<typeof setTimeout> } | undefined;
+// How long the animation plays, set by the Duration slider (seconds); remembered per browser.
+const SECS_KEY = 'flatter-playground-watch-seconds';
+const secsInput = $<HTMLInputElement>('watchSecs');
+try {
+  const saved = localStorage.getItem(SECS_KEY);
+  if (saved) secsInput.value = saved;
+} catch {
+  // No storage: start with the default.
+}
+const durationMs = () => num('watchSecs') * 1000;
+const showSecs = () => {
+  $('watchSecsOut').textContent = `${num('watchSecs')} s`;
+};
+showSecs();
+let watching: { frame: number; timer?: ReturnType<typeof setTimeout>; start?: number; duration?: number } | undefined;
 
 function stopWatching(): void {
   if (!watching) return;
@@ -183,16 +196,17 @@ function watch(): void {
     const total = lists.reduce((s2, l) => s2 + l.length, 0);
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     $('watch').textContent = '■ Stop';
-    const start = performance.now();
+    watching!.start = performance.now();
+    watching!.duration = durationMs();
     let shown = -1;
     const at = (list: Variant[], u: number) => list[Math.min(list.length - 1, Math.floor(u * list.length))] ?? list[list.length - 1]!;
     const step = (): void => {
       if (!watching) return;
-      const linear = Math.min(1, (performance.now() - start) / DURATION_MS);
+      const linear = Math.min(1, (performance.now() - watching.start!) / watching.duration!);
       // Slow down towards the end, where the variants get close to Flatter's; reduced motion: ten still steps.
       const u = reduced ? Math.floor(linear * 10) / 10 : 1 - (1 - linear) ** 2.2;
       const k = Math.min(total - 1, Math.floor(u * total));
-      if (k !== shown) {
+      if (k !== shown || linear >= 1) {
         shown = k;
         const current = lists.map((l) => at(l, u));
         $('preview').innerHTML = renderSvg(current.filter(Boolean).map((v) => v.plan), view);
@@ -216,6 +230,20 @@ function watch(): void {
 }
 
 $('watch').addEventListener('click', watch);
+// Changing the duration while it plays keeps the current position and plays the rest at the new speed.
+secsInput.addEventListener('input', () => {
+  showSecs();
+  try {
+    localStorage.setItem(SECS_KEY, secsInput.value);
+  } catch {
+    // Not remembered; fine.
+  }
+  if (watching?.start === undefined) return;
+  const now = performance.now();
+  const done = Math.min(1, (now - watching.start) / watching.duration!);
+  watching.duration = durationMs();
+  watching.start = now - done * watching.duration;
+});
 
 for (const id of ['chars', 'size', 'z', 'band', 'maxHyph', 'senseBal', 'trackMax', 'wordMax', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('input', schedule);
 for (const id of ['style', 'phase', 'mode', 'continuous', 'noHyph', 'hyphMode', 'sense', 'tracking', 'bands', 'markers']) $(id).addEventListener('change', schedule);

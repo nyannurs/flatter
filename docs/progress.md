@@ -15,6 +15,10 @@ The designer asked where Flatter could misbehave in larger editorial projects. T
 
 Next, from the editorial review: footnotes, tables and GREP/nested styles that depend on breaks are the untested cases most likely in the designer's and colleagues' projects. Not built: a release with this change (needs `npm run package` and a version bump).
 
+## 2026-11-02 (evening) — Playground: animation duration
+
+- "Duration" slider next to "Watch Flatter choose" (2 to 60 s, default 8 s, remembered per browser). Moving it while the animation plays keeps the current position and plays the rest at the new speed. Fix: the final frame ("Flatter's choice") is always drawn, also when the last variant was reached before the end. Artifact republished (version 10).
+
 ## 2026-11-02 — Playground: colour pickers
 
 - New "Colours" section in the playground sidebar: background (paper), text, long band, short band (in functional style the one zone uses the long band's colour), and one "Band strength" slider for the bands' opacity (default 12 %, as before). The page edge line and the marker labels follow the text colour. The legend swatches follow the band colours. "Reset colours" restores the defaults.
