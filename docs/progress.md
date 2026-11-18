@@ -2,6 +2,10 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-18 (night) — 0.6.3 and 0.6.4 did not start; release 0.6.5
+
+The designer: "I click on a story, hit apply, and literally nothing happens." InDesign had no Flatter selection listener: the panel's `init()` never ran. The only change to the panel's start-up since 0.6.2 was a `plugin: { destroy }` hook in `entrypoints.setup` (added to remove the selection listener on unload, after the UDT reload dialogs); with it, setup apparently threw before `init()`, and nothing showed in the UXP log. The dev panel had shown the same symptom (loaded, never answered), wrongly put down to the panel not being shown. 0.6.5 removes the hook and calls `init()` whatever `entrypoints.setup` does. Released and installed in place of 0.6.4.
+
 ## 2026-11-18 (evening) — Steering writes at full priority (ADR-031); release 0.6.4
 
 The designer asked for the next speed fixes without waiting for them to test.

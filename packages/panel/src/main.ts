@@ -792,25 +792,21 @@ function init(): void {
     });
 }
 
-const { entrypoints } = require('uxp');
-entrypoints.setup({
-  plugin: {
-    // Unloading or reloading the plugin (UXP Developer Tool, plugin updates) must take the selection listener with it:
-    // a leftover one makes InDesign ask "Script context is not available anymore" on every selection (2026-11-18).
-    destroy() {
-      try {
-        require('indesign').app.removeEventListener('afterSelectionChanged', onSelectionChanged);
-      } catch {
-        /* InDesign is closing */
-      }
-    },
-  },
-  panels: {
-    flatterPanel: {
-      show() {
-        /* the panel's DOM is the page itself */
+// The panel starts whatever entrypoints.setup does. 0.6.3 and 0.6.4 gave setup a plugin lifecycle hook (destroy, to
+// remove the selection listener on unload) and the panel never started in InDesign 2027: no listener, Apply did
+// nothing (2026-11-18). Listeners left behind by reloads only happen with the UXP Developer Tool.
+try {
+  const { entrypoints } = require('uxp');
+  entrypoints.setup({
+    panels: {
+      flatterPanel: {
+        show() {
+          /* the panel's DOM is the page itself */
+        },
       },
     },
-  },
-});
+  });
+} catch {
+  /* the panel works without the entry point setup */
+}
 init();

@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.flatter.panel",
   "name": "Flatter",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "main": "index.html",
   "host": {
     "app": "ID",
