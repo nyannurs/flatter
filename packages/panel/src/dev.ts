@@ -4,15 +4,20 @@
  * "flatter-dev-command"; the panel answers in "flatter-dev-result".
  * Commands: { "cmd": "ping" }, { "cmd": "s4", "ticks": 20 } (spike S4: live latency), { "cmd": "selfcheck" },
  * { "cmd": "alarm-demo" } and { "cmd": "panel-state" } (the compatibility alarm), { "cmd": "recovery" } (automatic
- * re-measure when the lines no longer match the measurements).
+ * re-measure when the lines no longer match the measurements), { "cmd": "bench", "kind": "micro" | "apply", "n": 200,
+ * "mode": "inline" | "fn" | "string" | "file", "file": "/path/i41-speed.idjs" } (speed: the same work run in the panel, through
+ * doScript with a function, or as a separate script).
  */
 import { liveUpdate, liveVerify, openSession, removeFlatter } from '@flatter/indesign-adapter';
+import { runBench, type BenchConfig } from './bench.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 declare const require: (m: string) => Any;
 
 const POLL_MS = 300;
+/** UXP's own fs, not bundled. */
+const FS_MODULE = 'fs';
 
 const TEXT = [
   'Ein guter Flattersatz entsteht nicht von selbst. Wer Texte linksbündig setzt, überlässt den rechten Rand scheinbar dem Zufall, doch gerade dieser Rand bestimmt, ob eine Seite ruhig oder unruhig wirkt. Die Zeilen sollen sich in einem erkennbaren Rhythmus abwechseln, ohne dass Treppen, Löcher oder Bäuche entstehen, und die Trennungen müssen stimmen, sonst stolpert der Blick über jede Zeile.',
@@ -53,6 +58,7 @@ export function startDevChannel(hooks?: DevHooks): void {
         result = hooks.alarmState();
       } else if (cmd.cmd === 'panel-state' && hooks) result = hooks.alarmState();
       else if (cmd.cmd === 'recovery' && hooks) result = await recovery(hooks);
+      else if (cmd.cmd === 'bench') result = bench(cmd);
       else result = { error: `unknown command ${cmd.cmd}` };
     } catch (e) {
       result = { error: String(e), stack: String((e as Error)?.stack ?? '') };
@@ -170,4 +176,35 @@ async function recovery(hooks: DevHooks): Promise<unknown> {
     hooks.setTarget(undefined);
     doc.close(id.SaveOptions.NO);
   }
+}
+
+/**
+ * The same benchmark run four ways (2026-11-18): inline in the panel; through app.doScript with a function (how Flatter
+ * runs today); and as a separate script through app.doScript, either its file or its text, which Adobe staff say runs
+ * to completion with priority instead of time-shared.
+ */
+function bench(cmd: { kind?: BenchConfig['kind']; n?: number; mode?: string; file?: string; visible?: boolean }): unknown {
+  const id = require('indesign');
+  const config: BenchConfig = { kind: cmd.kind ?? 'micro', n: Number(cmd.n ?? 200), visible: !!cmd.visible };
+  const mode = cmd.mode ?? 'inline';
+  const t0 = Date.now();
+  let result: unknown;
+  if (mode === 'inline') result = runBench(config);
+  else if (mode === 'fn') {
+    id.app.doScript(() => {
+      result = runBench(config);
+    }, id.ScriptLanguage.UXPSCRIPT, [], id.UndoModes.ENTIRE_SCRIPT, 'Flatter bench');
+  } else if (mode === 'file' || mode === 'string') {
+    if (!cmd.file) return { error: 'file: path of tools/indesign/spikes/dist/i41-speed.idjs' };
+    id.app.insertLabel('flatter-result', '');
+    const source = mode === 'file' ? cmd.file : String(require(FS_MODULE).readFileSync(`file:${cmd.file}`, { encoding: 'utf-8' }));
+    const returned = id.app.doScript(source, id.ScriptLanguage.UXPSCRIPT, [config.kind, String(config.n), String(config.visible)], id.UndoModes.ENTIRE_SCRIPT, 'Flatter bench');
+    const raw = String(id.app.extractLabel('flatter-result') || returned || '');
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      result = { raw: raw.slice(0, 500) };
+    }
+  } else return { error: `unknown mode ${mode}` };
+  return { mode, wallMs: Date.now() - t0, result };
 }

@@ -88,7 +88,7 @@ Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths a
 
 ## Running code in InDesign
 
-InDesign 2026 (21.6) is installed on the user's Mac and Claude may drive it (user, 2026-10-16). Use scripting, not screen clicks:
+InDesign 2027 (22.0) is installed on the user's Mac (since November 2026; 2026 was removed) and Claude may drive it (user, 2026-10-16). Use scripting, not screen clicks:
 
 ```bash
 tools/indesign/run.sh tools/indesign/environment.idjs   # UXP script; result via the "flatter-result" app label
@@ -107,8 +107,10 @@ tools/indesign/run.sh some-script.jsx                    # ExtendScript; result 
 - Performance: never read thousands of character positions in a frame of the user's document (it slows every later change to that frame); measure in the hidden bench document (ADR-016). `i3-user-copy.ts` prints a per-method profile.
 - `tools/indesign/spikes/src/i3-user-copy.ts` reproduces a problem on a copy of the user's text: it reads the open TestFile (read-only), copies the story into threaded frames of the same size in a throwaway document and runs Apply plus slider ticks. Default source: the untouched one-paragraph story; set the app label `flatter-i3-source` to `flatter` to copy the story Flatter worked on. App label `flatter-i3-settings` (JSON) overrides the settings, `flatter-i3-diag` = `off` skips the read-heavy diagnostics (they slow later writes, so use it for timing). Clear the labels afterwards. Not part of `test:indesign` (it needs the user's file).
 - Never register event listeners from a one-off script: when the script ends InDesign shows the user an error dialog for every event ("Script context is not available anymore"). Listeners belong in the loaded panel. If one slips through, find it in `app.eventListeners` (by id) and remove only that one.
-- To see whether InDesign is running use `pgrep -x "Adobe InDesign 2026"`; a pattern on its path also matches AdobeIPCBroker. Do not relaunch InDesign when the user has closed it (`run.sh` launches it).
-- A UXP script whose text contains "async" followed by a word runs asynchronously; `run.sh` polls for the result, so a script must always write its result label, even on error.
+- To see whether InDesign is running use `pgrep -x "Adobe InDesign 2027"`; a pattern on its path also matches AdobeIPCBroker. Do not relaunch InDesign when the user has closed it (`run.sh` launches it).
+- A UXP script whose text contains "async" followed by a word runs asynchronously (time-shared, several times slower); `run.sh` polls for the result, so a script must always write its result label, even on error. `build-spikes.mjs` rewrites the only such phrase (an error message in the `hyphen` package), so spikes now run synchronously; `run.sh` allows them an hour.
+- Speed (2026-11-18, `docs/spike-results.md` "Speed"): DOM calls made inline in the panel are 6–10 times slower than in a script InDesign runs to completion; `i41-speed` (with `packages/panel/src/bench.ts` and the dev command `bench`) and `i42-comb` measure it.
+- Do not reload the dev panel repeatedly while testing: each load registers a selection listener, and a reloaded panel's old listener makes InDesign show "Script context is not available anymore" on every selection (the user then has to click Yes or restart InDesign). The panel now removes its listener in `plugin.destroy`, not yet verified. A reloaded panel only runs once it is shown.
 
 ## Environment gotchas
 

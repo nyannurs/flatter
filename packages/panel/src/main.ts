@@ -794,6 +794,17 @@ function init(): void {
 
 const { entrypoints } = require('uxp');
 entrypoints.setup({
+  plugin: {
+    // Unloading or reloading the plugin (UXP Developer Tool, plugin updates) must take the selection listener with it:
+    // a leftover one makes InDesign ask "Script context is not available anymore" on every selection (2026-11-18).
+    destroy() {
+      try {
+        require('indesign').app.removeEventListener('afterSelectionChanged', onSelectionChanged);
+      } catch {
+        /* InDesign is closing */
+      }
+    },
+  },
   panels: {
     flatterPanel: {
       show() {

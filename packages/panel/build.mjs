@@ -22,6 +22,8 @@ if (dev && outArg < 0) {
   cpSync(resolve(here, 'plugin/icons'), resolve(stage, 'icons'), { recursive: true });
   const devManifest = { ...manifest, id: `${manifest.id}.dev`, name: `${manifest.name} (dev)` };
   devManifest.entrypoints = manifest.entrypoints.map((e) => ({ ...e, label: { default: `${e.label.default} (dev)` } }));
+  // The dev build may read local files (the speed benchmark hands a script file to InDesign).
+  devManifest.requiredPermissions = { ...manifest.requiredPermissions, localFileSystem: 'fullAccess' };
   writeFileSync(resolve(stage, 'manifest.json'), JSON.stringify(devManifest, null, 2));
   outfile = resolve(stage, 'index.js');
 }

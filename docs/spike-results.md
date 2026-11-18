@@ -209,3 +209,32 @@ Throwaway document: four paragraph styles in a fixed order (Head 16/19 Bold cent
 - Tracking writes cost about 2 ms each in a long story; word spaces make up most of them.
 - `pgrep -f` on InDesign's path also matches AdobeIPCBroker; use `pgrep -x "Adobe InDesign 2026"`.
 
+## Speed of long stories in multi-column spreads (2026-11-18, InDesign 2027 22.0, `i41-speed`, `i42-comb`)
+
+The designer finds long stories in facing pages with three columns each "agonizing" (InDesign had to be force-quit several times). Research (Adobe forums) and measurements:
+
+- **A panel's DOM calls run time-shared.** Adobe staff (Anoop Valomkot, community.adobe.com "UXP vs CEP", 2023): plugin code that calls the DOM is not executed with priority because plugins share time with InDesign; DOM-heavy work belongs in a separate script without async/await run through `app.doScript` (a file or a string). Reported elsewhere: CEP 14 s vs UXP panel 2 min 45 s; calendar plugin 15 s vs 4 min.
+- **Measured** (`micro`, 200 moves of wrap rectangles over three-column text plus 200 tracking writes, document visible):
+
+| Run as | Total | Moves | Tracking |
+|---|---|---|---|
+| Inline in the panel | 5.3–6.5 s | 0.3–1.3 s | 0.7–0.9 s |
+| `app.doScript(function)` from the panel (Flatter today) | 3.1–4.8 s | 0.3–0.9 s | 0.3–0.4 s |
+| Script, asynchronous (all earlier spikes) | 2.9–3.2 s | 0.5–0.6 s | 0.2–0.3 s |
+| Script run to completion (`run.sh` after the fix) | **0.5 s** | 0.06 s | 0.08 s |
+| `app.doScript(script text)` from the panel | **0.8 s** (plus about 6 s to read and start the 1.3 MB script) | 0.08 s | 0.11 s |
+
+- **"async" in the script text**: InDesign runs a UXP script asynchronously when its text contains "async" followed by a word. The bundle's only one is the `hyphen` package's error message "…in async mode"; `build-spikes.mjs` now rewrites it. Every spike timing before 2026-11-18 was measured in the slow asynchronous mode.
+- From a panel, `documents.add({ showingWindow: false })` shows the window anyway.
+- `doScript` with a path string treats the path as script text (returns at once); reading the file needs `localFileSystem` permission and a `file:` URL (dev manifest only).
+- **Comb per column instead of a tooth per line** (`i42-comb`, script, Minion 9/11.5, three columns per page, alternating cuts of 18 pt shifted each tick): one polygon per column with text wrap `CONTOUR`, spine in the gutter, one spike per shortened line. Spikes of 0.1 pt are ignored for a quarter of the lines; from 1 pt (centred 2.95 pt above the baseline) every line is set exactly like with teeth.
+
+| | Teeth | Comb (1 pt spikes) |
+|---|---|---|
+| 4 pages, 792 lines: objects, create, tick | 792, 1.1 s, 0.34 s | 12, 0.03 s, 0.14 s |
+| 12 pages, 2,376 lines | 2,376, 3.6 s, 1.1 s | 36, 0.09 s, 0.44 s |
+| 24 pages, 4,752 lines | 4,752, 7.6 s, 3.0 s (remove 3.5 s) | 72, 0.2 s, 0.9 s |
+
+  A tick here is: write the shapes, recompose, read the lines back. The comb's lines were identical to the teeth's on every tick.
+- **Full Apply, 8 pages of three columns (62,000 characters), script run to completion**: 129 s (prepare 7 s, steer and verify 109 s, check 11 s), 12 rounds (the maximum), only **762 of 1,513 lines as planned**; slider tick 8 s + 8 s, verify 22 s, 831/1,529. Every round re-reads the whole story (about 9 s), and lines settle about one column boundary per round: when a planned paragraph has a different line count, all later lines move to other slots, so their teeth sit one line off until the next round. With 24 columns the rounds run out halfway.
+

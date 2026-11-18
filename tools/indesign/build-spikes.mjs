@@ -1,7 +1,7 @@
 // Bundles tools/indesign/spikes/src/<name>.ts (with @flatter/core and @flatter/hyphenation) into
 // tools/indesign/spikes/dist/<name>.idjs, a UXP script runnable with tools/indesign/run.sh.
 import { build } from 'esbuild';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,6 +27,13 @@ for (const f of entries) {
     banner: { js: 'try {' },
     footer: { js: '} catch (e) { require("indesign").app.insertLabel("flatter-result", JSON.stringify({ loadError: String(e), stack: String(e && e.stack) })); }' },
   });
+  // InDesign runs a UXP script asynchronously (time-shared, doScript returns at once) when its text contains "async"
+  // followed by a word, even in a string. The only one is an error message in the hyphen package (2026-11-18).
+  const out = resolve(here, 'spikes/dist', `${name}.idjs`);
+  const code = readFileSync(out, 'utf8');
+  const sync = code.replace(/\basync mode\b/g, 'asynchronous mode');
+  if (/\basync\s+[A-Za-z_$(]/.test(sync)) console.warn(`${name}.idjs still contains "async": InDesign will run it asynchronously`);
+  if (sync !== code) writeFileSync(out, sync);
   console.log(`built spikes/dist/${name}.idjs`);
   }
 }

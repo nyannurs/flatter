@@ -2,6 +2,26 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-18 — Why long multi-column stories are so slow: research and measurements
+
+The designer tests long stories on facing pages with three columns each and has had to force-quit InDesign several times. They asked for research first, then allowed measurements in throwaway documents. Findings (details and tables in `docs/spike-results.md`, "Speed of long stories in multi-column spreads"):
+
+1. **The panel's own DOM calls are 6–10 times slower** than a script InDesign runs to completion (Adobe: plugin DOM calls are time-shared). Flatter calls `app.doScript` with a function, which is only partly faster. Running the heavy work as a separate script (`app.doScript` with the script's text) measured 0.8 s against 5.3 s inline.
+2. **"async" in the script text** made InDesign run every spike asynchronously (the `hyphen` package's error message); `build-spikes.mjs` rewrites it. Earlier spike timings were measured in that slow mode.
+3. **Lines do not converge in multi-column flows**: a full Apply on 8 three-column pages ran all 12 rounds and set only 762 of 1,513 lines as planned (129 s even as a fast script). Each round settles about one column boundary, because teeth are placed at the slots the lines had before the plan changed the line counts.
+4. **One comb per column** (one polygon with 1 pt spikes) sets exactly the same lines as one tooth per line, with 72 objects instead of 4,752 on 24 pages: creating 0.2 s instead of 7.6 s, a tick 0.9 s instead of 3.0 s.
+
+Also this session:
+- InDesign 2027 (22.0) replaced 2026 on the designer's Mac; Flatter 0.6.2 is installed there. Process name `Adobe InDesign 2027`.
+- Reloading the dev panel left selection listeners behind ("Script context is not available anymore" dialogs). Removed by id (17, 18, 19); listener 6 disappeared too during a later unload, possibly the installed Flatter's (a restart restored everything). The panel now removes its listener in `plugin.destroy` (not verified yet).
+- `run.sh` allows scripts an hour (Apple event timeout was two minutes); dev build gets `localFileSystem: fullAccess`; dev command `bench`; spikes `i41-speed`, `i42-comb`; shared benchmark `packages/panel/src/bench.ts`.
+
+Proposed next steps (not started; waiting for the designer):
+- **Predict where planned lines land** (the same sequence of baselines, filled in story order) instead of reusing each paragraph's old slots, so a long multi-column story settles in two or three rounds instead of running out of rounds.
+- **Run Apply, ticks and verify as a script** through `app.doScript` with the script text (built without "async"), loaded once per session.
+- **Combs instead of teeth** (needs the same steering semantics: idle teeth, tracked-line margins, per-page pooling, Freeze removes them).
+- **Work in chunks with progress and a Cancel button**, so InDesign stays responsive and never needs force-quitting.
+
 ## 2026-11-02 (later) — Languages inside a paragraph (ADR-028); scope (ADR-029)
 
 The designer asked where Flatter could misbehave in larger editorial projects. The main risk is architectural: teeth are fixed to the page, so text or layout changed while Flatter is not watching (no Apply, a colleague without the plugin, InCopy, placed text updated) breaks the rhythm. Untested so far: footnotes, tables, text on a path, GREP and nested styles that depend on breaks, span columns, Books, IDML round trips, packaging, other languages. The designer decided Flatter stays a bespoke tool for them and a few colleagues (ADR-029) and asked to look at mixed fonts and languages inside one word first.

@@ -26,7 +26,8 @@ app.insertLabel("flatter-result", "");
 try { app.doScript(File("$script"), ScriptLanguage.UXPSCRIPT); } catch (e) { app.insertLabel("flatter-result", "error: " + e); }
 app.extractLabel("flatter-result");
 JSX
-    out="$(osascript -e "tell application id \"com.adobe.InDesign\" to do script (POSIX file \"$runner\") language javascript")"
+    # A synchronous script can run for minutes; the default Apple event timeout is two minutes.
+    out="$(osascript -e 'with timeout of 3600 seconds' -e "tell application id \"com.adobe.InDesign\" to do script (POSIX file \"$runner\") language javascript" -e 'end timeout')"
     tries=0
     while [ -z "$out" ] && [ "$tries" -lt "${FLATTER_TIMEOUT:-600}" ]; do
       sleep 0.5
