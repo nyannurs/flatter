@@ -302,8 +302,13 @@ export class FlatterSession {
     // Overset lines get neither teeth nor tracking: they are not visible, and writing their tracking
     // took most of a slider tick in a long overset story (2026-10-17).
     // Teeth first: moving a wrap object after the text changed made InDesign recompose on every move.
-    this.port.setTeeth(this.teeth);
-    for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
+    this.port.beginWrites?.();
+    try {
+      this.port.setTeeth(this.teeth);
+      for (const w of this.work) this.port.setTracking(w.data.index, trackingSpans(w, this.usedSlots.get(w.data.index) ?? []));
+    } finally {
+      this.port.endWrites?.();
+    }
     if (this.port.setBands) {
       const bands: BandSpec[] = this.settings.showBands
         ? this.work.flatMap((w) => bandsFor(w.plan, this.usedSlots.get(w.data.index) ?? [], w.data.leading))

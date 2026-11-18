@@ -69,6 +69,10 @@ export interface Port {
    * paragraph's base tracking, and reset every other character of the paragraph to the base.
    */
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void;
+  /** Optional: a steering pass begins; the port may collect its writes and carry them out together in endWrites. */
+  beginWrites?(): void;
+  /** Optional: the steering pass's teeth and tracking are all given; carry out what was collected. */
+  endWrites?(): void;
   /** Optional: the paragraph's lines came back wrong, so its tracking is read and written again next time. */
   forgetTracking?(paragraph: number): void;
   /** Optional: a column's [left, right] at a baseline after text wrap of other objects (for predicted slots). */

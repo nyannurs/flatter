@@ -205,6 +205,20 @@ function bench(cmd: { kind?: BenchConfig['kind']; n?: number; mode?: string; fil
     } catch {
       result = { raw: raw.slice(0, 500) };
     }
+  } else if (mode === 'overhead') {
+    // What starting a separate script costs from the panel: a tiny one, and one padded to 100 KB and 1 MB.
+    const tiny = "require('indesign').app.insertLabel('flatter-ping', String(Date.now()));";
+    const pad = (kb: number) => `${tiny}\n/*${'x'.repeat(kb * 1024)}*/`;
+    const time = (src: string, times: number) => {
+      const out: number[] = [];
+      for (let k = 0; k < times; k++) {
+        const t = Date.now();
+        id.app.doScript(src, id.ScriptLanguage.UXPSCRIPT, [], id.UndoModes.AUTO_UNDO, 'Flatter ping');
+        out.push(Date.now() - t);
+      }
+      return out;
+    };
+    result = { tiny: time(tiny, 5), kb100: time(pad(100), 3), mb1: time(pad(1024), 2) };
   } else return { error: `unknown mode ${mode}` };
   return { mode, wallMs: Date.now() - t0, result };
 }

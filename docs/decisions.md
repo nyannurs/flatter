@@ -257,3 +257,11 @@ Teeth were placed at the slots each paragraph's lines had before planning. When 
 - **No hyphen at a column end**: with "Hyphenate Across Column" off (Flatter's setting) InDesign never hyphenates the last line of a column or frame. A planned hyphen there came back refused one round at a time. The planner now takes those points out (class X for that plan) on lines the prediction puts at a column end, and plans again (up to four passes).
 - Result: the same 8 pages set every line (1,584 of 1,584) after one steering pass, Apply 129 s → 62 s, verify after a slider move 22 s → 1.2 s.
 
+## ADR-031: Heavy steering writes run as a script InDesign finishes in one go (2026-11-18)
+
+A panel's DOM calls are time-shared (Adobe) and measured 6–10 times slower than a script InDesign runs to completion. Starting such a script through `app.doScript` with its text costs about 0.2 s, and loading InDesign's DOM in it (`require('indesign')`) another 1.3 s, every time.
+
+- During a steering pass (`beginWrites` … `endWrites` on the port) the DOM port collects tooth moves and tracking writes (story-relative ranges). With at least 600 writes they run as one small script (`BATCH_SCRIPT`, arguments as JSON, undo merged into the current step); fewer are written directly, so short stories and slider ticks stay as fast as before. If the script does not report every write done, the writes are made directly (values are absolute, so a partial run is harmless).
+- Tracking writes address characters by story position instead of "paragraph p, character k" (about 25 % faster per write in a long story).
+- Not done: measuring in such a script (prepare took 15 s instead of 7.7 s in a script context; unmeasured in the panel), per-line GREP for word spaces (fewer calls, but each costs as much as the writes it replaces, and it slowed the settings check), combs instead of teeth.
+

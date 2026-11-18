@@ -2,6 +2,17 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-18 (evening) — Steering writes at full priority (ADR-031); release 0.6.4
+
+The designer asked for the next speed fixes without waiting for them to test.
+
+- **Where the time went** (8 three-column pages, precise Laufweite with word spaces, profile of the DomPort methods): `setTracking` 58 of 61 s, 18,646 writes at about 3 ms each.
+- **Tried and dropped**: GREP for a line's word spaces (`i43-track-writes`: 25 % faster in a fresh document, but each `changeGrep` costs about 6 ms, and the settings check after Apply went from 6 s to 140 s); FAST_ENTIRE_SCRIPT (no gain); measuring in a script (slower in a script context).
+- **Kept**: story-relative tracking writes (Apply 61 → 49 s) and **batched writes in a script** (`beginWrites`/`endWrites`, `BATCH_SCRIPT`, at least 600 writes): Apply **49 → 24 s** in a script context (steering 35 → 15 s, settings check 6 → 1 s), 1,584/1,584 lines, no fallbacks. Inside the panel the gain should be larger (panel DOM calls 6–10 times slower), but that was not measured: a dev panel loaded through the UXP Developer Tool only starts once its panel is shown, and invoking its menu action (`app.menuActions`, "Flatter (dev)", area "Panel Menus") did not show it.
+- `i44-script-start`: starting a script 0.2 s, `require('indesign')` in it 1.3 s; 142 KB of JSON as argument is cheap.
+- Slider moves on long stories are still slow (8 pages: draft about 6 s, word spaces about 14 s), most of it the writes themselves (about 1 ms each even at full priority). Next options: write only the lines whose values changed (already done per span; most change when the zone moves), fewer word-space writes, combs (2–3 times faster ticks for the teeth part), chunked work with progress and Cancel.
+- Release 0.6.4 packaged, published and installed in place of 0.6.3.
+
 ## 2026-11-18 (later) — Long multi-column stories settle in one pass (ADR-030)
 
 The designer chose to fix the rounds first.

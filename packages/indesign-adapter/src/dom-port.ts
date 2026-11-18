@@ -19,6 +19,32 @@ export const indesign = (): Any => require('indesign');
 export const CONTROL_LAYER = 'Flatter (Steuerung)';
 export const TOOTH_LABEL = 'flatter-tooth';
 export const PROBE_LABEL = 'flatter-probe';
+/**
+ * Heavy steering writes run as a separate script that InDesign runs to completion (2026-11-18): a panel's DOM calls
+ * are time-shared and measured 6–10 times slower (Adobe: plugins share time with InDesign; use app.doScript). Starting
+ * the script and loading InDesign's DOM in it costs about 1.5 s, so only passes with at least this many writes go
+ * there; fewer are written directly. The script's text must not contain "async" followed by a word (InDesign would run
+ * it asynchronously and return at once).
+ */
+const BATCH_MIN_WRITES = 600;
+const BATCH_SCRIPT = [
+  "const id = require('indesign');",
+  'const app = id.app;',
+  "const job = JSON.parse(require('uxp').script.args[0]);",
+  'const prefs = app.scriptPreferences;',
+  'const unit = prefs.measurementUnit;',
+  'prefs.measurementUnit = id.MeasurementUnits.POINTS;',
+  'try {',
+  '  const doc = app.documents.itemByID(job.doc);',
+  '  for (const m of job.moves) doc.rectangles.itemByID(m[0]).geometricBounds = [m[1], m[2], m[3], m[4]];',
+  '  const chars = doc.stories.itemByID(job.story).characters;',
+  '  for (const w of job.tracking) (w[0] === w[1] ? chars.item(w[0]) : chars.itemByRange(w[0], w[1])).tracking = w[2];',
+  "  require('uxp').script.setResult('done ' + (job.moves.length + job.tracking.length));",
+  '} finally {',
+  '  prefs.measurementUnit = unit;',
+  '}',
+].join('\n');
+
 /** Probe cache entries from other versions are dropped (see the DomPort constructor). */
 const PROBE_VERSION = 'v3';
 const TOLERANCE = 0.4;
@@ -452,7 +478,7 @@ export class DomPort implements Port {
       if (have) {
         // Only write what changed: each DOM call costs about a millisecond (spike S4).
         if (have.bounds.some((v, j) => Math.abs(v - t.bounds[j]!) > 1e-4)) {
-          have.rect.geometricBounds = t.bounds;
+          this.moveRect(have.rect, t.bounds);
           have.bounds = [...t.bounds];
           this.teethStats.moved++;
         }
@@ -476,12 +502,60 @@ export class DomPort implements Port {
       if (used.has(c)) return;
       const parked = this.parkingBounds(c.page, i);
       if (c.bounds.some((v, j) => Math.abs(v - parked[j]!) > 1e-4)) {
-        c.rect.geometricBounds = parked;
+        this.moveRect(c.rect, parked);
         c.bounds = parked;
         this.teethStats.parked++;
       }
       c.label = 'parked';
     });
+  }
+
+  /** Writes collected during a steering pass (beginWrites … endWrites), or undefined when writing directly. */
+  private batch: { moves: [Any, number[]][]; tracking: [number, number, number][]; recount: Set<number> } | undefined;
+  batchRuns = 0;
+  batchMs = 0;
+  /** Batches the script did not carry out (written directly instead). */
+  batchFallbacks = 0;
+
+  beginWrites(): void {
+    this.batch = { moves: [], tracking: [], recount: new Set() };
+  }
+
+  private moveRect(rect: Any, bounds: readonly number[]): void {
+    if (this.batch) this.batch.moves.push([rect, [...bounds]]);
+    else rect.geometricBounds = bounds;
+  }
+
+  /** Carry out the collected writes: as one script InDesign runs to completion when there are many, else directly. */
+  endWrites(): void {
+    const b = this.batch;
+    this.batch = undefined;
+    if (!b) return;
+    const count = b.moves.length + b.tracking.length;
+    let done = false;
+    if (count >= BATCH_MIN_WRITES) {
+      const t0 = Date.now();
+      try {
+        const job = JSON.stringify({ doc: Number(this.doc.id), story: Number(this.story.id), moves: b.moves.map(([r, bd]) => [Number(r.id), ...bd]), tracking: b.tracking });
+        const result = String(this.id.app.doScript(BATCH_SCRIPT, this.id.ScriptLanguage.UXPSCRIPT, [job], this.id.UndoModes.AUTO_UNDO, 'Flatter'));
+        done = result === `done ${count}`;
+      } catch {
+        done = false;
+      }
+      this.batchRuns++;
+      this.batchMs += Date.now() - t0;
+    }
+    if (!done && count >= BATCH_MIN_WRITES) this.batchFallbacks++;
+    if (!done) {
+      // Directly (few writes, or the script did not run). Writing twice is harmless: the values are absolute.
+      for (const [rect, bounds] of b.moves) rect.geometricBounds = bounds;
+      const chars = this.story.characters;
+      for (const [f, t, v] of b.tracking) (f === t ? chars.item(f) : chars.itemByRange(f, t)).tracking = v;
+    }
+    for (const p of b.recount) {
+      const w = this.written.get(p);
+      if (w) w.ranges = Number(this.story.paragraphs.item(p).textStyleRanges.length);
+    }
   }
 
   private bandCache: { rect: Any; bounds: number[]; page: number; kind: BandSpec['kind'] }[] | undefined;
@@ -607,9 +681,15 @@ export class DomPort implements Port {
     const from = cached && cached.want.length === n && Number(para.textStyleRanges.length) === cached.ranges ? cached.want : this.currentTracking(para, n, base);
     st.readMs += Date.now() - t0;
     t0 = Date.now();
-    const chars = para.characters;
+    // Story-relative characters when the paragraph's start is known: InDesign resolves "paragraph p, character k"
+    // anew on every write, which cost about 3 ms per write in a long story (2026-11-18).
+    const at = this.paraStarts[paragraph];
+    const chars = at !== undefined ? this.story.characters : para.characters;
+    const off = at ?? 0;
+    const batch = at !== undefined ? this.batch : undefined;
     const write = (a: number, e: number, units: number) => {
-      (e - a === 1 ? chars.item(a) : chars.itemByRange(a, e - 1)).tracking = base + units;
+      if (batch) batch.tracking.push([off + a, off + e - 1, base + units]);
+      else (e - a === 1 ? chars.item(off + a) : chars.itemByRange(off + a, off + e - 1)).tracking = base + units;
       this.trackingWrites++;
     };
     // Paint the spans in order (a line, then its word spaces on top): a span is written when any of its
@@ -642,7 +722,9 @@ export class DomPort implements Port {
     this.lastSpans.set(paragraph, signature);
     if (spans.length) {
       this.trackedNow.add(paragraph);
-      this.written.set(paragraph, { want, ranges: Number(para.textStyleRanges.length) });
+      // Collected writes are not in the text yet: count the style ranges once they are (endWrites).
+      this.written.set(paragraph, { want, ranges: batch ? -1 : Number(para.textStyleRanges.length) });
+      if (batch) batch.recount.add(paragraph);
       st.countMs += Date.now() - t0;
     } else {
       this.trackedNow.delete(paragraph);
@@ -865,6 +947,16 @@ export class DomPort implements Port {
     const last = jobs[jobs.length - 1]!;
     const b = last.start + last.length;
     const chars = text.slice(a, b);
+    const tooLong = () => new FlatterUserError('A paragraph is too long to measure (more than about 7,000 lines of 9,000 pt).');
+    const spaces = new Map<number, number>();
+    // A space at the end of a bench line (a paragraph longer than 9,000 pt) has an unreliable width: use the
+    // paragraph's own space width there.
+    const finish = (raw: number[], j: MeasureJob): number[] =>
+      raw.slice(j.start - a, j.start - a + j.length).map((w) => {
+        if (w >= 0) return w;
+        if (!spaces.has(j.index)) spaces.set(j.index, this.spaceWidth(j.para));
+        return spaces.get(j.index)!;
+      });
     this.story.insertionPoints.itemByRange(a, b).texts.item(0).duplicate(id.LocationOptions.AT_BEGINNING, story.insertionPoints.item(0));
     if (Number(story.characters.length) !== chars.length) throw new Error('paragraphs did not copy into the measuring frame');
     // Column, frame and page breaks read as paragraph returns but would push the rest out of the bench frame.
@@ -883,9 +975,7 @@ export class DomPort implements Port {
         /* not available */
       }
     }
-    const tooLong = () => new FlatterUserError('A paragraph is too long to measure (more than about 7,000 lines of 9,000 pt).');
     if (story.overflows) throw tooLong();
-    const spaces = new Map<number, number>();
     const read = (): number[] => {
       const xs = asArray(story.characters.everyItem().horizontalOffset).map(Number);
       const xe = asArray(story.characters.everyItem().endHorizontalOffset).map(Number);
@@ -897,14 +987,6 @@ export class DomPort implements Port {
       }
       return chars.map((c, k) => (lineEnds.has(k) && /^\s$/.test(c) ? -1 : xe[k]! - xs[k]!));
     };
-    // A space at the end of a bench line (a paragraph longer than 9,000 pt) has an unreliable width: use the
-    // paragraph's own space width there.
-    const finish = (raw: number[], j: MeasureJob): number[] =>
-      raw.slice(j.start - a, j.start - a + j.length).map((w) => {
-        if (w >= 0) return w;
-        if (!spaces.has(j.index)) spaces.set(j.index, this.spaceWidth(j.para));
-        return spaces.get(j.index)!;
-      });
     const plain = read();
     all.ligatures = false;
     if (story.overflows) throw tooLong();

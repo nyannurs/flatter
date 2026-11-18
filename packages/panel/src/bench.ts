@@ -182,6 +182,8 @@ function apply(id: Any, doc: Any, pages: number, maxRounds?: number): Record<str
     roundLog: report.roundLog,
     apply: `${report.linesAsPlanned}/${report.linesPlanned}`,
     tick: { draftMs, fullMs, verifyMs, verified: `${verified.linesAsPlanned}/${verified.linesPlanned}` },
+    batch: { runs: (live.port as Any).batchRuns, ms: (live.port as Any).batchMs, fallbacks: (live.port as Any).batchFallbacks },
+    tracking: { writes: (live.port as Any).trackingWrites, skips: (live.port as Any).trackingSkips, ...(live.port as Any).trackingStats },
     removeMs,
     ...(maxRounds ? { mismatches, firstBad } : {}),
   };
