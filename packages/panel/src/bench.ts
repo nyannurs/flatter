@@ -22,7 +22,11 @@ export interface BenchConfig {
   n: number;
   /** Show the document window (redraw included). From a panel InDesign shows it anyway. */
   visible?: boolean;
+  /** apply: stop after this many verify rounds and list the first mismatches (diagnosis). */
+  maxRounds?: number;
 }
+
+const asArr = <T>(v: T | T[]): T[] => (Array.isArray(v) ? v : [v]);
 
 const timed = <T>(f: () => T): [T, number] => {
   const t0 = Date.now();
@@ -35,7 +39,7 @@ export function runBench(config: BenchConfig): Record<string, unknown> {
   const doc = id.app.documents.add({ showingWindow: !!config.visible });
   const t0 = Date.now();
   try {
-    return { kind: config.kind, n: config.n, ...(config.kind === 'micro' ? micro(id, doc, config.n) : apply(id, doc, config.n)), totalMs: Date.now() - t0 };
+    return { kind: config.kind, n: config.n, ...(config.kind === 'micro' ? micro(id, doc, config.n) : apply(id, doc, config.n, config.maxRounds)), totalMs: Date.now() - t0 };
   } catch (e) {
     return { error: String(e), stack: String((e as Error)?.stack ?? '') };
   } finally {
@@ -83,7 +87,7 @@ function micro(id: Any, doc: Any, n: number): Record<string, number> {
 }
 
 /** Flatter on a long story through facing pages with three columns each (the designer's 6-column spreads). */
-function apply(id: Any, doc: Any, pages: number): Record<string, unknown> {
+function apply(id: Any, doc: Any, pages: number, maxRounds?: number): Record<string, unknown> {
   const frames: Any[] = [];
   inPoints(() => {
     doc.documentPreferences.properties = { pageWidth: 595, pageHeight: 842, facingPages: true, pagesPerDocument: pages };
@@ -99,8 +103,73 @@ function apply(id: Any, doc: Any, pages: number): Record<string, unknown> {
   // About 20 paragraphs fill a page at 9/11.5 pt; the rest is overset.
   story.contents = Array.from({ length: pages * 20 }, (_, k) => DE[k % DE.length]).join('\r');
   story.texts.item(0).properties = { appliedFont: 'Minion Pro\tRegular', pointSize: 9, leading: 11.5, appliedLanguage: 'German: 2006 Reform' };
-  const settings = { showBands: false, sense: true, zoneShare: 0.2, bandShare: 0.5, tracking: { enabled: true, mode: 'precise' as const, max: 5 }, wordSpaceShare: 0.25 };
+  const settings = { showBands: false, sense: true, zoneShare: 0.2, bandShare: 0.5, tracking: { enabled: true, mode: 'precise' as const, max: 5 }, wordSpaceShare: 0.25, ...(maxRounds !== undefined ? { maxRounds } : {}) };
   const [{ live, report }, applyMs] = timed(() => openSession(story, settings));
+  const at = (sl: Any) => (sl ? `c${sl.column} y${Math.round(sl.baseline * 100) / 100} x${Math.round(sl.startX * 10) / 10}-${Math.round(sl.columnRight * 10) / 10}` : '-');
+  const mismatches = report.paragraphs.filter((p) => p.mismatch).slice(0, 12).map((p) => ({ p: p.index, line: p.mismatch!.line, used: at(p.mismatch!.slotUsed), got: at(p.mismatch!.slotGot), planned: p.mismatch!.planned.text.slice(-18), gotText: p.mismatch!.got?.text.slice(-18), steer: Math.round(p.mismatch!.planned.steerWidth * 100) / 100, gotWidth: Math.round((p.mismatch!.got?.width ?? 0) * 100) / 100, hyphen: p.mismatch!.planned.hyphen, gotHyphen: p.mismatch!.got?.hyphenated, pl: (() => { const l = p.plan.lines[p.mismatch!.line]; return l ? { width: Math.round(l.width * 100) / 100, t: l.tracking, w: l.wordSpace, role: l.role, kind: l.kind } : undefined; })() }));
+  // maxRounds 0: only the first steering pass. Where Flatter put the lines of the first paragraphs that came out wrong,
+  // where they were before, and where InDesign set them.
+  if (maxRounds === 0) {
+    const s = live.session as Any;
+    const got = inPoints(() => live.port.readLines());
+    const fmt = (sl: Any) => `c${sl.column} y${Math.round(sl.baseline * 100) / 100}`;
+    const wrong = new Set<number>();
+    for (const w of s.work) {
+      const used = s.usedSlots.get(w.data.index) ?? [];
+      const g = got.filter((l: Any) => l.paragraph === w.data.index);
+      if (used.length !== g.length || used.some((u: Any, i: number) => !g[i] || g[i].slot.column !== u.column || Math.abs(g[i].slot.baseline - u.baseline) > 0.01)) wrong.add(w.data.index);
+    }
+    const first = [...wrong].sort((a, b) => a - b).slice(0, 2);
+    // The first line of the first wrong paragraph that InDesign broke elsewhere than planned.
+    let line: Record<string, unknown> | undefined;
+    const w0 = s.work.find((w: Any) => w.data.index === first[0]);
+    if (w0) {
+      const g = got.filter((l: Any) => l.paragraph === w0.data.index);
+      const k = w0.plan.lines.findIndex((pl: Any, i: number) => {
+        const r = pl.endItem > pl.startItem ? w0.measured.charRange[pl.endItem - 1] : undefined;
+        return !g[i] || (r && g[i].lastVisible !== r[1] - 1);
+      });
+      if (k >= 0 && g[k]) {
+        const slot = g[k].slot;
+        const ln = story.paragraphs.item(w0.data.index).lines.item(k);
+        const layer = doc.layers.itemByName('Flatter (Steuerung)');
+        const teeth = layer.isValid ? (asArr(layer.pageItems.everyItem().getElements()) as Any[]) : [];
+        const near = inPoints(() => teeth.filter((t) => Number(t.parentPage?.documentOffset) === slot.page).map((t) => t.geometricBounds.map(Number)).filter((b: number[]) => Math.abs(b[0]! - slot.baseline) < 14 && b[3]! > (slot.columnLeft ?? 0) && b[1]! < slot.columnRight + 6));
+        const pl = w0.plan.lines[k];
+        line = {
+          line: k, at: fmt(slot), startX: Math.round(slot.startX * 100) / 100, contents: String(ln.contents),
+          tracking: [...new Set((asArr(ln.characters.everyItem().tracking) as number[]).map(Number))],
+          planned: { width: Math.round(pl.width * 100) / 100, steer: Math.round(pl.steerWidth * 100) / 100, t: pl.tracking, w: pl.wordSpace, role: pl.role },
+          teeth: near.map((b: number[]) => `y${Math.round(b[0]! * 100) / 100} x${Math.round(b[1]! * 100) / 100}-${Math.round(b[3]! * 100) / 100}`),
+        };
+      }
+    }
+    const show = first.flatMap((p) => [p - 1, p]).filter((p) => p >= 0);
+    removeFlatter(story);
+    return {
+      slotsWrong: wrong.size,
+      line,
+      paragraphs: show.map((p) => ({
+        p,
+        before: s.current.filter((l: Any) => l.paragraph === p).map((l: Any) => fmt(l.slot)).join(' '),
+        planned: s.work.find((w: Any) => w.data.index === p)?.plan.lines.length,
+        used: (s.usedSlots.get(p) ?? []).map(fmt).join(' '),
+        got: got.filter((l: Any) => l.paragraph === p).map((l: Any) => fmt(l.slot)).join(' '),
+      })),
+    };
+  }
+  // Diagnosis: what InDesign has on the first line that is not as planned, and the teeth beside it.
+  let firstBad: Record<string, unknown> | undefined;
+  const bad = report.paragraphs.find((p) => p.mismatch);
+  if (maxRounds && bad?.mismatch?.slotGot) {
+    const g = bad.mismatch.slotGot;
+    const line = story.paragraphs.item(bad.index).lines.item(bad.mismatch.line);
+    const tr = (asArr(line.characters.everyItem().tracking) as number[]).map(Number);
+    const layer = doc.layers.itemByName('Flatter (Steuerung)');
+    const teeth = layer.isValid ? (asArr(layer.pageItems.everyItem().getElements()) as Any[]) : [];
+    const near = inPoints(() => teeth.map((t) => t.geometricBounds.map(Number)).filter((b: number[]) => Math.abs(b[0]! - g.baseline) < 14 && b[3]! > g.columnLeft! && b[1]! < g.columnRight + 12));
+    firstBad = { p: bad.index, line: bad.mismatch.line, contents: String(line.contents), tracking: [...new Set(tr)].slice(0, 8), teethNear: near.map((b: number[]) => b.map((v) => Math.round(v * 100) / 100)) };
+  }
   const [, draftMs] = timed(() => liveUpdate(live, { ...settings, zoneShare: 0.19, draft: true }, true));
   const [, fullMs] = timed(() => liveUpdate(live, { ...settings, zoneShare: 0.19 }, false));
   const [verified, verifyMs] = timed(() => liveVerify(live));
@@ -110,8 +179,10 @@ function apply(id: Any, doc: Any, pages: number): Record<string, unknown> {
     applyMs,
     timings: report.timings,
     rounds: report.rounds,
+    roundLog: report.roundLog,
     apply: `${report.linesAsPlanned}/${report.linesPlanned}`,
     tick: { draftMs, fullMs, verifyMs, verified: `${verified.linesAsPlanned}/${verified.linesPlanned}` },
     removeMs,
+    ...(maxRounds ? { mismatches, firstBad } : {}),
   };
 }

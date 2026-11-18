@@ -4,6 +4,7 @@
  * the tests implement it with a small greedy composer.
  */
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
+import type { Narrow } from './flow.ts';
 import type { LanguageRun } from './languages.ts';
 
 export interface ParagraphData {
@@ -29,6 +30,12 @@ export interface ParagraphData {
   /** The column width `measure` is based on (the story's first column); other columns differ by their own width. */
   columnWidth?: number;
   firstLineIndent: number;
+  /** Left indent, and space before and after the paragraph (points), for predicting where lines go. */
+  leftIndent?: number;
+  spaceBefore?: number;
+  spaceAfter?: number;
+  /** InDesign's "Hyphenate Across Column": when false (Flatter's setting) the last line of a column or frame never hyphenates. */
+  hyphenateAcrossColumns?: boolean;
   /** Content the port found Flatter cannot plan around (shown in the report; no compatibility alarm). */
   unsupported?: string[];
 }
@@ -64,6 +71,8 @@ export interface Port {
   setTracking(paragraph: number, spans: readonly TrackingSpan[]): void;
   /** Optional: the paragraph's lines came back wrong, so its tracking is read and written again next time. */
   forgetTracking?(paragraph: number): void;
+  /** Optional: a column's [left, right] at a baseline after text wrap of other objects (for predicted slots). */
+  narrow?: Narrow;
   /** Show the Flatterzone and band behind the text (an empty list removes them). Optional. */
   setBands?(bands: readonly BandSpec[]): void;
 }

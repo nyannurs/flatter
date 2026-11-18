@@ -7,6 +7,7 @@ import { opposite, solveParagraph, type FlatterSettings, type HyphenClass, type 
 import { createHyphenator, createSenseRule, type Hyphenator, type HyphenLanguage } from '@flatter/hyphenation';
 import { bandsFor, slotsForPlan, toothFor, sameSlot, type BandSpec, type LineSlot, type ToothSpec } from './geometry.ts';
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
+import { predictSlots, type FlowParagraph } from './flow.ts';
 import { languageOf, MIXED_LANGUAGES, NO_LANGUAGE } from './languages.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
@@ -69,6 +70,8 @@ export interface ApplyResult {
   teeth: number;
   /** Lines given tracking (Laufweite) by the rescue. */
   trackedLines: number;
+  /** Per verify round: paragraphs off plan, of them with lines in other frame widths, refused points learned, and paragraphs set as planned whose lines sit elsewhere than steered for. */
+  roundLog?: { open: number; widths: number; refused: number; moved: number }[];
   /** Lines whose word spaces were tracked (ADR-015). */
   spacedLines: number;
   /** Planned lines that fall outside the frames (overset); they cannot be steered. */
@@ -136,6 +139,8 @@ interface Working {
   refused: string[];
   /** Per-line measures the plan was made with (frames of different widths), or undefined. */
   widths?: number[] | undefined;
+  /** Hyphenation points at lines that will end a column or frame (not hyphenated there), as item indices. */
+  columnEnds?: Set<number>;
 }
 
 /**
@@ -156,6 +161,7 @@ export class FlatterSession {
   private settings: ApplySettings = {};
   private overset = false;
   rounds = 0;
+  private roundLog: { open: number; widths: number; refused: number; moved: number }[] = [];
 
   constructor(port: Port) {
     this.port = port;
@@ -230,20 +236,62 @@ export class FlatterSession {
   /** Solve every paragraph with these settings. Points InDesign refused earlier stay refused. */
   plan(settings: ApplySettings = this.settings): void {
     this.settings = settings;
+    for (const w of this.work) w.columnEnds = undefined;
+    this.solveAll(settings);
+    this.avoidColumnEndHyphens();
+  }
+
+  private solveAll(settings: ApplySettings): void {
     let nextRole: Role | undefined;
     for (const w of this.work) {
       w.widths = lineMeasuresFor(w.data, slotsOf(this.current, w.data.index));
-      w.plan = solve(w.items, w.data, settings, settings.continuous ? nextRole : undefined, w.widths);
+      w.plan = solve(itemsFor(w), w.data, settings, settings.continuous ? nextRole : undefined, w.widths);
       if (settings.continuous) nextRole = w.plan.lines.length ? opposite(w.plan.lines[w.plan.lines.length - 1]!.role) : nextRole;
     }
   }
 
-  /** Place teeth for the current plans at the line positions last read from InDesign. */
+  /**
+   * InDesign does not hyphenate the last line of a column or frame when "Hyphenate Across Column" is off (Flatter's
+   * setting). Such a planned hyphen used to come back refused one round at a time, and the line it moved shifted every
+   * later line (a 3-column story of 8 pages took 7 rounds, 2026-11-18). With the predicted line positions, plan those
+   * lines without a hyphen before steering. A few passes, since a paragraph planned again may move later lines.
+   */
+  private avoidColumnEndHyphens(): void {
+    const byIndex = new Map(this.work.map((w) => [w.data.index, w] as const));
+    for (let pass = 0; pass < 4; pass++) {
+      const predicted = predictSlots(this.current, this.flowParagraphs(), this.port.narrow?.bind(this.port));
+      const order: { w: Working | undefined; i: number; column: number | undefined }[] = [];
+      for (const p of [...predicted.keys()].sort((a, b) => a - b)) predicted.get(p)!.forEach((slot, i) => order.push({ w: byIndex.get(p), i, column: slot.column }));
+      let found = false;
+      order.forEach((e, k) => {
+        const next = order[k + 1];
+        if (!e.w || !next || next.column === e.column || e.w.data.hyphenateAcrossColumns !== false) return;
+        const line = e.w.plan.lines[e.i];
+        const pen = line?.endsWithHyphen ? e.w.items[line.breakAt] : undefined;
+        if (pen?.type !== 'penalty' || pen.width <= 0) return;
+        (e.w.columnEnds ??= new Set()).add(line!.breakAt);
+        found = true;
+      });
+      if (!found) return;
+      this.solveAll(this.settings);
+    }
+  }
+
+  /**
+   * Place teeth for the current plans where their lines will sit: the planned lines poured into the columns read
+   * back last (flow.ts), so a paragraph that gains or loses a line does not leave every later tooth one line off.
+   * A line that stays where it was keeps the slot read back for it.
+   */
   steer(): void {
     this.teeth = [];
     this.usedSlots = new Map();
+    const predicted = predictSlots(this.current, this.flowParagraphs(), this.port.narrow?.bind(this.port));
     for (const w of this.work) {
-      const slots = slotsForPlan(w.plan.lines.length, slotsOf(this.current, w.data.index), w.data.leading);
+      const now = slotsOf(this.current, w.data.index);
+      const ahead = predicted.get(w.data.index);
+      const slots = ahead
+        ? ahead.slice(0, w.plan.lines.length).map((s, i) => (now[i] && now[i]!.page === s.page && now[i]!.column === s.column && Math.abs(now[i]!.baseline - s.baseline) < 0.01 ? now[i]! : s))
+        : slotsForPlan(w.plan.lines.length, now, w.data.leading);
       this.usedSlots.set(w.data.index, slots);
       w.plan.lines.forEach((line, i) => {
         const slot = slots[i];
@@ -264,6 +312,22 @@ export class FlatterSession {
     }
   }
 
+  /** Every paragraph in the flow: planned ones with their planned line count, the others as read back. */
+  private flowParagraphs(): FlowParagraph[] {
+    const out = new Map<number, FlowParagraph>();
+    for (const l of this.current) if (!out.has(l.paragraph)) out.set(l.paragraph, { index: l.paragraph, lines: visibleCount(this.current, l.paragraph) });
+    for (const w of this.work) {
+      const d = w.data;
+      out.set(d.index, {
+        index: d.index, lines: w.plan.lines.length, leading: d.leading, size: d.size, firstLineIndent: d.firstLineIndent,
+        ...(d.leftIndent !== undefined ? { leftIndent: d.leftIndent } : {}),
+        ...(d.spaceBefore !== undefined ? { spaceBefore: d.spaceBefore } : {}),
+        ...(d.spaceAfter !== undefined ? { spaceAfter: d.spaceAfter } : {}),
+      });
+    }
+    return [...out.values()];
+  }
+
   /**
    * Read back and correct until every line is set as planned (or maxRounds).
    * Each round: read lines; re-plan points InDesign refused; if anything changed, steer again.
@@ -273,27 +337,35 @@ export class FlatterSession {
   verify(maxRounds = this.settings.maxRounds ?? DEFAULT_MAX_ROUNDS): ApplyResult {
     let best = Infinity;
     let stale = 0;
+    this.roundLog = [];
     for (let round = 0; round < maxRounds; round++) {
       this.rounds++;
       this.current = this.port.readLines();
       let changed = false;
       let open = 0;
       let learned = false;
+      const log = { open: 0, widths: 0, refused: 0, moved: 0 };
+      this.roundLog.push(log);
       for (const w of this.work) {
         const got = this.current.filter((l) => l.paragraph === w.data.index);
         // The paragraph's lines sit in frames of other widths than planned for: plan again.
         const widths = lineMeasuresFor(w.data, got.map((l) => l.slot));
         if (!sameWidths(widths, w.widths)) {
           w.widths = widths;
-          w.plan = solve(w.items, w.data, this.settings, w.plan.startRole, widths);
+          w.plan = solve(itemsFor(w), w.data, this.settings, w.plan.startRole, widths);
           changed = true;
           open++;
+          log.open++;
+          log.widths++;
           continue;
         }
         const used = this.usedSlots.get(w.data.index) ?? [];
         const bad = firstMismatch(w, got, this.overset);
         if (bad < 0) {
-          if (got.some((l, i) => used[i] && !sameSlot(l.slot, used[i]!))) changed = true;
+          if (got.some((l, i) => used[i] && !sameSlot(l.slot, used[i]!))) {
+            changed = true;
+            log.moved++;
+          }
           continue;
         }
         this.port.forgetTracking?.(w.data.index);
@@ -305,15 +377,17 @@ export class FlatterSession {
             const e = w.measured.charRange[line.endItem - 1]![1];
             w.refused.push((w.data.chars.slice(0, e).join('').split(/\s/).pop() ?? '') + (pen.width > 0 ? '-' : ''));
             learned = true;
+            log.refused++;
             // InDesign decides per word: refuse the same point in every occurrence of the word, so a
             // repeated word costs one round, not one round per occurrence (2026-10-17).
             const same = new Set(sameWordPoints(w.items, line.breakAt));
             w.items = w.items.map((it, k) => (same.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
-            w.plan = solve(w.items, w.data, this.settings, w.plan.startRole, w.widths);
+            w.plan = solve(itemsFor(w), w.data, this.settings, w.plan.startRole, w.widths);
           }
         }
         changed = true;
         open++;
+        log.open++;
       }
       if (!changed) break;
       // Progress: fewer paragraphs off their plan, or a hyphenation point InDesign refused is now known.
@@ -321,6 +395,7 @@ export class FlatterSession {
         best = Math.min(best, open);
         stale = 0;
       } else if (++stale >= 3) break;
+      this.avoidColumnEndHyphens();
       this.steer();
     }
     return this.result();
@@ -361,7 +436,7 @@ export class FlatterSession {
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
     const spacedLines = this.work.reduce((s, w) => s + w.plan.stats.spacedLines, 0);
     const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - visibleCount(this.current, w.data.index)), 0) : 0;
-    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines, probeCheck: { ...this.probeCheck } };
+    return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines, probeCheck: { ...this.probeCheck }, roundLog: [...this.roundLog] };
   }
 
   private hyphenator(lang: HyphenLanguage): Hyphenator {
@@ -488,6 +563,13 @@ export function sameWordPoints(items: readonly Item[], k: number): number[] {
     if (it.type === 'penalty' && !it.forced && where(p) === target) out.push(p);
   });
   return out.length ? out : [k];
+}
+
+/** The paragraph's items with the points at column ends taken out (class X: never used). */
+function itemsFor(w: Working): Item[] {
+  const ends = w.columnEnds;
+  if (!ends?.size) return w.items;
+  return w.items.map((it, k) => (ends.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
 }
 
 function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {

@@ -218,11 +218,14 @@ export class DomPort implements Port {
     const lengths = asArray(paras.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
     const sizes = asArray(paras.everyItem().pointSize).map(Number);
     const hyphenationOn = asArray(paras.everyItem().hyphenation).map((v: Any) => v === true);
+    const acrossColumns = asArray(paras.everyItem().hyphenateAcrossColumns).map((v: Any) => v === true);
     const leadings = asArray(paras.everyItem().leading);
     const autoLeading = asArray(paras.everyItem().autoLeading).map(Number);
     const left = asArray(paras.everyItem().leftIndent).map(Number);
     const right = asArray(paras.everyItem().rightIndent).map(Number);
     const first = asArray(paras.everyItem().firstLineIndent).map(Number);
+    const spaceBefore = asArray(paras.everyItem().spaceBefore).map(Number);
+    const spaceAfter = asArray(paras.everyItem().spaceAfter).map(Number);
     const alignments = asArray(paras.everyItem().justification).map(String);
     const column = this.columnWidth();
     const visibleEnd = this.visibleEnd();
@@ -272,6 +275,10 @@ export class DomPort implements Port {
           columnWidth: column,
           hyphenation: hyphenationOn[p],
           firstLineIndent: first[p]!,
+          leftIndent: left[p]!,
+          spaceBefore: spaceBefore[p]!,
+          spaceAfter: spaceAfter[p]!,
+          hyphenateAcrossColumns: acrossColumns[p]!,
           ...(chars.includes('ß') && sharpSInCapitals(para) ? { unsupported: [SHARP_S_CAPS] } : {}),
         });
       }
@@ -317,6 +324,9 @@ export class DomPort implements Port {
     const out: ReadLine[] = [];
     const lineInPara = new Map<number, number>();
     let first = -1;
+    // Columns numbered through the story's frames in flow order (flow.ts pours planned lines into them).
+    const columnBase: number[] = [];
+    frames.reduce((n, f, k) => ((columnBase[k] = n), n + f.columns.length), 0);
     containers.forEach((container: Any, ci: number) => {
       // Lines are read per frame: overset lines have no baseline, and reading them throws.
       const lines = container.lines;
@@ -338,7 +348,8 @@ export class DomPort implements Port {
         const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
         const size = sizeOf.get(p) ?? 10;
         const [left, right] = this.wrapNarrowed(frame.page, baselines[i]!, size, col.left, col.right);
-        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: left, columnRight: right, gutter: col.gutter, size, limit: frame.bottom };
+        const column = columnBase[ci]! + frame.columns.indexOf(col);
+        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: left, columnRight: right, gutter: col.gutter, size, limit: frame.bottom, column, columnBounds: [col.left, col.right] };
         const k = lineInPara.get(p) ?? 0;
         lineInPara.set(p, k + 1);
         out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });
@@ -389,6 +400,11 @@ export class DomPort implements Port {
    * The part of a column a line beside a text-wrap object may use: an object at the column's left edge moves the
    * line's start, any other one ends the line where the object begins (bounding box, both sides treated as right).
    */
+  /** A column at a baseline after other objects' text wrap (Port.narrow, for predicted slots). */
+  narrow(page: number, baseline: number, size: number, left: number, right: number): [number, number] {
+    return this.wrapNarrowed(page, baseline, size, left, right);
+  }
+
   private wrapNarrowed(page: number, baseline: number, size: number, left: number, right: number): [number, number] {
     const boxes = this.wrapObstacles().get(page);
     if (!boxes) return [left, right];

@@ -2,6 +2,19 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-18 (later) — Long multi-column stories settle in one pass (ADR-030)
+
+The designer chose to fix the rounds first.
+
+- **`flow.ts`** (pure): `predictSlots` pours the planned lines into the read-back columns in story order. Read-back slots now carry `column` (flow order through frames and columns) and `columnBounds` (before text wrap); `ParagraphData` carries `leftIndent`, `spaceBefore`, `spaceAfter`, `hyphenateAcrossColumns`; `Port.narrow` gives a column's width at a baseline after other objects' text wrap. `FlatterSession.steer` uses the prediction (a line that stays put keeps its read-back slot); without column ids it falls back to the old placement.
+- **Column-end hyphens**: `avoidColumnEndHyphens` (in `plan` and before each re-steer) takes hyphenation points out of lines the prediction puts at the end of a column or frame when "Hyphenate Across Column" is off. That was the cause of the remaining rounds: one refused hyphen per round, each moving every later line.
+- **Diagnostics**: `ApplyResult.roundLog` (per round: paragraphs off plan, re-planned for widths, refused points, set as planned but elsewhere). The benchmark (`packages/panel/src/bench.ts`, `i41-speed`) takes `maxRounds` (0 = only the first steering pass, with planned, steered and read-back positions of the first wrong paragraphs).
+- **Fake composer**: columns (`columnLines`, `hideColumns` for comparison, no space before at a column top) and `hyphenateAcrossColumns: false`. Tests `flow.test.ts`: prediction unit tests; 36 paragraphs through 14-line columns settle in ≤ 3 rounds (with and without space before) while the old placement needs more; no hyphen on a column's last line and no refused points.
+- Fake composer, before → now: 120 paragraphs 11 → 2 rounds; 300 paragraphs 783/1,500 → 1,500/1,500 lines in 3 rounds.
+- **InDesign** (8 facing pages, three columns, 62,000 characters, precise Laufweite with word spaces, script run to completion): 762/1,513 lines in 12 rounds and 129 s → **1,584/1,584 after one steering pass, 62 s**. Slider move: draft 6.8 s, word spaces 16 s, verify 1.2 s (was 22 s).
+- What is left of the 62 s: the first steer (about 45 s), nearly all of it tracking writes (one per line plus one per adjusted word space, about 15,000 here). Next: write word-space tracking per line in one call instead of per space, run the work as a script from the panel (6–10 times faster DOM calls), combs instead of teeth, chunks with progress and Cancel.
+- Not released yet; the panel the designer has installed (0.6.2) does not have this.
+
 ## 2026-11-18 — Why long multi-column stories are so slow: research and measurements
 
 The designer tests long stories on facing pages with three columns each and has had to force-quit InDesign several times. They asked for research first, then allowed measurements in throwaway documents. Findings (details and tables in `docs/spike-results.md`, "Speed of long stories in multi-column spreads"):

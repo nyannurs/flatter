@@ -24,6 +24,12 @@ export interface FakeOptions {
   maxLines?: number;
   /** A second, threaded frame of another width: from this line of the story on, lines have this measure. */
   frameFrom?: { line: number; measure: number };
+  /** Columns of this many lines side by side (a story through many columns); no space before at a column top. */
+  columnLines?: number;
+  /** Leave the column ids out of the read-back, as before slots were predicted (for comparison). */
+  hideColumns?: boolean;
+  /** InDesign's "Hyphenate Across Column": false = the last line of a column never hyphenates. */
+  hyphenateAcrossColumns?: boolean;
   /** Compounds whose typed hyphen InDesign will not break after (like "master-builder" with hyphenation on). */
   refusesAfterHyphen?: (compound: string, at: number) => boolean;
 }
@@ -37,7 +43,7 @@ export class FakeInDesign implements Port {
   /** Tracking units per paragraph and character (1/1000 em). */
   tracking = new Map<number, number[]>();
   private readonly texts: string[];
-  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom' | 'runs'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number }; runs?: (LanguageRun[] | undefined)[] };
+  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom' | 'runs' | 'columnLines' | 'hideColumns' | 'hyphenateAcrossColumns'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number }; runs?: (LanguageRun[] | undefined)[]; columnLines?: number; hideColumns?: boolean; hyphenateAcrossColumns?: boolean };
   /** Every probe call: the language asked for (undefined = the paragraph's) and the words. */
   probes: { language: string | undefined; words: string[] }[] = [];
 
@@ -58,6 +64,9 @@ export class FakeInDesign implements Port {
       measure: this.o.measure,
       columnWidth: this.o.measure,
       firstLineIndent: 0,
+      spaceBefore: index > 0 ? this.o.spaceBefore : 0,
+      spaceAfter: 0,
+      ...(this.o.hyphenateAcrossColumns !== undefined ? { hyphenateAcrossColumns: this.o.hyphenateAcrossColumns } : {}),
     }));
   }
 
@@ -105,19 +114,36 @@ export class FakeInDesign implements Port {
     const out: ReadLine[] = [];
     let y = 0;
     let storyLine = 0;
+    // Columns: a line fits while its baseline plus 0.3 of the type size stays above the column's bottom.
+    const columnLines = this.o.columnLines;
+    const bottom = columnLines ? this.o.leading * columnLines + 0.3 * this.o.size : undefined;
+    let column = 0;
+    let atTop = true;
     this.texts.forEach((text, paragraph) => {
-      y += paragraph > 0 ? this.o.spaceBefore : 0;
       const chars = [...text];
       let start = 0;
       let line = 0;
       while (start < chars.length) {
-        const baseline = y + this.o.leading;
+        let baseline = atTop ? this.o.leading : y + this.o.leading + (line === 0 && paragraph > 0 ? this.o.spaceBefore : 0);
+        if (bottom !== undefined && !atTop && baseline + 0.3 * this.o.size > bottom) {
+          column++;
+          baseline = this.o.leading;
+        }
+        atTop = false;
         const measure = this.o.frameFrom && storyLine >= this.o.frameFrom.line ? this.o.frameFrom.measure : this.o.measure;
-        const slot: LineSlot = { page: 0, baseline, startX: 0, columnLeft: 0, columnRight: measure, gutter: 10, size: this.o.size, ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : {}) };
-        const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size);
+        const x0 = columnLines ? column * (this.o.measure + 10) : 0;
+        const slot: LineSlot = {
+          page: 0, baseline, startX: x0, columnLeft: x0, columnRight: x0 + measure, gutter: 10, size: this.o.size,
+          ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : bottom !== undefined ? { limit: bottom } : {}),
+          ...(columnLines && !this.o.hideColumns ? { column, columnBounds: [x0, x0 + measure] as [number, number] } : {}),
+        };
+        const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size && t.bounds[3] > x0 && t.bounds[1] < x0 + measure + 10);
         const max = tooth ? Math.min(tooth.bounds[1] - slot.startX, measure) : measure;
         const track = this.tracking.get(paragraph) ?? [];
-        const { end, hyphenated } = this.breakLine(chars, start, max, (k) => advance(chars[k]!) + ((track[k] ?? 0) * this.o.size) / 1000);
+        // The last line of a column: no line below it fits.
+        const lastInColumn = bottom !== undefined && baseline + this.o.leading + 0.3 * this.o.size > bottom;
+        const noHyphen = lastInColumn && this.o.hyphenateAcrossColumns === false;
+        const { end, hyphenated } = this.breakLine(chars, start, max, (k) => advance(chars[k]!) + ((track[k] ?? 0) * this.o.size) / 1000, noHyphen);
         let last = end - 1;
         while (last > start && chars[last] === ' ') last--;
         out.push({ paragraph, line, lastVisible: last, hyphenated, slot });
@@ -136,7 +162,7 @@ export class FakeInDesign implements Port {
   }
 
   /** Greedy: the last break that fits within max (+ tolerance). Returns one past the line's last character. */
-  private breakLine(chars: string[], start: number, max: number, adv: (k: number) => number): { end: number; hyphenated: boolean } {
+  private breakLine(chars: string[], start: number, max: number, adv: (k: number) => number, noHyphen = false): { end: number; hyphenated: boolean } {
     const limit = max + this.o.tolerance;
     let width = 0;
     let best: { end: number; hyphenated: boolean } | undefined;
@@ -162,7 +188,7 @@ export class FakeInDesign implements Port {
         // Hyphenation point before chars[k]?
         const wordEnd = (() => { let e = k; while (e < chars.length && /\p{L}/u.test(chars[e]!)) e++; return e; })();
         const word = chars.slice(wordStart, wordEnd).join('');
-        if (/^\p{L}+$/u.test(word) && this.o.accepts(word, this.o.language).includes(k - wordStart) && width + HYPHEN + this.trackOf(chars, k) <= limit) best = { end: k, hyphenated: true };
+        if (!noHyphen && /^\p{L}+$/u.test(word) && this.o.accepts(word, this.o.language).includes(k - wordStart) && width + HYPHEN + this.trackOf(chars, k) <= limit) best = { end: k, hyphenated: true };
       }
       width += adv(k);
       if (width > limit && best) return best;

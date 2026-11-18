@@ -25,6 +25,10 @@ export interface LineSlot {
   size: number;
   /** Lowest baseline that still fits in this frame or column; lines are never extrapolated past it. */
   limit?: number;
+  /** The column's place in the story's flow (frame by frame, column by column), for predicting where lines go. */
+  column?: number;
+  /** The column's [left, right] before text wrap narrowed it. */
+  columnBounds?: [number, number];
 }
 
 export interface ToothSpec {

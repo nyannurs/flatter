@@ -248,3 +248,12 @@ InDesign reports a paragraph's language from its first character, and Flatter us
 ## ADR-029: Flatter stays a bespoke tool, set when the text is final (2026-11-02)
 
 The designer's assessment after reviewing where Flatter can break in large editorial projects: an InDesign plugin cannot follow every edit in real time, so Flatter is not meant to keep a rag live while editors change the text. It stays a tool for the designer and a few colleagues, used when the text is final, with Apply after edits and Freeze before handing a file on. Work goes into making that use reliable (correct results on the content such projects contain), not into real-time tracking of edits, InCopy workflows or hands-off operation.
+
+## ADR-030: Teeth go where planned lines will land, and column-end lines plan no hyphen (2026-11-18)
+
+Teeth were placed at the slots each paragraph's lines had before planning. When a paragraph gained or lost a line, every later line moved and its tooth sat one line off until the next read-back; a story through many columns settled about one column boundary per round and ran out of rounds (8 pages of three columns: 762 of 1,513 lines as planned after 12 rounds).
+
+- **Prediction** (`flow.ts`): the planned lines are poured into the columns read back last, in story order: each column's first baseline, the paragraph's leading inside it, the read-back gap (or leading plus space after and before) between paragraphs, a paragraph that starts a column although the previous one had room keeps starting one (breaks, keep options). A column the text went on from is full at its lowest read-back line, because InDesign's rule for the last line that fits is stricter than a descent estimate. Lines that stay where they were keep their read-back slot. The read-back still checks and corrects.
+- **No hyphen at a column end**: with "Hyphenate Across Column" off (Flatter's setting) InDesign never hyphenates the last line of a column or frame. A planned hyphen there came back refused one round at a time. The planner now takes those points out (class X for that plan) on lines the prediction puts at a column end, and plans again (up to four passes).
+- Result: the same 8 pages set every line (1,584 of 1,584) after one steering pass, Apply 129 s → 62 s, verify after a slider move 22 s → 1.2 s.
+
