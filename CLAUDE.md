@@ -31,6 +31,7 @@ npm run test:indesign   # adapter integration tests inside the running InDesign 
 npm run panel           # dev build into dist/dev-panel as "Flatter (dev)" (own plugin id: runs beside the installed release)
 npm run package         # release build → dist/Flatter-<version>.ccx (bump "version" in packages/panel/plugin/manifest.json first)
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install "$PWD/dist/Flatter-<version>.ccx"   # install for the user (InDesign restart needed)
+"/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --remove "Flatter"   # uninstall the installed release first when asked
 node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)
 node tools/indesign/uxp-load.mjs reload   # after every panel build
 tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4, selfcheck, alarm-demo, panel-state, recovery)
