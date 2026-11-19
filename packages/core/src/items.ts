@@ -75,15 +75,3 @@ export const glue = (width: number, opts: Omit<Glue, 'type' | 'width'> = {}): Gl
   width,
   ...opts,
 });
-
-export const hyphenPoint = (
-  width: number,
-  quality: HyphenClass,
-  opts: Omit<Penalty, 'type' | 'width' | 'flagged' | 'quality'> = {},
-): Penalty => ({ type: 'penalty', width, flagged: true, quality, ...opts });
-
-export const forcedBreak = (): Penalty => ({ type: 'penalty', width: 0, flagged: false, forced: true });
-
-export const isBox = (it: Item | undefined): it is Box => it?.type === 'box';
-export const isGlue = (it: Item | undefined): it is Glue => it?.type === 'glue';
-export const isPenalty = (it: Item | undefined): it is Penalty => it?.type === 'penalty';

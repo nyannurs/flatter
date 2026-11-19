@@ -65,7 +65,7 @@ const UNITS = words(`% ‰ °C °F ° € $ £ ¥ EUR USD CHF GBP kg g mg µg t 
 const core = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.%‰°€$£¥]+$/gu, '');
 const bare = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 const endsClause = (t: string) => /[,;:!?)\]»«"”“–—]$/.test(t) || (/\.$/.test(t) && !/^\p{L}{1,4}\.$/u.test(core(t)));
-const NUMBER = /^[+\-−±]?\d[\d.,'’  ]*$/;
+const NUMBER = /^[+\-−±]?\d[\d.,'’\u00a0\u202f\u2009]*$/; // digit groups: thin and no-break spaces
 
 export function createSenseRule(language: HyphenLanguage, costs: Partial<SenseCosts> = {}): BreakCostRule {
   const c = { ...DEFAULT_SENSE_COSTS, ...costs };

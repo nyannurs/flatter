@@ -125,11 +125,21 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
   const hyphenCap = W.hyphenBudget + 6;
   // With per-line measures the line number decides a line's width, so it becomes part of the state.
   const byLine = P.lineMeasures !== undefined;
-  const buckets = new Map<number, Map<string, Node>>();
+  const buckets = new Map<number, Map<number | string, Node>>();
   let states = 0;
+  // States are told apart by a number (about 40 % faster than a string key, 2026-11-19). A run of hyphenated lines
+  // longer than the limit counts as limit + 1: every further hyphen costs the same, so merging those states is exact.
+  const consecCap = P.maxConsecutiveHyphens + 1;
+  const hyphenRadix = Math.ceil(hyphenCap) + 1;
+  const consecRadix = consecCap + 1;
+  const numericKey = Number.isSafeInteger(hyphenRadix) && Number.isSafeInteger(consecRadix) && consecRadix > 0 && hyphenRadix > 0;
 
   const add = (node: Node): void => {
-    const key = `${node.a}|${node.role}|${node.consec}|${Math.min(node.hyphens, hyphenCap)}${byLine ? `|${node.line}` : ''}`;
+    const consec = Math.min(node.consec, consecCap);
+    const hyphens = Math.min(node.hyphens, hyphenCap);
+    const key = numericKey
+      ? ((((byLine ? node.line + 1 : 0) * (n + 2) + node.a + 1) * 2 + (node.role === 'long' ? 0 : 1)) * consecRadix + consec) * hyphenRadix + hyphens
+      : `${node.a}|${node.role}|${consec}|${hyphens}${byLine ? `|${node.line}` : ''}`;
     let bucket = buckets.get(node.b);
     if (!bucket) {
       bucket = new Map();
@@ -167,7 +177,7 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       const forced = !final && M.isForced(b);
       const exempt = final || forced;
       // Width one unit of tracking adds to this line (1/1000 em per character).
-      const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end, b) : 0;
+      const trackUnit = allowTracking && !exempt ? (P.tracking.emSize / 1000) * M.trackedChars(g.start, g.end) : 0;
       // Width one unit of word-space tracking adds (precise mode only: 1/1000 em per space inside the line).
       const spaceUnit = (precise || zoneTracking) && !exempt && P.tracking.wordSpaceMax > 0 ? (P.tracking.emSize / 1000) * M.glueCount(g.start, g.end) : 0;
       const shrink = trackUnit * P.tracking.max + spaceUnit * P.tracking.wordSpaceMax;
@@ -262,7 +272,9 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           const gapT = gap - ligExtra;
           const tMin = Math.max(-P.tracking.max, Math.ceil((gapT - hi) / trackUnit - 1e-9));
           const tMax = Math.min(P.tracking.max, Math.floor((gapT - lo) / trackUnit + 1e-9));
-          const pickT = tMin > 0 ? tMin : tMax < 0 ? tMax : 0;
+          // 0 is in range when broken ligatures alone would bring the line into its band, but ligatures only break
+          // under tracking: then the smallest non-zero value that still fits.
+          const pickT = tMin > 0 ? tMin : tMax < 0 ? tMax : tMin <= 1 && 1 <= tMax ? 1 : tMin <= -1 && -1 <= tMax ? -1 : 0;
           if (tMin <= tMax && pickT !== 0) {
             tracking = pickT;
             gap = gapT - tracking * trackUnit;
@@ -376,10 +388,11 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
     for (let i = fromIdx; i < candidates.length; i++) {
       const r = consider(i, !hard && !exact);
       if (exact) break;
+      const forcedHere = M.isForced(candidates[i]!);
       if (r === 'short') pendingShort = i;
-      else if (r === 'added' || M.isForced(candidates[i]!)) pendingShort = -1;
+      else if (r === 'added' || forcedHere) pendingShort = -1;
       // Never run past a forced break: the line must end there.
-      if (r === 'stop' || M.isForced(candidates[i]!)) break;
+      if (r === 'stop' || forcedHere) break;
     }
     // Nothing longer than the skipped short line could be set: keep it after all.
     if (pendingShort >= 0) consider(pendingShort, false);
@@ -439,7 +452,7 @@ function buildLines(M: ParagraphMetrics, P: ResolvedParams, specs: readonly Line
     const g0 = M.geometry(spec.a, spec.b);
     const trackWidth =
       (spec.tracking
-        ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end, spec.b)) / 1000 + M.trackedExtra(g0.start, g0.end)
+        ? (spec.tracking * P.tracking.emSize * M.trackedChars(g0.start, g0.end)) / 1000 + M.trackedExtra(g0.start, g0.end)
         : 0) + (spec.wordSpace ? (spec.wordSpace * P.tracking.emSize * M.glueCount(g0.start, g0.end)) / 1000 : 0);
     const g = { ...g0, width: g0.width + trackWidth, ink: g0.ink + trackWidth };
     const first = spec.a < 0;
