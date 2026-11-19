@@ -123,3 +123,21 @@ describe('inflected forms of listed words', () => {
     expect(safe(de, 'Wachstuben')).not.toMatch(/Wach-|Wachs-/);
   });
 });
+
+describe('words that are also JavaScript object members', () => {
+  it('hyphenates "constructor" and friends without throwing (crashed Apply on English text, 2026-11-19)', () => {
+    const words = Object.getOwnPropertyNames(Object.prototype).filter((n) => /^\p{L}+$/u.test(n));
+    expect(words).toContain('constructor');
+    for (const h of [de, us, gb]) for (const w of words) for (const v of [w, w[0]!.toUpperCase() + w.slice(1)]) expect(() => h.points(v)).not.toThrow();
+  });
+});
+
+describe('never-hyphenate tokens (plan §5.1)', () => {
+  it('gives camelCase identifiers and words in capitals no points of their own', () => {
+    for (const [h, w] of [[de, 'JavaScript'], [de, 'iPhones'], [de, 'McDonalds'], [us, 'eBooking'], [de, 'UNESCO'], [us, 'NASDAQ']] as const) expect(h.points(w), w).toEqual([]);
+    expect(h3(de, 'Flattersatz')).toBeGreaterThan(0);
+  });
+});
+function h3(h: typeof de, w: string): number {
+  return h.points(w).filter((p) => p.quality === 'A' || p.quality === 'B').length;
+}

@@ -86,6 +86,8 @@ export function createHyphenator(opts: HyphenatorOptions): Hyphenator {
 
   function compute(word: string): ClassifiedPoint[] {
     if (!LETTERS_ONLY.test(word)) return [];
+    // Plan §5.1: camelCase identifiers and words in capitals (abbreviations) get no points of our own.
+    if (neverHyphenateToken(word)) return [];
     const key = normalise(word, lang);
     const n = word.length;
     const points = new Map<number, ClassifiedPoint>();
@@ -191,7 +193,8 @@ export function createHyphenator(opts: HyphenatorOptions): Hyphenator {
           if (Math.abs(j - i) === 1 && VOWEL.test(word[Math.min(i, j)]!)) veto(i, 'single vowel at the edge of a word part');
         }
       } else {
-        if (MISLEADING_EN[key]?.includes(i)) veto(i, 'misleading division');
+        // Own entries only: words like "constructor" would otherwise find Object.prototype members (crashed Apply).
+        if (Object.hasOwn(MISLEADING_EN, key) && MISLEADING_EN[key]!.includes(i)) veto(i, 'misleading division');
         if (lang === 'en-GB' && !exception && p.quality !== 'X') {
           const inside = britishWholeParts(word).find(([a, b]) => i > a && i < b);
           if (inside) {

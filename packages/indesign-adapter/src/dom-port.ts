@@ -380,13 +380,14 @@ export class DomPort implements Port {
     const para = this.story.paragraphs.item(data.index);
     const key = this.probeKey(para, language);
     const cache = (this.probeCache[key] ??= {});
-    const missing = words.filter((w) => !(w in cache));
+    // Own entries only: "constructor" is "in" every object and was never probed.
+    const missing = words.filter((w) => !Object.hasOwn(cache, w));
     if (missing.length) {
       const frame = this.scratchFrame(para, language);
       for (const w of missing) cache[w] = w.includes('-') ? this.probeCompound(frame, w) : this.probeWord(frame, w);
       this.doc.insertLabel(PROBE_LABEL, JSON.stringify(this.probeCache));
     }
-    return new Map(words.map((w) => [w, cache[w] ?? []]));
+    return new Map(words.map((w) => [w, Object.hasOwn(cache, w) ? cache[w]! : []]));
   }
 
   readLines(): ReadLine[] {
