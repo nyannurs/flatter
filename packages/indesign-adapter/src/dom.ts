@@ -268,7 +268,7 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
  * Fix settings, measure and probe, plan, steer and verify: one undo step "Flatter: Apply".
  * Returns a live session the panel can keep adjusting.
  */
-export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean } = {}): { live: LiveSession; report: ApplyReport } {
+export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean; paragraphs?: { from: number; to: number } } = {}): { live: LiveSession; report: ApplyReport } {
   const t0 = Date.now();
   if (isFrozen(story)) throw new FlatterUserError('This story is frozen. Unfreeze it to change the rag.');
   return undoableMode('Flatter: Apply', 'entire', () => {
@@ -280,6 +280,8 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     const fixMs = Date.now() - tFix;
     const layer = controlLayer(doc);
     const port = new DomPort(doc, story, layer);
+    // A preview on selected paragraphs: only those are planned and steered.
+    if (opts.paragraphs) port.only = opts.paragraphs;
     // Measure without the tracking an earlier Apply added.
     if (state.tracking) port.resetTracking(state.tracking);
     // A story duplicated from a Flatter story carries its tracking but not its record.
@@ -473,12 +475,94 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
   });
 }
 
+/**
+ * Set the whole story with these settings and freeze it, in one undo step "Flatter: Set whole story" (2026-11-19).
+ * Measures and plans every paragraph, then writes the tracking and a forced line break at every planned line end,
+ * without teeth and without read-back rounds: the breaks hold the lines wherever they land, so the columns and frames
+ * do not matter. The result is frozen like Freeze's (same condition), so Unfreeze and Remove work as usual.
+ * `missed` counts lines InDesign still broke on its own (a planned line wider than it measured).
+ */
+export function setWholeStory(story: Any, settings: ApplySettings = {}): { paragraphs: number; lines: number; breaks: number; hyphens: number; missed: number; ms: number; timings: Record<string, number> } {
+  const t0 = Date.now();
+  return undoable('Flatter: Set whole story', () => {
+    const doc = story.parent;
+    unfreezeInPlace(story);
+    const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
+    // Tracking from an earlier rag back to the base first: everything after (settings, measuring, inserting the
+    // breaks) is several times slower in text split into thousands of tracking ranges (2026-11-19).
+    resetTrackingTo(story, state.tracking);
+    state.settings = settings;
+    delete state.frozen;
+    const tFix = Date.now();
+    fixSettingsInPlace(story, state);
+    // A live rag (a preview) gives way: its teeth and strips go, its tracking is reset before measuring.
+    removeTeeth(doc, story);
+    removeBands(doc, String(story.id));
+    const port = new DomPort(doc, story, controlLayer(doc));
+    if (state.tracking) port.resetTracking(state.tracking);
+    if (settings.tracking?.enabled) port.resetLeftoverTracking();
+    const session = new FlatterSession(port);
+    const tPrep = Date.now();
+    try {
+      session.prepare(settings);
+    } finally {
+      port.dispose();
+    }
+    const tPlan = Date.now();
+    session.plan(settings);
+    const list = session.bakeList();
+    let cond = doc.conditions.itemByName(FROZEN_CONDITION);
+    if (!cond.isValid) cond = doc.conditions.add({ name: FROZEN_CONDITION });
+    cond.visible = true;
+    const tWrite = Date.now();
+    const written = port.bake(list, FROZEN_CONDITION);
+    const tCheck = Date.now();
+    // Lines InDesign broke on its own: every visible line should end at a forced break or a paragraph end.
+    story.recompose();
+    const text = Array.from(String(story.contents));
+    // Paragraph number of every character, to look only at the paragraphs Flatter set (not centred heads).
+    const planned = new Set(list.map((p) => p.index));
+    const paragraphAt: number[] = [];
+    let para = 0;
+    for (const c of text) {
+      paragraphAt.push(para);
+      if (c === '\r') para++;
+    }
+    let lines = 0;
+    let missed = 0;
+    for (const container of asArray(story.textContainers)) {
+      const n = Number(container.lines.length);
+      if (!n) continue;
+      const lengths = asArray(container.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
+      let at = Number(container.lines.item(0).characters.item(0).index);
+      for (const len of lengths) {
+        at += len;
+        if (!planned.has(paragraphAt[at - 1] ?? -1)) continue;
+        lines++;
+        const last = text[at - 1] ?? '';
+        if (text[at] !== undefined && !/[\r\n\u2028\u0003\u0004\u0018\u0019]/.test(last)) missed++;
+      }
+    }
+    const hyphens = list.reduce((s, p) => s + p.breaks.filter((b) => b.hyphen).length, 0);
+    state.frozen = { at: new Date().toISOString(), breaks: written.breaks, hyphens };
+    saveState(story, state, port);
+    const timings = { fixSettings: tPrep - tFix, prepare: tPlan - tPrep, plan: tWrite - tPlan, write: tCheck - tWrite, trackingWrites: written.tracking, trackingMs: written.trackingMs, breaksMs: written.breaksMs, check: Date.now() - tCheck };
+    return { paragraphs: list.length, lines, breaks: written.breaks, hyphens, missed, ms: Date.now() - t0, timings };
+  });
+}
+
 /** Take the characters Freeze inserted back out (no undo step of its own). */
 function unfreezeInPlace(story: Any): number {
   const state = readState(story);
   const cond = story.parent.conditions.itemByName(FROZEN_CONDITION);
   let removed = 0;
-  if (cond.isValid) {
+  if (cond.isValid && state?.frozen) {
+    // Tracking back to each paragraph's base first: removing characters from text split into thousands of tracking
+    // ranges cost about 30 ms each, from whole paragraphs a few (2026-11-19).
+    resetTrackingTo(story, state.tracking);
+    removed = removeByCondition(story, cond);
+  }
+  if (cond.isValid && removed === 0) {
     const text = Array.from(String(story.contents));
     for (let k = text.length - 1; k >= 0; k--) {
       if (text[k] !== '\n' && text[k] !== '-') continue;
@@ -495,6 +579,48 @@ function unfreezeInPlace(story: Any): number {
     story.insertLabel(STORY_LABEL, JSON.stringify(state));
   }
   return removed;
+}
+
+/** Each recorded paragraph's tracking back to its base (whole paragraphs, one write each). */
+function resetTrackingTo(story: Any, base: Record<string, number> | undefined): void {
+  for (const [p, t] of Object.entries(base ?? {})) {
+    const para = story.paragraphs.item(Number(p));
+    if (para.isValid) para.texts.item(0).tracking = t;
+  }
+}
+
+/**
+ * Remove every character of the story that carries this condition with one GREP change (the user's Find/Change GREP
+ * settings are put back afterwards). Returns how many characters went, or 0 when the change did not run.
+ */
+function removeByCondition(story: Any, cond: Any): number {
+  const app = indesign().app;
+  const NOTHING = indesign().NothingEnum.NOTHING;
+  const saved = { find: app.findGrepPreferences.properties, change: app.changeGrepPreferences.properties };
+  const before = Number(story.characters.length);
+  try {
+    app.findGrepPreferences = NOTHING;
+    app.changeGrepPreferences = NOTHING;
+    app.findGrepPreferences.findWhat = '[\\n-]';
+    app.findGrepPreferences.appliedConditions = [cond];
+    app.changeGrepPreferences.changeTo = '';
+    story.changeGrep();
+    return before - Number(story.characters.length);
+  } catch {
+    return 0;
+  } finally {
+    app.findGrepPreferences = NOTHING;
+    app.changeGrepPreferences = NOTHING;
+    for (const [prefs, props] of [[app.findGrepPreferences, saved.find], [app.changeGrepPreferences, saved.change]] as const) {
+      for (const [k, v] of Object.entries(props ?? {})) {
+        try {
+          prefs[k] = v;
+        } catch {
+          /* read-only or not applicable */
+        }
+      }
+    }
+  }
 }
 
 /** Unfreeze: remove the fixed line breaks and hyphens Freeze inserted. One undo step. Apply again afterwards. */

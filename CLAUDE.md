@@ -70,7 +70,7 @@ docs/spike-results.md InDesign spike findings (Phase 0)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
-Threaded frames of different widths are supported (per-line measures, ADR-018); the panel has German / English language buttons.
+Threaded frames of different widths are supported (per-line measures, ADR-018); the panel has German / English language buttons. Long stories: a text selection makes Apply a preview on those paragraphs, and Set whole story writes the whole story frozen in one go (ADR-032, `setWholeStory`, `i45-set-whole`).
 
 Planned but not created yet: review list (Phase 5), signing and licence texts in the package (Phase 7). Freeze/Unfreeze exists (ADR-019).
 

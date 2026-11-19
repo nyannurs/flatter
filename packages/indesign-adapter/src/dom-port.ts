@@ -45,6 +45,51 @@ const BATCH_SCRIPT = [
   '}',
 ].join('\n');
 
+/**
+ * Set whole story (2026-11-19): forced line breaks (with a hyphen where a planned line ends inside a word) at every
+ * planned line end, from the end of the story backwards so earlier positions stay valid, then the planned tracking
+ * at positions moved by the inserted characters. The inserted characters carry the condition Freeze uses, so Unfreeze
+ * and Remove take them out again. Breaks first: inserting text after the tracking had split the story into thousands
+ * of style ranges cost 23–33 ms per break; before it, 5 ms ("-\n" in one write). 8 pages of three columns: writing
+ * 38–52 s → 15 s.
+ */
+const BAKE_SCRIPT = [
+  "const id = require('indesign');",
+  'const app = id.app;',
+  "const job = JSON.parse(require('uxp').script.args[0]);",
+  'const doc = app.documents.itemByID(job.doc);',
+  'const story = doc.stories.itemByID(job.story);',
+  'const chars = story.characters;',
+  'const cond = doc.conditions.itemByName(job.condition);',
+  'const ips = story.insertionPoints;',
+  'const t0 = Date.now();',
+  'for (const b of job.breaks) {',
+  "  ips.item(b[0]).contents = b[1] ? '-\\n' : '\\n';",
+  '  chars.itemByRange(b[0], b[0] + (b[1] ? 1 : 0)).applyConditions([cond], true);',
+  '}',
+  'const t1 = Date.now();',
+  '// Inserted characters before a position, counted from the start (breaks are sorted from the end).',
+  'const asc = job.breaks.map((b) => [b[0], b[1] ? 2 : 1]).reverse();',
+  'const before = [0];',
+  'for (const a of asc) before.push(before[before.length - 1] + a[1]);',
+  'const shift = (k) => {',
+  '  let lo = 0;',
+  '  let hi = asc.length;',
+  '  while (lo < hi) {',
+  '    const mid = (lo + hi) >> 1;',
+  '    if (asc[mid][0] <= k) lo = mid + 1;',
+  '    else hi = mid;',
+  '  }',
+  '  return k + before[lo];',
+  '};',
+  'for (const w of job.tracking) {',
+  '  const a = shift(w[0]);',
+  '  const e = shift(w[1]);',
+  '  (a === e ? chars.item(a) : chars.itemByRange(a, e)).tracking = w[2];',
+  '}',
+  "require('uxp').script.setResult('done ' + (job.tracking.length + job.breaks.length) + ' ' + (Date.now() - t1) + ' ' + (t1 - t0));",
+].join('\n');
+
 /** Probe cache entries from other versions are dropped (see the DomPort constructor). */
 const PROBE_VERSION = 'v3';
 const TOLERANCE = 0.4;
@@ -205,6 +250,9 @@ export class DomPort implements Port {
   readonly story: Any;
   readonly layer: Any;
 
+  /** Work on these paragraphs only (a preview on a selection); the others are left as they are. */
+  only: { from: number; to: number } | undefined;
+
   constructor(doc: Any, story: Any, layer: Any) {
     this.doc = doc;
     this.story = story;
@@ -267,7 +315,7 @@ export class DomPort implements Port {
       // Leave out paragraphs that start in the overset text: none of their lines can be steered.
       // A paragraph that starts in a frame is planned whole; only its visible lines get teeth.
       // Centred and right-aligned paragraphs are left alone (ADR-026).
-      if (start <= visibleEnd && len > 1 && !keepsAlignment(alignments[p]!)) {
+      if (start <= visibleEnd && len > 1 && !keepsAlignment(alignments[p]!) && (!this.only || (p >= this.only.from && p <= this.only.to))) {
         let chars = text.slice(start, end);
         if (chars[chars.length - 1] === '\r') chars = chars.slice(0, -1);
         const para = paras.item(p);
@@ -556,6 +604,35 @@ export class DomPort implements Port {
       const w = this.written.get(p);
       if (w) w.ranges = Number(this.story.paragraphs.item(p).textStyleRanges.length);
     }
+  }
+
+  /**
+   * Set whole story: write each paragraph's tracking and insert forced line breaks at the planned line ends, in one
+   * script InDesign runs to completion. Breaks are paragraph-relative character positions where the next line starts.
+   * Throws when the script does not report everything done (the caller's undo step is then rolled back).
+   */
+  bake(paragraphs: readonly { index: number; spans: readonly TrackingSpan[]; breaks: readonly { at: number; hyphen: boolean }[] }[], condition: string): { tracking: number; breaks: number; ms: number; trackingMs: number; breaksMs: number } {
+    if (!this.paraStarts.length) this.paragraphs();
+    this.beginWrites();
+    for (const p of paragraphs) this.setTracking(p.index, p.spans);
+    const tracking = this.batch!.tracking;
+    this.batch = undefined;
+    const breaks: [number, boolean][] = [];
+    for (const p of paragraphs) {
+      const start = this.paraStarts[p.index]!;
+      // The inserted characters take the formatting of the character before them: the trailing space or the line's
+      // last glyph, which carry the paragraph's base tracking (no span covers them).
+      for (const b of p.breaks) breaks.push([start + b.at, b.hyphen]);
+    }
+    breaks.sort((a, b) => b[0] - a[0]);
+    const t0 = Date.now();
+    const job = JSON.stringify({ doc: Number(this.doc.id), story: Number(this.story.id), tracking, breaks, condition });
+    const result = String(this.id.app.doScript(BAKE_SCRIPT, this.id.ScriptLanguage.UXPSCRIPT, [job], this.id.UndoModes.AUTO_UNDO, 'Flatter'));
+    const [word, count, trackingMs, breaksMs] = result.split(' ');
+    if (word !== 'done' || Number(count) !== tracking.length + breaks.length) throw new Error(`Set whole story: InDesign did not finish writing the line breaks (${result.slice(0, 120)})`);
+    this.written.clear();
+    this.lastSpans.clear();
+    return { tracking: tracking.length, breaks: breaks.length, ms: Date.now() - t0, trackingMs: Number(trackingMs), breaksMs: Number(breaksMs) };
   }
 
   private bandCache: { rect: Any; bounds: number[]; page: number; kind: BandSpec['kind'] }[] | undefined;

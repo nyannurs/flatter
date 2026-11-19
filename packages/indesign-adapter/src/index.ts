@@ -6,7 +6,7 @@ export type { Port, ParagraphData, ReadLine, TrackingSpan } from './port.ts';
 export { predictSlots, type FlowParagraph, type Narrow } from './flow.ts';
 export { paragraphLanguages, languageOf, NO_LANGUAGE, MIXED_LANGUAGES, type LanguageRun } from './languages.ts';
 // InDesign (UXP) entry points. Importing these outside InDesign is fine; calling them is not.
-export { applyFlatter, removeFlatter, liveIsStale, storySignature, freezeFlatter, unfreezeFlatter, isFrozen, FROZEN_CONDITION, checkSettings, inPoints, setStoryLanguage, storyLanguage, LANGUAGES, settingValue, openSession, liveUpdate, liveVerify, storedSettings, STORY_LABEL, type ApplyReport, type Check, type StoryState, type LiveSession } from './dom.ts';
+export { applyFlatter, setWholeStory, removeFlatter, liveIsStale, storySignature, freezeFlatter, unfreezeFlatter, isFrozen, FROZEN_CONDITION, checkSettings, inPoints, setStoryLanguage, storyLanguage, LANGUAGES, settingValue, openSession, liveUpdate, liveVerify, storedSettings, STORY_LABEL, type ApplyReport, type Check, type StoryState, type LiveSession } from './dom.ts';
 export { DomPort, readLanguageRuns, controlLayer, bandLayer, removeBands, clearMeasureCache, CONTROL_LAYER, BAND_LAYER, TOOTH_LABEL, PROBE_LABEL } from './dom-port.ts';
 export { FlatterUserError, isUserError } from './errors.ts';
 export { selfCheck, SELF_CHECK_TEXT, type SelfCheck, type SelfCheckResult } from './selfcheck.ts';

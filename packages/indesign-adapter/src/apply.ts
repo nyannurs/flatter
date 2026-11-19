@@ -317,6 +317,25 @@ export class FlatterSession {
     }
   }
 
+  /**
+   * What Set whole story writes: per paragraph, the tracking of every planned line (visible or not) and the places
+   * where a forced line break goes (paragraph-relative position of the next line's first character), with a hyphen
+   * where the line ends inside a word. Lines that already end at a forced break get none.
+   */
+  bakeList(): { index: number; spans: TrackingSpan[]; breaks: { at: number; hyphen: boolean }[] }[] {
+    return this.work.map((w) => {
+      const lines = w.plan.lines;
+      const breaks: { at: number; hyphen: boolean }[] = [];
+      for (let i = 0; i + 1 < lines.length; i++) {
+        const at = w.measured.charRange[lines[i + 1]!.startItem]?.[0];
+        if (at === undefined || at <= 0 || /[\n\u2028\r]/.test(w.data.chars[at - 1] ?? '')) continue;
+        const pen = w.items[lines[i]!.breakAt];
+        breaks.push({ at, hyphen: !!lines[i]!.endsWithHyphen && pen?.type === 'penalty' && pen.width > 0 });
+      }
+      return { index: w.data.index, spans: trackingSpans(w, lines), breaks };
+    });
+  }
+
   /** Every paragraph in the flow: planned ones with their planned line count, the others as read back. */
   private flowParagraphs(): FlowParagraph[] {
     const out = new Map<number, FlowParagraph>();
@@ -526,7 +545,7 @@ export function spaceWidthOf(data: ParagraphData): number {
  * then the first character of each word space inside the line with the line's word-space tracking on top
  * (ADR-015). Later spans override earlier ones.
  */
-function trackingSpans(w: Working, slots: readonly (LineSlot | undefined)[]): TrackingSpan[] {
+function trackingSpans(w: Working, slots: readonly unknown[]): TrackingSpan[] {
   const spans: TrackingSpan[] = [];
   w.plan.lines.forEach((l, i) => {
     if (slots[i] === undefined || (l.tracking === 0 && l.wordSpace === 0) || l.endItem <= l.startItem) return;

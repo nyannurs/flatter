@@ -2,6 +2,17 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-19 — Preview on a selection, Set whole story (ADR-032); release 0.6.6
+
+The designer (0.6.5 works, but a long three-column story is still slow) asked to tune settings on a few highlighted paragraphs and then apply them to the whole story in one go, frozen if faster; and that Laufweite must be quick there too.
+
+- **Panel**: selected text → Apply and sliders work on those paragraphs only; the story line shows "Selected: paragraphs 3–7". New button **Set whole story**; hint under the buttons. Unfreeze of a long story without a selection does not set it live again.
+- **Adapter**: `DomPort.only`, `openSession(..., { paragraphs })`, `FlatterSession.bakeList()` (spans and break positions per paragraph), `DomPort.bake()` with `BAKE_SCRIPT`, `setWholeStory()`; `unfreezeInPlace` resets tracking and removes frozen characters by GREP (condition), with the old loop as fallback.
+- **Tests**: `bake.test.ts` (the break list splits every paragraph into exactly its planned lines; hyphens where planned). `i45-set-whole` (now in `test:indesign`): preview on paragraphs 3–6 (42/42 lines), Set whole story on 8 three-column pages with centred heads every 20 paragraphs (152 paragraphs, 1,574 lines, 0 missed, no teeth left), Unfreeze gives the original text back, set again, Remove gives text and tracking back.
+- **Speed** (8 pages): Set whole story 57 s → 22 s and 112 s → 17 s for the second run, by inserting the breaks before the tracking and resetting old tracking first. Laufweite: about 8,000 writes in 6–7 s at full priority. Unfreeze 0.6 s.
+- Not measured inside the panel (only as scripts). Measuring (6 s here) still runs in the panel, so it may take longer there.
+- Release 0.6.6 packaged, published and installed in place of 0.6.5.
+
 ## 2026-11-18 (night) — 0.6.3 and 0.6.4 did not start; release 0.6.5
 
 The designer: "I click on a story, hit apply, and literally nothing happens." InDesign had no Flatter selection listener: the panel's `init()` never ran. The only change to the panel's start-up since 0.6.2 was a `plugin: { destroy }` hook in `entrypoints.setup` (added to remove the selection listener on unload, after the UDT reload dialogs); with it, setup apparently threw before `init()`, and nothing showed in the UXP log. The dev panel had shown the same symptom (loaded, never answered), wrongly put down to the panel not being shown. 0.6.5 removes the hook and calls `init()` whatever `entrypoints.setup` does. Released and installed in place of 0.6.4.

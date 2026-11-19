@@ -265,3 +265,13 @@ A panel's DOM calls are time-shared (Adobe) and measured 6–10 times slower tha
 - Tracking writes address characters by story position instead of "paragraph p, character k" (about 25 % faster per write in a long story).
 - Not done: measuring in such a script (prepare took 15 s instead of 7.7 s in a script context; unmeasured in the panel), per-line GREP for word spaces (fewer calls, but each costs as much as the writes it replaces, and it slowed the settings check), combs instead of teeth.
 
+## ADR-032: Preview on a selection, Set whole story frozen (2026-11-19)
+
+The designer's idea for long multi-column stories: try settings on a few selected paragraphs, then set the entire story in one go, frozen if that is faster. It is: a frozen rag needs no teeth and no read-back, because forced line breaks hold every line wherever it lands.
+
+- **Preview**: with text selected in the story, Apply and the sliders work on the selected paragraphs only (`openSession(..., { paragraphs })`, `DomPort.only`); the others stay as they are. A cursor or a selected frame still means the whole story.
+- **Set whole story** (`setWholeStory`, one undo step): Fix settings, remove teeth and strips, measure and plan every paragraph, then one script InDesign runs to completion inserts a forced line break (with a hyphen where the line ends inside a word) at every planned line end, from the end backwards, and then writes the planned tracking at the shifted positions. The inserted characters carry the Freeze condition, so the result is frozen: Unfreeze and Remove work as before. Reports lines that still broke early (none in the tests).
+- **Order matters**: breaks before tracking (inserting into text already split into thousands of tracking ranges cost 23–33 ms per break, before it 5 ms), "-\n" in one write, and tracking reset to each paragraph's base before anything else (also in Unfreeze).
+- **Unfreeze** resets the tracking and removes the frozen characters with one GREP change by condition (user's Find/Change settings restored); 0.6 s for 1,773 characters. In the panel, Unfreeze of a long story (more than 40 paragraphs, no selection) no longer sets the whole story live again.
+- 8 facing pages of three columns, precise Laufweite with word spaces (script context): Set whole story 22 s (measuring 6 s, Laufweite 7 s, breaks 8 s), again after Unfreeze 17 s; live Apply was 24 s with teeth and still slow on slider moves.
+

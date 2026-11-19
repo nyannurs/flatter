@@ -14,6 +14,7 @@ import {
   setStoryLanguage,
   storyLanguage,
   freezeFlatter,
+  setWholeStory,
   unfreezeFlatter,
   liveIsStale,
   isFrozen,
@@ -70,6 +71,8 @@ interface PanelState {
   lastAction: string;
   /** Steering failed and the story was measured again automatically; the first failure, for the alarm. */
   recovery?: { storyId: number; first: string };
+  /** The paragraphs the live session works on: "" for the whole story, "3-7" for a preview on a selection. */
+  scope?: string;
 }
 const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic', lastAction: '' };
 
@@ -129,6 +132,41 @@ export function targetStory(): Any | undefined {
   return undefined;
 }
 
+/**
+ * The paragraphs of the selected text in this story, for a preview on a few paragraphs (2026-11-19); undefined for a
+ * text frame, a cursor or text of another story (then Flatter works on the whole story).
+ */
+function selectedParagraphs(story: Any): { from: number; to: number } | undefined {
+  try {
+    const sel = app.selection;
+    const first = Array.isArray(sel) ? sel[0] : sel?.[0];
+    if (!first || first.constructorName === 'InsertionPoint' || first.constructorName === 'TextFrame') return undefined;
+    if (!first.parentStory || first.parentStory.id !== story.id) return undefined;
+    const n = Number(first.characters?.length ?? 0);
+    if (!n) return undefined;
+    const a = Number(first.characters.item(0).index);
+    const b = Number(first.characters.item(n - 1).index);
+    const raw = story.paragraphs.everyItem().index;
+    const starts = (Array.isArray(raw) ? raw : [raw]).map(Number);
+    const paragraphOf = (k: number) => {
+      let lo = 0;
+      let hi = starts.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (starts[mid]! <= k) lo = mid;
+        else hi = mid - 1;
+      }
+      return lo;
+    };
+    return { from: paragraphOf(a), to: paragraphOf(b) };
+  } catch {
+    return undefined;
+  }
+}
+
+const scopeKey = (scope: { from: number; to: number } | undefined) => (scope ? `${scope.from}-${scope.to}` : '');
+const scopeText = (scope: { from: number; to: number }) => (scope.from === scope.to ? `paragraph ${scope.from + 1}` : `paragraphs ${scope.from + 1}–${scope.to + 1}`);
+
 const FROZEN_HINT = 'This story is frozen: its line breaks are fixed in the text.';
 
 /** Freeze / Unfreeze button: label for the target story; off when Flatter is not on the story. */
@@ -152,9 +190,16 @@ function freezeToggle(): void {
     try {
       const n = unfreezeFlatter(story);
       updateFreezeButton(story);
-      setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Applying the rag again…');
       state.live = undefined;
       state.failed = undefined;
+      // A long story is not set live again by itself (that is what made long stories slow): preview a selection,
+      // or set the whole story again.
+      const long = Number(story.paragraphs.length) > 40;
+      if (long && !selectedParagraphs(story)) {
+        setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Select a few paragraphs and press Apply to try settings on them, then Set whole story.');
+        return;
+      }
+      setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Applying the rag again…');
       apply('Unfreeze');
     } catch (e) {
       fail(e);
@@ -582,13 +627,16 @@ function apply(action = 'Apply'): void {
   setStatus('Preparing…', '', 'Measuring the text and checking hyphenation. This happens once per story.');
   $('report').innerHTML = '';
   // Let the panel paint the status before the long synchronous work starts.
+  const scope = selectedParagraphs(story);
   setTimeout(() => {
     try {
-      const { live, report } = openSession(story, settingsFromUI());
+      const { live, report } = openSession(story, settingsFromUI(), scope ? { paragraphs: scope } : {});
       state.lastAction = action;
       state.live = live;
       state.storyId = story.id;
+      state.scope = scopeKey(scope);
       render(report, report.ms);
+      if (scope) $('meta').textContent = `Preview on ${scopeText(scope)}. Set whole story sets every paragraph with these settings. ${$('meta').textContent}`;
       updateFreezeButton(story);
     } catch (e) {
       state.live = undefined;
@@ -600,6 +648,38 @@ function apply(action = 'Apply'): void {
         state.pending = false;
         onInput();
       }
+    }
+  }, 30);
+}
+
+/**
+ * Set whole story: every paragraph with the panel's settings, written as fixed line breaks in one go (frozen), without
+ * the live steering that makes long stories slow (2026-11-19).
+ */
+function setWhole(): void {
+  const story = targetStory();
+  if (!story) {
+    setStatus('Select a text frame first.', 'bad');
+    return;
+  }
+  if (state.busy) return;
+  state.busy = true;
+  setStatus('Setting the whole story…', '', 'Measuring and planning every paragraph, then writing the line breaks. On a long story this takes a while, and InDesign does not respond until it is done.');
+  $('report').innerHTML = '';
+  setTimeout(() => {
+    try {
+      const r = setWholeStory(story, settingsFromUI());
+      state.live = undefined;
+      state.scope = undefined;
+      state.failed = undefined;
+      state.storyId = story.id;
+      updateFreezeButton(story);
+      const missed = r.missed ? ` ${r.missed} ${r.missed === 1 ? 'line' : 'lines'} did not fit and broke early.` : '';
+      setStatus(`Whole story set and frozen in ${(r.ms / 1000).toFixed(1)} s.`, r.missed ? 'bad' : 'ok', `${r.paragraphs} paragraphs, ${r.lines} lines, ${r.breaks} fixed line breaks (${r.hyphens} with a hyphen).${missed} To change it: Undo, or Unfreeze.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      state.busy = false;
     }
   }, 30);
 }
@@ -640,8 +720,8 @@ function tick(): void {
     return;
   }
   try {
-    if (!state.live || state.storyId !== story.id || !state.live.story.isValid) {
-      apply('slider on a new story');
+    if (!state.live || state.storyId !== story.id || !state.live.story.isValid || state.scope !== scopeKey(selectedParagraphs(story))) {
+      apply(state.live && state.storyId === story.id ? 'slider on another selection' : 'slider on a new story');
       return;
     }
     if (liveIsStale(state.live)) {
@@ -710,7 +790,8 @@ function onSelectionChanged(): void {
     return;
   }
   const words = String(story.contents).replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
-  $('target').textContent = `Story: ${words}…`;
+  const scope = selectedParagraphs(story);
+  $('target').textContent = scope ? `Story: ${words}… · Selected: ${scopeText(scope)}` : `Story: ${words}…`;
   showLanguage(story);
   updateFreezeButton(story);
   if (state.storyId !== story.id) {
@@ -746,6 +827,7 @@ function init(): void {
     state.failed = undefined;
   });
   $('remove').addEventListener('click', remove);
+  $('setWhole').addEventListener('click', setWhole);
   const setStyle = (style: 'aesthetic' | 'functional') => {
     if (state.style === style) return;
     state.style = style;
