@@ -4,7 +4,7 @@
  * InDesign or Flatter update and shows the compatibility alarm when a check fails.
  */
 import { compatibilityAlarms } from './apply.ts';
-import { applyFlatter, freezeFlatter, inPoints, removeFlatter, unfreezeFlatter } from './dom.ts';
+import { applyFlatter, freezeFlatter, inPoints, isFrozen, removeFlatter, setWholeStory, unfreezeFlatter } from './dom.ts';
 import { asArray, indesign, type Any } from './dom-port.ts';
 
 export interface SelfCheck {
@@ -92,6 +92,18 @@ export function selfCheck(): SelfCheckResult {
       if (after !== before) return `frozen story has ${after} lines instead of ${before}`;
       if (removed !== f.breaks + f.hyphens) return `Unfreeze removed ${removed} of ${f.breaks + f.hyphens} characters`;
       return true;
+    });
+    check('Set whole story (frozen in one go)', () => {
+      // The script InDesign runs to completion: forced breaks with the Freeze condition at every planned line end, then
+      // the planned tracking (ADR-032). Every line must end where planned, and Unfreeze must give the text back.
+      const r = setWholeStory(story, { tracking: { enabled: true, mode: 'precise', max: 10 }, wordSpaceShare: 0.25 });
+      if (r.lines < 5) return `only ${r.lines} lines`;
+      if (r.missed) return `${r.missed} of ${r.lines} lines broke before their planned end`;
+      if (!r.breaks) return 'no line break was written';
+      if (!isFrozen(story)) return 'the story is not marked frozen';
+      const removed = unfreezeFlatter(story);
+      if (removed !== r.breaks + r.hyphens) return `Unfreeze removed ${removed} of ${r.breaks + r.hyphens} characters`;
+      return String(story.contents) === original ? true : 'text differs after Unfreeze';
     });
     check('Remove restores the text', () => {
       removeFlatter(story);

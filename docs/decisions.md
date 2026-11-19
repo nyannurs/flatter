@@ -197,7 +197,7 @@ The designer asked for per-line word-space adjustment alongside tracking so line
 ## ADR-020: Self-check and compatibility alarm (2026-10-18)
 
 Flatter relies on InDesign behaviour that is not documented (composer and text wrap, tracking at line ends, ligatures under tracking, hyphenation probing). An InDesign update could change any of it.
-- After every version change of InDesign or Flatter the panel runs a self-check of the whole chain in a hidden document; on demand too.
+- After every version change of InDesign or Flatter the panel runs a self-check of the whole chain in a hidden document; on demand too. Since 0.6.9 the chain includes Set whole story (ADR-032).
 - One unmistakable signal for "this should never happen": a hot-magenta box at the top of the panel (not used for anything else; ordinary problems stay red, yellow and green). It fires on a failed self-check, on unexpected errors (anything not raised as `FlatterUserError`) and on results no healthy InDesign produces (most lines not as steered, no hyphenation points).
 - Thresholds are chosen so normal use never triggers them: every test so far set all visible lines as planned, and InDesign found points in most long words.
 

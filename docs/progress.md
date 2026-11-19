@@ -2,6 +2,11 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-19 (late night) — Self-check covers Set whole story; release 0.6.9
+
+- The self-check (after every InDesign or Flatter update, and on demand) now also runs Set whole story with precise Laufweite on its hidden test story: every line must end where planned, the story must be marked frozen, and Unfreeze must remove exactly the inserted characters and give the text back. `i20-selfcheck` checks that this step ran; all nine checks pass on InDesign 22.0 (1.3–1.7 s).
+- Release 0.6.9 (the audit's fixes, the shorter panel of ADR-034 and this check) packaged, published on GitHub and installed in place of 0.6.8. InDesign must be restarted to load it. The first start runs the self-check once (a few seconds). The new panel layout has not been looked at inside InDesign yet: the designer will check it.
+
 ## 2026-11-19 (night) — Codebase audit: bugs, speed, dead code, a shorter panel (ADR-034)
 
 Asked by the designer: find and fix bugs, find optimisations, remove dead code, simplify the panel. Baseline 203 unit tests; now 208, typecheck clean, `test:indesign` 13/13 (run after the adapter changes and again after the solver changes).
@@ -27,9 +32,9 @@ Asked by the designer: find and fix bugs, find optimisations, remove dead code, 
 - Simulator only: lines ending at an existing hyphen (E-Mail) are drawn with the letter before the hyphen untracked (`render.ts`, `untrackedTail`).
 - Exports used only by tests (`evaluateBreaks`, `splitAdjustment`, `defaultFlatterzone`, `flatterzoneRange`, `neverHyphenateToken`, `syllabifyPart`) and options no production code sets (hyphenator `authority`, `opinion`, `exceptions`, min lengths; `softBeam`; builder `interruptionCost`, `slashCost`): kept, they are tested API.
 - Spikes: all 50 still compile against the current packages; none deleted. Early Phase 0 spikes (`s1x-tooth`, `s1y-stroke`, `i7-scratch`, `i9-ref-growth` …) are history only; delete only if the designer wants a smaller `tools/` folder.
-- The self-check does not cover Set whole story yet.
+- The self-check does not cover Set whole story yet (done in 0.6.9, see above).
 
-**Release**: advisable. Users get the "constructor" crash fix, the phantom-line fix, the Freeze fix, faster planning and the new panel. Ask for 0.6.9 and look at the panel once it is installed.
+**Release**: advisable; done as 0.6.9 (entry above).
 
 ## 2026-11-19 (evening) — Remove and Unfreeze after reopening and editing (ADR-033); release 0.6.8
 

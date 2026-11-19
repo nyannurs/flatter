@@ -20,8 +20,8 @@ try {
   }
   const caught = broken.checks.filter((c: Any) => !c.ok).map((c: Any) => `${c.name}: ${c.detail}`);
   out = {
-    pass: healthy.ok && !broken.ok && caught.some((c: string) => c.startsWith('Hyphenation points')) && app.documents.length === docsBefore,
-    healthy: { ok: healthy.ok, ms: healthy.ms, indesign: healthy.indesign, failed: healthy.checks.filter((c) => !c.ok) },
+    pass: healthy.ok && healthy.checks.some((c) => c.name.startsWith('Set whole story')) && !broken.ok && caught.some((c: string) => c.startsWith('Hyphenation points')) && app.documents.length === docsBefore,
+    healthy: { ok: healthy.ok, ms: healthy.ms, indesign: healthy.indesign, checks: healthy.checks.map((c) => `${c.ok ? 'ok' : 'FAIL'} ${c.name}`), failed: healthy.checks.filter((c) => !c.ok) },
     brokenProbing: caught,
     docsLeftOpen: app.documents.length - docsBefore,
   };
