@@ -37,7 +37,6 @@ export interface MeasuredParagraph {
   unsupported: string[];
 }
 
-const BREAKABLE_SPACE = /^[ \u2002\u2003\u2004\u2005\u2006\u2008\u2009\u200a]$/;
 const NO_BREAK_SPACE = /^[\u00a0\u202f\u2007]$/;
 const FORCED_BREAK = /^[\n\u2028]$/;
 const SPACE = /^[ \u2002-\u200a\u00a0\u202f\u2007]$/;
