@@ -2,6 +2,10 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-19 (later) — The preview stays when the text is deselected; release 0.6.7
+
+The designer selected paragraphs, pressed Apply, pressed Escape to see the rag, moved a slider: Flatter set the whole story. The preview was derived from the current selection on every tick. Now Apply remembers the previewed paragraphs (`state.preview`); Apply and the sliders use the selected text's paragraphs, else that preview, until text elsewhere is selected, the story changes, or Remove / Set whole story ends it. With nothing selected, the sliders keep working on the live session's story. The story line shows "Preview: paragraphs …", and the status keeps the preview note after slider moves. To work on the whole story live again: select all its text (Cmd+A) and press Apply. Panel-only change, not tested in InDesign by script (the dev panel cannot be driven without showing it); release 0.6.7 installed in place of 0.6.6.
+
 ## 2026-11-19 — Preview on a selection, Set whole story (ADR-032); release 0.6.6
 
 The designer (0.6.5 works, but a long three-column story is still slow) asked to tune settings on a few highlighted paragraphs and then apply them to the whole story in one go, frozen if faster; and that Laufweite must be quick there too.

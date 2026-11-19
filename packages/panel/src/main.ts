@@ -73,6 +73,8 @@ interface PanelState {
   recovery?: { storyId: number; first: string };
   /** The paragraphs the live session works on: "" for the whole story, "3-7" for a preview on a selection. */
   scope?: string;
+  /** The previewed paragraphs, kept when the text is deselected (Escape, a click elsewhere) until other text is selected. */
+  preview?: { storyId: number; from: number; to: number };
 }
 const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic', lastAction: '' };
 
@@ -165,6 +167,24 @@ function selectedParagraphs(story: Any): { from: number; to: number } | undefine
 }
 
 const scopeKey = (scope: { from: number; to: number } | undefined) => (scope ? `${scope.from}-${scope.to}` : '');
+
+/**
+ * The paragraphs Apply and the sliders work on: the selected text's, or else the preview applied last in this story.
+ * Deselecting the text to see the rag (Escape) must not turn a slider move into the whole story (2026-11-19).
+ */
+function workingScope(story: Any): { from: number; to: number } | undefined {
+  const selected = selectedParagraphs(story);
+  if (selected) return selected;
+  const p = state.preview;
+  return p && p.storyId === story.id ? { from: p.from, to: p.to } : undefined;
+}
+
+/** The story to work on: the selection's, or the live session's when nothing is selected. */
+function workingStory(): Any | undefined {
+  const story = targetStory();
+  if (story) return story;
+  return state.live?.story?.isValid ? state.live.story : undefined;
+}
 const scopeText = (scope: { from: number; to: number }) => (scope.from === scope.to ? `paragraph ${scope.from + 1}` : `paragraphs ${scope.from + 1}–${scope.to + 1}`);
 
 const FROZEN_HINT = 'This story is frozen: its line breaks are fixed in the text.';
@@ -329,6 +349,13 @@ function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = ''
 }
 
 function render(r: ApplyResult, ms?: number): void {
+  renderResult(r, ms);
+  // A preview on a few paragraphs says so, after Apply and after every slider move.
+  const p = state.preview;
+  if (p && state.scope) $('meta').textContent = `Preview on ${scopeText(p)} (select other text to preview others). Set whole story sets every paragraph with these settings. ${$('meta').textContent}`;
+}
+
+function renderResult(r: ApplyResult, ms?: number): void {
   state.lastResult = r;
   let band = 0;
   let inRhythm = 0;
@@ -612,7 +639,7 @@ function recompute(action: string): void {
 
 /** Apply: measure, probe, plan, steer. Shows "Preparing…" first (it can take seconds on long stories). */
 function apply(action = 'Apply'): void {
-  const story = targetStory();
+  const story = workingStory();
   if (!story) {
     setStatus('Select a text frame first.', 'bad');
     return;
@@ -627,7 +654,7 @@ function apply(action = 'Apply'): void {
   setStatus('Preparing…', '', 'Measuring the text and checking hyphenation. This happens once per story.');
   $('report').innerHTML = '';
   // Let the panel paint the status before the long synchronous work starts.
-  const scope = selectedParagraphs(story);
+  const scope = workingScope(story);
   setTimeout(() => {
     try {
       const { live, report } = openSession(story, settingsFromUI(), scope ? { paragraphs: scope } : {});
@@ -635,8 +662,8 @@ function apply(action = 'Apply'): void {
       state.live = live;
       state.storyId = story.id;
       state.scope = scopeKey(scope);
+      state.preview = scope ? { storyId: story.id, ...scope } : undefined;
       render(report, report.ms);
-      if (scope) $('meta').textContent = `Preview on ${scopeText(scope)}. Set whole story sets every paragraph with these settings. ${$('meta').textContent}`;
       updateFreezeButton(story);
     } catch (e) {
       state.live = undefined;
@@ -657,7 +684,7 @@ function apply(action = 'Apply'): void {
  * the live steering that makes long stories slow (2026-11-19).
  */
 function setWhole(): void {
-  const story = targetStory();
+  const story = workingStory();
   if (!story) {
     setStatus('Select a text frame first.', 'bad');
     return;
@@ -671,6 +698,7 @@ function setWhole(): void {
       const r = setWholeStory(story, settingsFromUI());
       state.live = undefined;
       state.scope = undefined;
+      state.preview = undefined;
       state.failed = undefined;
       state.storyId = story.id;
       updateFreezeButton(story);
@@ -690,6 +718,7 @@ function remove(): void {
   try {
     const r = removeFlatter(story);
     state.live = undefined;
+    state.preview = undefined;
     updateFreezeButton(story);
     setStatus('Removed', '', `${r.teethRemoved} teeth removed, ${r.settingsRestored} settings restored.`);
     $('report').innerHTML = '';
@@ -707,7 +736,7 @@ function onInput(): void {
 }
 
 function tick(): void {
-  const story = targetStory();
+  const story = workingStory();
   if (!story) return;
   if (state.busy) {
     state.pending = true;
@@ -720,7 +749,7 @@ function tick(): void {
     return;
   }
   try {
-    if (!state.live || state.storyId !== story.id || !state.live.story.isValid || state.scope !== scopeKey(selectedParagraphs(story))) {
+    if (!state.live || state.storyId !== story.id || !state.live.story.isValid || state.scope !== scopeKey(workingScope(story))) {
       apply(state.live && state.storyId === story.id ? 'slider on another selection' : 'slider on a new story');
       return;
     }
@@ -790,13 +819,15 @@ function onSelectionChanged(): void {
     return;
   }
   const words = String(story.contents).replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
-  const scope = selectedParagraphs(story);
-  $('target').textContent = scope ? `Story: ${words}… · Selected: ${scopeText(scope)}` : `Story: ${words}…`;
+  const selected = selectedParagraphs(story);
+  const preview = state.preview?.storyId === story.id ? state.preview : undefined;
+  $('target').textContent = selected ? `Story: ${words}… · Selected: ${scopeText(selected)}` : preview ? `Story: ${words}… · Preview: ${scopeText(preview)}` : `Story: ${words}…`;
   showLanguage(story);
   updateFreezeButton(story);
   if (state.storyId !== story.id) {
     state.live = undefined;
     state.failed = undefined;
+    state.preview = undefined;
     state.storyId = story.id;
     const stored = storedSettings(story);
     if (stored && isFrozen(story)) {

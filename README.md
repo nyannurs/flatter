@@ -2,7 +2,7 @@
 
 A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in one of two styles: **Aesthetic**, a strict long, short, long, short rhythm, or **Functional**, a free rag set for reading. It can also adjust each line with letter tracking and word spaces.
 
-**Status: version 0.6.6, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.6.7, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
 
 ## What it does
 
