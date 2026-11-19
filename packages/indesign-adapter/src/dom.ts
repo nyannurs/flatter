@@ -6,6 +6,7 @@ import { FlatterUserError } from './errors.ts';
 import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
 import { asArray, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { paragraphLanguages } from './languages.ts';
+import { alignPrints, paragraphPrint, remapByParagraph } from './paragraph-match.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, keepsAlignment, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
 export const STORY_LABEL = 'flatter';
@@ -22,6 +23,11 @@ export interface StoryState {
   appliedAt: string;
   /** Set while the story is frozen (Freeze, plan §6.6): its line breaks are fixed characters. */
   frozen?: { at: string; breaks: number; hyphens: number };
+  /**
+   * Fingerprint of every paragraph when the record was saved (paragraph-match.ts): the keys of `originals` and
+   * `tracking` are paragraph numbers, and paragraphs added or deleted since shift them; readCurrentState maps them back.
+   */
+  prints?: string[];
 }
 
 export interface Check {
@@ -166,6 +172,32 @@ function readState(story: Any): StoryState | undefined {
   }
 }
 
+/** Every paragraph's fingerprint, in story order (one read). */
+function paragraphPrints(story: Any): string[] {
+  return asArray(story.paragraphs.everyItem().contents).map((c: Any) => paragraphPrint(String(c)));
+}
+
+/**
+ * The stored record with its paragraph numbers mapped to today's paragraphs (2026-11-19): after paragraphs were added
+ * or deleted, Remove used to give paragraphs their neighbours' originals. `lost` counts stored paragraphs that were not
+ * found again (deleted, or their start rewritten); their originals are dropped. Records saved before fingerprints
+ * existed are used as they are.
+ */
+function readCurrentState(story: Any): { state: StoryState; lost: number } | undefined {
+  const state = readState(story);
+  if (!state) return undefined;
+  if (!state.prints) return { state, lost: 0 };
+  const now = paragraphPrints(story);
+  if (now.length === state.prints.length && now.every((p, k) => p === state.prints![k])) return { state, lost: 0 };
+  const map = alignPrints(state.prints, now);
+  const originals = remapByParagraph(state.originals, map);
+  const tracking = remapByParagraph(state.tracking, map);
+  state.originals = originals.record;
+  if (state.tracking) state.tracking = tracking.record;
+  state.prints = now;
+  return { state, lost: originals.lost + tracking.lost };
+}
+
 /** Fix the settings the plugin needs, remembering the originals for Remove. */
 function fixSettingsInPlace(story: Any, state: StoryState): void {
   const { paragraphIssues } = checkSettings(story);
@@ -273,7 +305,7 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
   if (isFrozen(story)) throw new FlatterUserError('This story is frozen. Unfreeze it to change the rag.');
   return undoableMode('Flatter: Apply', 'entire', () => {
     const doc = story.parent;
-    const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
+    const state: StoryState = readCurrentState(story)?.state ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
     state.settings = settings;
     const tFix = Date.now();
     if (opts.fixSettings !== false) fixSettingsInPlace(story, state);
@@ -332,6 +364,7 @@ export function liveVerify(live: LiveSession): ApplyResult {
 function saveState(story: Any, state: StoryState, port: DomPort): void {
   if (Object.keys(port.baseTracking).length) state.tracking = { ...state.tracking, ...port.baseTracking };
   state.appliedAt = new Date().toISOString();
+  state.prints = paragraphPrints(story);
   story.insertLabel(STORY_LABEL, JSON.stringify(state));
 }
 
@@ -361,14 +394,15 @@ function removeTeeth(doc: Any, story: Any): number {
   return removed;
 }
 
-export function removeFlatter(story: Any): { teethRemoved: number; settingsRestored: number } {
+export function removeFlatter(story: Any): { teethRemoved: number; settingsRestored: number; paragraphsNotFound: number } {
   return undoable('Flatter: Remove', () => {
     const doc = story.parent;
-    // A frozen story first gets its fixed line breaks back out.
-    unfreezeInPlace(story);
+    // Paragraphs found again first (before Unfreeze saves the mapped record), then the fixed line breaks go.
+    const current = readCurrentState(story);
+    const state = current?.state;
+    unfreezeInPlace(story, state);
     const teethRemoved = removeTeeth(doc, story);
     removeBands(doc, String(story.id));
-    const state = readState(story);
     let settingsRestored = 0;
     if (state) {
       const paras = story.paragraphs;
@@ -388,7 +422,7 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
       for (const f of asArray(story.textContainers)) if (state.storyOriginals.ignoreWrap?.[String(f.id)]) f.textFramePreferences.ignoreWrap = true;
     }
     story.insertLabel(STORY_LABEL, '');
-    return { teethRemoved, settingsRestored };
+    return { teethRemoved, settingsRestored, paragraphsNotFound: current?.lost ?? 0 };
   });
 }
 
@@ -487,7 +521,7 @@ export function setWholeStory(story: Any, settings: ApplySettings = {}): { parag
   return undoable('Flatter: Set whole story', () => {
     const doc = story.parent;
     unfreezeInPlace(story);
-    const state: StoryState = readState(story) ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
+    const state: StoryState = readCurrentState(story)?.state ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
     // Tracking from an earlier rag back to the base first: everything after (settings, measuring, inserting the
     // breaks) is several times slower in text split into thousands of tracking ranges (2026-11-19).
     resetTrackingTo(story, state.tracking);
@@ -552,8 +586,8 @@ export function setWholeStory(story: Any, settings: ApplySettings = {}): { parag
 }
 
 /** Take the characters Freeze inserted back out (no undo step of its own). */
-function unfreezeInPlace(story: Any): number {
-  const state = readState(story);
+function unfreezeInPlace(story: Any, given?: StoryState): number {
+  const state = given ?? readCurrentState(story)?.state;
   const cond = story.parent.conditions.itemByName(FROZEN_CONDITION);
   let removed = 0;
   if (cond.isValid && state?.frozen) {

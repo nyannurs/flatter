@@ -3,6 +3,7 @@ export { toothFor, slotsForPlan, sameSlot, bandsFor, TOOTH_HEIGHT, X_HEIGHT_SHAR
 export { REQUIRED_SETTINGS, checkParagraph, checkStory, keepsAlignment, type RequiredSetting, type SettingIssue, type StoryConditions, type SettingValue } from './settings.ts';
 export { applyToPort, compatibilityAlarms, steeringFailed, sameWordPoints, FlatterSession, hyphenLanguage, knownHyphenLanguage, type ApplySettings, type ApplyResult, type ParagraphResult } from './apply.ts';
 export type { Port, ParagraphData, ReadLine, TrackingSpan } from './port.ts';
+export { paragraphPrint, alignPrints, remapByParagraph } from './paragraph-match.ts';
 export { predictSlots, type FlowParagraph, type Narrow } from './flow.ts';
 export { paragraphLanguages, languageOf, NO_LANGUAGE, MIXED_LANGUAGES, type LanguageRun } from './languages.ts';
 // InDesign (UXP) entry points. Importing these outside InDesign is fine; calling them is not.

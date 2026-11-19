@@ -275,3 +275,9 @@ The designer's idea for long multi-column stories: try settings on a few selecte
 - **Unfreeze** resets the tracking and removes the frozen characters with one GREP change by condition (user's Find/Change settings restored); 0.6 s for 1,773 characters. In the panel, Unfreeze of a long story (more than 40 paragraphs, no selection) no longer sets the whole story live again.
 - 8 facing pages of three columns, precise Laufweite with word spaces (script context): Set whole story 22 s (measuring 6 s, Laufweite 7 s, breaks 8 s), again after Unfreeze 17 s; live Apply was 24 s with teeth and still slow on slider moves.
 
+## ADR-033: Stored paragraphs are found again by fingerprint (2026-11-19)
+
+Flatter's record on a story (story label `flatter`) keeps each paragraph's original settings and base tracking under the paragraph's number. A paragraph added or deleted after Apply or Set whole story shifted every later number, and Remove gave paragraphs their neighbours' originals. The record now also keeps a fingerprint of every paragraph (`prints`: the first 48 characters without line breaks, hyphens and soft hyphens, which Freeze and Set whole story insert). Before Apply, Set whole story, Unfreeze and Remove use the record, `readCurrentState` lines up the stored and current fingerprints (`alignPrints`: in order, resuming at the nearest equal pair after a difference) and re-keys the record. A stored paragraph that is not found again (deleted, or its start rewritten) is left out, not guessed; Remove reports how many. Records saved before fingerprints existed are used as they are.
+
+Everything Flatter needs for Unfreeze and Remove lives in the document (story label, the "Flatter frozen" condition, the control layer), so it survives saving, closing, reopening and an IDML round trip (`i46-persist`). Undo history does not survive closing a document.
+

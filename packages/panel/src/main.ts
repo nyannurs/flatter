@@ -720,7 +720,8 @@ function remove(): void {
     state.live = undefined;
     state.preview = undefined;
     updateFreezeButton(story);
-    setStatus('Removed', '', `${r.teethRemoved} teeth removed, ${r.settingsRestored} settings restored.`);
+    const lost = r.paragraphsNotFound ? ` ${r.paragraphsNotFound} stored ${r.paragraphsNotFound === 1 ? 'setting' : 'settings'} of paragraphs that were deleted or whose beginning was rewritten could not be matched and were left as they are.` : '';
+    setStatus('Removed', r.paragraphsNotFound ? 'bad' : '', `${r.teethRemoved} teeth removed, ${r.settingsRestored} settings restored.${lost}`);
     $('report').innerHTML = '';
   } catch (e) {
     fail(e);

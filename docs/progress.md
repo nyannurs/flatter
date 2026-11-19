@@ -2,6 +2,17 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-19 (evening) — Remove and Unfreeze after reopening and editing (ADR-033); release 0.6.8
+
+The designer asked whether a frozen story can still be unfrozen or removed after saving and reopening the project many times. Yes: everything is in the document. The weak spot was editing: paragraph numbers in the record shifted when paragraphs were added or deleted.
+
+- `paragraph-match.ts` (pure): `paragraphPrint`, `alignPrints`, `remapByParagraph`; tests `paragraph-match.test.ts` (frozen breaks ignored, additions and deletions in several places, rewritten starts left out, identical paragraphs kept apart).
+- `dom.ts`: `StoryState.prints`, saved with every record; `readCurrentState` used by Apply, Set whole story, Unfreeze and Remove. `removeFlatter` returns `paragraphsNotFound`; the panel says when stored settings could not be matched.
+- `i46-persist` (in `test:indesign`; saves throwaway files next to the built spikes): Set whole story on 40 paragraphs with justified and tracked ones, save, close, reopen, add a paragraph at the start, delete one in the middle, Remove: 242 settings restored, none wrong, 2 entries of the deleted paragraph reported, text back exactly. IDML export and open: still frozen, Unfreeze gives the original text back, Remove restores the originals.
+- Release 0.6.8 packaged, published and installed in place of 0.6.7.
+
+Next (asked by the designer): a codebase-wide audit (bugs, optimisations, dead code, a simpler and less verbose panel).
+
 ## 2026-11-19 (later) — The preview stays when the text is deselected; release 0.6.7
 
 The designer selected paragraphs, pressed Apply, pressed Escape to see the rag, moved a slider: Flatter set the whole story. The preview was derived from the current selection on every tick. Now Apply remembers the previewed paragraphs (`state.preview`); Apply and the sliders use the selected text's paragraphs, else that preview, until text elsewhere is selected, the story changes, or Remove / Set whole story ends it. With nothing selected, the sliders keep working on the live session's story. The story line shows "Preview: paragraphs …", and the status keeps the preview note after slider moves. To work on the whole story live again: select all its text (Cmd+A) and press Apply. Panel-only change, not tested in InDesign by script (the dev panel cannot be driven without showing it); release 0.6.7 installed in place of 0.6.6.
