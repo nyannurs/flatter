@@ -239,7 +239,8 @@ export function analysePattern(lines: readonly PlannedLine[]): Violation[] {
   // Line ends measured from each line's own measure, so a change of frame width is not a staircase.
   const edges = lines.map((l) => -l.gap);
   for (let i = 2; i < lines.length; i++) {
-    if (lines[i]!.kind === 'last') continue;
+    // Only lines that take part in the rhythm, as in the solver: a forced or last line is no step of a staircase.
+    if (lines[i]!.kind !== 'band' || lines[i - 1]!.kind !== 'band' || lines[i - 2]!.kind !== 'band') continue;
     const d1 = edges[i - 1]! - edges[i - 2]!;
     const d2 = edges[i]! - edges[i - 1]!;
     if ((d1 > STAIR_STEP && d2 > STAIR_STEP) || (d1 < -STAIR_STEP && d2 < -STAIR_STEP)) {

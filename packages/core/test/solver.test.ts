@@ -254,3 +254,17 @@ describe('performance', () => {
     expect(ms).toBeLessThan(20);
   });
 });
+
+describe('forced line breaks after a space', () => {
+  // "labore \n": the space before the forced break used to be a break candidate, so the solver could plan an empty
+  // line there (exempt from the rhythm) and flip long/short for free; InDesign never sets such a line (2026-11-19).
+  const measure = (s: string) => [...s].length * 5;
+  const text = 'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua Ut enim ad minim veniam quis nostrud';
+  it('plans no empty line and the same breaks as without the space', () => {
+    const withSpace = solveParagraph(buildParagraph(text.replace('labore ', 'labore \n'), { measure }), { measure: 288 });
+    const without = solveParagraph(buildParagraph(text.replace('labore ', 'labore\n'), { measure }), { measure: 288 });
+    expect(withSpace.lines.every((l) => l.text.trim() !== '')).toBe(true);
+    expect(withSpace.lines.map((l) => l.text.trim())).toEqual(without.lines.map((l) => l.text.trim()));
+    expect(withSpace.lines.map((l) => l.width)).toEqual(without.lines.map((l) => l.width));
+  });
+});

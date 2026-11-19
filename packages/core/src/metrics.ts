@@ -87,12 +87,20 @@ export class ParagraphMetrics {
   private isCandidateBreak(k: number, mode: HyphenationMode, senseFirst: boolean): boolean {
     const it = this.items[k]!;
     // Sense first: never inside a unit of meaning (a space that carries a Sinneinheiten cost).
-    if (it.type === 'glue') return !it.noBreak && this.items[k - 1]?.type === 'box' && !(senseFirst && (it.breakCost ?? 0) > 0);
+    // Not a space right before a forced line break: breaking there would plan an empty line InDesign never sets.
+    if (it.type === 'glue') return !it.noBreak && this.items[k - 1]?.type === 'box' && !(senseFirst && (it.breakCost ?? 0) > 0) && !this.forcedAfterSpaces(k);
     if (it.type !== 'penalty') return false;
     if (it.forced) return true;
     if (it.quality === 'X') return false;
     if (it.quality === 'C') return mode === 'normal';
     return true;
+  }
+
+  /** The items after the space at k, past any further spaces, reach a forced break. */
+  private forcedAfterSpaces(k: number): boolean {
+    let j = k + 1;
+    while (j < this.n && this.items[j]!.type === 'glue') j++;
+    return this.isForced(j);
   }
 
   isForced(b: number): boolean {
@@ -104,11 +112,6 @@ export class ParagraphMetrics {
   penaltyAt(b: number): Penalty | undefined {
     const it = this.items[b];
     return it?.type === 'penalty' ? it : undefined;
-  }
-
-  /** True when breaking at b leaves a visible hyphen at the line end. */
-  isFlagged(b: number): boolean {
-    return this.penaltyAt(b)?.flagged === true;
   }
 
   /** First content item of a line that follows break a. */
@@ -126,8 +129,9 @@ export class ParagraphMetrics {
 
   /** One past the last content item of a line ending at break b. */
   contentEnd(b: number): number {
-    if (b < this.n) return b;
-    let k = this.n;
+    if (b < this.n && !this.isForced(b)) return b;
+    // Paragraph end or forced line break: trailing spaces are not part of the line.
+    let k = b;
     while (k > 0 && this.items[k - 1]!.type !== 'box') k--;
     return k;
   }
@@ -150,6 +154,11 @@ export class ParagraphMetrics {
     return end > start ? this.letterPrefix[end]! - this.letterPrefix[start]! : 0;
   }
 
+  /** Extra width items start…end take on when tracked (ligatures break apart, see Box.trackedExtra). */
+  trackedExtra(start: number, end: number): number {
+    return end > start ? this.extraPrefix[end]! - this.extraPrefix[start]! : 0;
+  }
+
   /**
    * How many tracking steps move the line's end. Tracking is applied to every character of the line
    * except the last one: InDesign also counts the tracking after a line's last glyph when it decides
@@ -157,12 +166,7 @@ export class ParagraphMetrics {
    * (found in the user's test, 2026-10-16). A line of n characters therefore gains n − 1 steps, and the
    * generated hyphen, inheriting the untracked last letter, adds none.
    */
-  /** Extra width items start…end take on when tracked (ligatures break apart, see Box.trackedExtra). */
-  trackedExtra(start: number, end: number): number {
-    return end > start ? this.extraPrefix[end]! - this.extraPrefix[start]! : 0;
-  }
-
-  trackedChars(start: number, end: number, _b: number): number {
+  trackedChars(start: number, end: number): number {
     const base = end > start ? this.charPrefix[end]! - this.charPrefix[start]! : 0;
     return Math.max(0, base - 1);
   }
@@ -193,7 +197,7 @@ export class ParagraphMetrics {
       const pen = p < this.n ? (this.penaltyAt(p)?.width ?? 0) : 0;
       // The next fragment would carry the line's tracking too.
       const tracked =
-        (trackPerChar !== 0 ? trackPerChar * this.trackedChars(start, end, p) + this.trackedExtra(start, end) : 0) +
+        (trackPerChar !== 0 ? trackPerChar * this.trackedChars(start, end) + this.trackedExtra(start, end) : 0) +
         trackPerSpace * this.glueCount(start, end);
       best = Math.min(best, this.contentWidth(start, end) + pen + tracked);
       if (p >= this.n || this.items[p]!.type === 'glue' || this.isForced(p)) break;
