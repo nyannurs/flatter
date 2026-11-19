@@ -37,7 +37,7 @@ node tools/indesign/uxp-load.mjs reload   # after every panel build
 tools/indesign/panel-command.sh '{"cmd":"s4","ticks":30,"visible":true}'   # drive the loaded dev panel (ping, s4, selfcheck, alarm-demo, panel-state, recovery)
 ```
 
-The user has the release build installed (Creative Cloud, `--list all` shows it). The dev build is "Flatter (dev)" with the id com.flatter.panel.dev, so it runs beside the installed release (com.flatter.panel) without clashing. Both show their version in the panel footer.
+The user has the release build installed (Creative Cloud, `--list all` shows it). The dev build is "Flatter (dev)" with the id com.flatter.panel.dev, so it runs beside the installed release (com.flatter.panel) without clashing. Both show their version in the panel header.
 
 The UXP Developer Tool must be open (its window may stay hidden; the service on port 14001 is what matters). Adobe's `uxp` CLI does not run on Node 24 (native helper missing); `uxp-load.mjs` speaks its WebSocket protocol directly.
 
@@ -56,7 +56,7 @@ packages/indesign-adapter/  InDesign side. Pure, Node-tested: items.ts (items fr
                       points), geometry.ts (teeth), settings.ts (required settings), apply.ts (plan → steer → read back →
                       re-plan loop against the Port interface). UXP only: dom-port.ts (Port with the DOM), dom.ts
                       (applyFlatter / removeFlatter / checkSettings, one undo step each). Tests use a fake greedy composer.
-packages/panel/       UXP panel: plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
+packages/panel/       UXP panel (layout ADR-034): plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
                       loop: debounce 30 ms, verify after 250 ms), src/dev.ts (dev-build command channel and the S4 test).
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
                       CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs),
@@ -85,7 +85,7 @@ Planned but not created yet: review list (Phase 5), signing and licence texts in
 
 ## Solver in one paragraph
 
-Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. In precise mode (ADR-013, what the panel uses) every band line is instead pulled onto its edge by letter tracking and word-space tracking within their maxima (ADR-015), measured without ligatures (ADR-014). With `style: 'functional'` (ADR-021) there are no roles: every line ends inside the Flatterzone (hard in strict), neighbours closer than the band, staircases and breaks without a reading pause cost a little, Sinneinheiten weigh four times as much, and Laufweite only rescues lines outside the zone. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks, which is what the InDesign adapter will use to check read-back lines.
+Text becomes items (box, glue, penalty). `ParagraphMetrics` precomputes widths and legal breaks. `solveParagraph` runs a dynamic program whose state is one whole line (start break, end break) plus role, consecutive-hyphen run and hyphen count, so rules between neighbouring lines are exact. Strict mode treats bands, contrast, the hyphen limit and the last-line rules as hard. If strict fails it tries the other phase, then falls back to soft costs (tiered by the priority list in plan §7.4) with a beam of 48 states per break. With tracking enabled (opt-in, ADR-010), lines that miss their band may take a small tracking value, tried only after strict fails without it. In precise mode (ADR-013, what the panel uses) every band line is instead pulled onto its edge by letter tracking and word-space tracking within their maxima (ADR-015), measured without ligatures (ADR-014). With `style: 'functional'` (ADR-021) there are no roles: every line ends inside the Flatterzone (hard in strict), neighbours closer than the band, staircases and breaks without a reading pause cost a little, Sinneinheiten weigh four times as much, and Laufweite only rescues lines outside the zone. `checkPlan` re-derives all violations independently from the finished lines. `evaluateBreaks` scores any given set of breaks (used by tests; the adapter compares read-back line ends with the plan instead), and `scoreBreaks` prices a given set of breaks with the solver's own costs (playground animation). DP states are keyed by a number (start break, role, capped hyphen run and count, line when measures vary).
 
 ## Running code in InDesign
 

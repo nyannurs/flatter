@@ -281,3 +281,13 @@ Flatter's record on a story (story label `flatter`) keeps each paragraph's origi
 
 Everything Flatter needs for Unfreeze and Remove lives in the document (story label, the "Flatter frozen" condition, the control layer), so it survives saving, closing, reopening and an IDML round trip (`i46-persist`). Undo history does not survive closing a document.
 
+## ADR-034: A shorter panel, actions first (2026-11-19)
+
+The designer found the panel too verbose and approved this layout (audit, 2026-11-19):
+
+- Top: the story line (first words, "Selected ¶ 3–7" or "Preview on ¶ 3–7"), then Apply, Set whole story and Live, then Recompute, Freeze and Remove as quiet buttons. The result follows: one status line, one short summary (lines set as planned, time, how many problems), and the numbers behind it (edges, strict paragraphs, tracked lines, last tick) folded under "Details".
+- Settings below in three sections: Rag, Hyphenation (now with the German / English buttons, since the language decides hyphenation), Laufweite (its two limit sliders only while it is on).
+- Problems and notes go to the bottom of the panel: their length changes after every slider move, and anything above the sliders that changes height makes the slider jump under the pointer.
+- Hints that were always visible are gone (style, rhythm across paragraphs, Laufweite, Live, the long-story sentence); the long-story hint shows only on stories of more than 40 paragraphs. The Shape ↔ Sense position is part of its label ("Balanced", "×2.4", "Sense first"). The version shows once, in the header.
+- Every function stays; the compatibility alarm is unchanged.
+

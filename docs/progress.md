@@ -2,6 +2,35 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-19 (night) — Codebase audit: bugs, speed, dead code, a shorter panel (ADR-034)
+
+Asked by the designer: find and fix bugs, find optimisations, remove dead code, simplify the panel. Baseline 203 unit tests; now 208, typecheck clean, `test:indesign` 13/13 (run after the adapter changes and again after the solver changes).
+
+**Bugs fixed**
+- **"constructor" crashed Apply** on English text (and the playground): English hyphenation looked words up in a plain object, which finds `Object.prototype.constructor`. The probe cache had the same flaw, so such words were never probed. Own entries only now; test with every such name.
+- **Empty "phantom" line before a forced line break**: a space before a forced break ("labore \n") was a break candidate, so the solver could plan an empty line there, exempt from the rhythm, and flip long/short for free; InDesign never sets that line. Trailing spaces before a forced break no longer count toward the line's width.
+- **Freeze after paragraphs were added or deleted** took the inserted characters' base tracking from the wrong paragraph (it read the record without the fingerprint mapping of ADR-033).
+- **Never-hyphenate tokens** (plan §5.1): `neverHyphenateToken` existed but was never called; camelCase words (JavaScript, iPhones, eBooking) and words in capitals (UNESCO) got Safe points. They now get none of our own (InDesign's stay class C, Normal mode only). Corpus reports unchanged.
+- Tracking rescue (not precise mode) missed ±1 when broken ligatures alone would fit the band; the staircase check flagged forced and last lines, unlike the solver.
+- **Panel**: Remove with nothing selected did nothing silently, did not wait while Flatter was busy, and a slider tick still pending could set the rag again right after Remove; the language buttons' note about other stories was overwritten by the re-apply; the story line read the whole text of the story on every selection change (now only its first 120 characters); duplicate Apply click handler.
+- Sinneinheiten number pattern: two plain spaces had slipped in where thin and no-break spaces were meant (the heredoc pitfall); written as escapes.
+
+**Faster**
+- Solver states keyed by numbers instead of strings, hyphen runs past the limit merged (exact): 6,000-character German paragraph soft 44 → 33 ms, functional with per-line measures 160 → 127 ms, precise 16 → 15 ms, identical breaks and costs.
+- Adapter: read-back lines grouped per paragraph once per read (was a filter over all lines for every paragraph in plan, steer, verify and result: O(paragraphs × lines) several times per round); binary search for a character's paragraph (`paragraphAt`, pure, tested) in the read-back, Freeze and the panel; Set whole story no longer writes every paragraph's base tracking twice.
+
+**Removed (unused anywhere, tests and tools included)**: core item helpers `hyphenPoint`, `forcedBreak`, `isBox`, `isGlue`, `isPenalty`; `ParagraphMetrics.isFlagged`; an unused parameter of `trackedChars`; the adapter's `BREAKABLE_SPACE`; a second copy of the undo helper in `dom.ts`; hard-coded control-layer names.
+
+**Panel (ADR-034, approved by the designer from a mock-up)**: actions and result at the top, numbers folded under Details, language buttons in Hyphenation, problems at the bottom so the sliders do not jump, Laufweite limits only while on, the long-story hint only on long stories, shorter wording, version once. Not seen in InDesign yet: the dev panel may not be loaded by script (listeners and dialogs), so the layout is only checked by build, typecheck and an ID cross-check between `index.html` and `main.ts`. The story-start read was checked in InDesign with a script.
+
+**Found, not changed (proposals)**
+- Simulator only: lines ending at an existing hyphen (E-Mail) are drawn with the letter before the hyphen untracked (`render.ts`, `untrackedTail`).
+- Exports used only by tests (`evaluateBreaks`, `splitAdjustment`, `defaultFlatterzone`, `flatterzoneRange`, `neverHyphenateToken`, `syllabifyPart`) and options no production code sets (hyphenator `authority`, `opinion`, `exceptions`, min lengths; `softBeam`; builder `interruptionCost`, `slashCost`): kept, they are tested API.
+- Spikes: all 50 still compile against the current packages; none deleted. Early Phase 0 spikes (`s1x-tooth`, `s1y-stroke`, `i7-scratch`, `i9-ref-growth` …) are history only; delete only if the designer wants a smaller `tools/` folder.
+- The self-check does not cover Set whole story yet.
+
+**Release**: advisable. Users get the "constructor" crash fix, the phantom-line fix, the Freeze fix, faster planning and the new panel. Ask for 0.6.9 and look at the panel once it is installed.
+
 ## 2026-11-19 (evening) — Remove and Unfreeze after reopening and editing (ADR-033); release 0.6.8
 
 The designer asked whether a frozen story can still be unfrozen or removed after saving and reopening the project many times. Yes: everything is in the document. The weak spot was editing: paragraph numbers in the record shifted when paragraphs were added or deleted.
