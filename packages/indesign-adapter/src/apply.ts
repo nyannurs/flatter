@@ -155,6 +155,8 @@ export class FlatterSession {
   private readonly hyphenators = new Map<HyphenLanguage, Hyphenator>();
   private work: Working[] = [];
   private current: ReadLine[] = [];
+  /** The read-back lines per paragraph (one pass over `current`, instead of a filter per paragraph and call). */
+  private byParagraph = new Map<number, ReadLine[]>();
   private teeth: ToothSpec[] = [];
   private usedSlots = new Map<number, LineSlot[]>();
   private probeCheck = { checked: 0, empty: 0 };
@@ -229,8 +231,23 @@ export class FlatterSession {
       });
       this.work.push({ data, measured, items: measured.items, plan: undefined as unknown as Plan, refused: [] });
     }
-    this.current = this.port.readLines();
+    this.readBack();
     this.overset = this.port.overset();
+  }
+
+  private readBack(): void {
+    this.current = this.port.readLines();
+    this.byParagraph = new Map();
+    for (const l of this.current) {
+      const list = this.byParagraph.get(l.paragraph);
+      if (list) list.push(l);
+      else this.byParagraph.set(l.paragraph, [l]);
+    }
+  }
+
+  /** The lines read back for a paragraph, in order. */
+  private linesOf(paragraph: number): readonly ReadLine[] {
+    return this.byParagraph.get(paragraph) ?? [];
   }
 
   /** Solve every paragraph with these settings. Points InDesign refused earlier stay refused. */
@@ -244,7 +261,7 @@ export class FlatterSession {
   private solveAll(settings: ApplySettings): void {
     let nextRole: Role | undefined;
     for (const w of this.work) {
-      w.widths = lineMeasuresFor(w.data, slotsOf(this.current, w.data.index));
+      w.widths = lineMeasuresFor(w.data, this.linesOf(w.data.index).map((l) => l.slot));
       w.plan = solve(itemsFor(w), w.data, settings, settings.continuous ? nextRole : undefined, w.widths);
       if (settings.continuous) nextRole = w.plan.lines.length ? opposite(w.plan.lines[w.plan.lines.length - 1]!.role) : nextRole;
     }
@@ -287,7 +304,7 @@ export class FlatterSession {
     this.usedSlots = new Map();
     const predicted = predictSlots(this.current, this.flowParagraphs(), this.port.narrow?.bind(this.port));
     for (const w of this.work) {
-      const now = slotsOf(this.current, w.data.index);
+      const now = this.linesOf(w.data.index).map((l) => l.slot);
       const ahead = predicted.get(w.data.index);
       const slots = ahead
         ? ahead.slice(0, w.plan.lines.length).map((s, i) => (now[i] && now[i]!.page === s.page && now[i]!.column === s.column && Math.abs(now[i]!.baseline - s.baseline) < 0.01 ? now[i]! : s))
@@ -339,7 +356,7 @@ export class FlatterSession {
   /** Every paragraph in the flow: planned ones with their planned line count, the others as read back. */
   private flowParagraphs(): FlowParagraph[] {
     const out = new Map<number, FlowParagraph>();
-    for (const l of this.current) if (!out.has(l.paragraph)) out.set(l.paragraph, { index: l.paragraph, lines: visibleCount(this.current, l.paragraph) });
+    for (const [index, lines] of this.byParagraph) out.set(index, { index, lines: lines.length });
     for (const w of this.work) {
       const d = w.data;
       out.set(d.index, {
@@ -364,14 +381,14 @@ export class FlatterSession {
     this.roundLog = [];
     for (let round = 0; round < maxRounds; round++) {
       this.rounds++;
-      this.current = this.port.readLines();
+      this.readBack();
       let changed = false;
       let open = 0;
       let learned = false;
       const log = { open: 0, widths: 0, refused: 0, moved: 0 };
       this.roundLog.push(log);
       for (const w of this.work) {
-        const got = this.current.filter((l) => l.paragraph === w.data.index);
+        const got = this.linesOf(w.data.index);
         // The paragraph's lines sit in frames of other widths than planned for: plan again.
         const widths = lineMeasuresFor(w.data, got.map((l) => l.slot));
         if (!sameWidths(widths, w.widths)) {
@@ -426,10 +443,9 @@ export class FlatterSession {
   }
 
   result(): ApplyResult {
-    const current = this.current;
     const usedSlots = this.usedSlots;
     const results: ParagraphResult[] = this.work.map((w) => {
-      const got = current.filter((l) => l.paragraph === w.data.index);
+      const got = this.linesOf(w.data.index);
       const bad = firstMismatch(w, got, this.overset);
       const visibleLines = this.overset ? Math.min(got.length, w.plan.lines.length) : w.plan.lines.length;
       const linesAsPlanned = w.plan.lines.filter((line, i) => matches(w, line, got[i])).length;
@@ -453,13 +469,10 @@ export class FlatterSession {
       return r;
     });
     const linesPlanned = this.work.reduce((s, w) => s + w.plan.lines.length, 0);
-    const linesAsPlanned = this.work.reduce((s, w) => {
-      const got = current.filter((l) => l.paragraph === w.data.index);
-      return s + w.plan.lines.filter((line, i) => matches(w, line, got[i])).length;
-    }, 0);
+    const linesAsPlanned = results.reduce((s, r) => s + r.linesAsPlanned, 0);
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
     const spacedLines = this.work.reduce((s, w) => s + w.plan.stats.spacedLines, 0);
-    const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - visibleCount(this.current, w.data.index)), 0) : 0;
+    const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - this.linesOf(w.data.index).length), 0) : 0;
     return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines, probeCheck: { ...this.probeCheck }, roundLog: [...this.roundLog] };
   }
 
@@ -596,10 +609,6 @@ function itemsFor(w: Working): Item[] {
   return w.items.map((it, k) => (ends.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
 }
 
-function slotsOf(lines: readonly ReadLine[], paragraph: number): LineSlot[] {
-  return lines.filter((l) => l.paragraph === paragraph).map((l) => l.slot);
-}
-
 /**
  * The paragraph-relative index of a planned line's last visible character. A line without one (a forced line
  * break at the start of a paragraph or right after another) counts its first character, as the read-back does.
@@ -612,10 +621,6 @@ function plannedLastVisible(w: Working, line: Plan['lines'][number]): number {
 
 function matches(w: Working, line: Plan['lines'][number], got: ReadLine | undefined): boolean {
   return !!got && got.lastVisible === plannedLastVisible(w, line) && got.hyphenated === (line.endsWithHyphen && w.items[line.breakAt]?.type === 'penalty' && (w.items[line.breakAt] as { width: number }).width > 0);
-}
-
-function visibleCount(lines: readonly ReadLine[], paragraph: number): number {
-  return lines.filter((l) => l.paragraph === paragraph).length;
 }
 
 function firstMismatch(w: Working, got: readonly ReadLine[], overset = false): number {

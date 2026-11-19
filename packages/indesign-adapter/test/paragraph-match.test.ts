@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignPrints, paragraphPrint, remapByParagraph } from '../src/index.ts';
+import { alignPrints, paragraphAt, paragraphPrint, remapByParagraph } from '../src/index.ts';
 
 const P = Array.from({ length: 30 }, (_, k) => `Absatz ${k}: Ein guter Flattersatz entsteht nicht von selbst, Nummer ${k}.`);
 
@@ -49,5 +49,21 @@ describe('finding paragraphs again after edits', () => {
     expect(map.get(1)).toBe(2);
     expect(map.get(6)).toBe(7);
     expect(map.get(7)).toBe(8);
+  });
+});
+
+describe('paragraphAt', () => {
+  it('finds the paragraph of every character', () => {
+    const starts = [0, 5, 6, 20];
+    const linear = (k: number) => {
+      let p = 0;
+      while (p + 1 < starts.length && starts[p + 1]! <= k) p++;
+      return p;
+    };
+    for (let k = 0; k < 30; k++) expect(paragraphAt(starts, k)).toBe(linear(k));
+  });
+  it('copes with one paragraph and an empty list', () => {
+    expect(paragraphAt([0], 12)).toBe(0);
+    expect(paragraphAt([], 3)).toBe(0);
   });
 });

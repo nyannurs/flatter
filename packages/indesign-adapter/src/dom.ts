@@ -4,9 +4,9 @@
  */
 import { FlatterUserError } from './errors.ts';
 import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
-import { asArray, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
+import { asArray, CONTROL_LAYER, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { paragraphLanguages } from './languages.ts';
-import { alignPrints, paragraphPrint, remapByParagraph } from './paragraph-match.ts';
+import { alignPrints, paragraphAt, paragraphPrint, remapByParagraph } from './paragraph-match.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, keepsAlignment, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
 export const STORY_LABEL = 'flatter';
@@ -79,28 +79,9 @@ export function inPoints<T>(fn: () => T): T {
   }
 }
 
+/** One undo step of its own; on failure whatever it changed is rolled back. */
 function undoable<T>(name: string, fn: () => T): T {
-  const id = indesign();
-  let result: T | undefined;
-  let error: unknown;
-  id.app.doScript(
-    () => {
-      try {
-        result = inPoints(fn);
-      } catch (e) {
-        error = e;
-      }
-    },
-    id.ScriptLanguage.UXPSCRIPT,
-    [],
-    id.UndoModes.ENTIRE_SCRIPT,
-    name,
-  );
-  if (error) {
-    rollBack(name);
-    throw error;
-  }
-  return result as T;
+  return undoableMode(name, 'entire', fn);
 }
 
 export function checkSettings(story: Any): Check {
@@ -132,7 +113,7 @@ function readSettings(story: Any): Check {
     issues.push(...checkParagraph(p, current, language));
   }
   const frames = asArray(story.textContainers);
-  const layer = doc.layers.itemByName('Flatter (Steuerung)');
+  const layer = doc.layers.itemByName(CONTROL_LAYER);
   const storyIssues = checkStory({
     opticalMarginAlignment: !!story.storyPreferences.opticalMarginAlignment,
     ignoresWrap: frames.some((f: Any) => !!f.textFramePreferences.ignoreWrap),
@@ -378,10 +359,9 @@ export function storedSettings(story: Any): ApplySettings | undefined {
   return readState(story)?.settings;
 }
 
-/** Remove Flatter from a story: teeth, label, and every setting it changed. One undo step. */
 /** Remove a story's teeth (and the control layer when it is empty). */
 function removeTeeth(doc: Any, story: Any): number {
-  const layer = doc.layers.itemByName('Flatter (Steuerung)');
+  const layer = doc.layers.itemByName(CONTROL_LAYER);
   let removed = 0;
   if (!layer.isValid) return 0;
   for (const it of asArray(layer.pageItems.everyItem().getElements())) {
@@ -394,6 +374,7 @@ function removeTeeth(doc: Any, story: Any): number {
   return removed;
 }
 
+/** Remove Flatter from a story: teeth, label, and every setting it changed. One undo step. */
 export function removeFlatter(story: Any): { teethRemoved: number; settingsRestored: number; paragraphsNotFound: number } {
   return undoable('Flatter: Remove', () => {
     const doc = story.parent;
@@ -445,7 +426,8 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
   return undoable('Flatter: Freeze', () => {
     const doc = story.parent;
     const id = indesign();
-    const state = readState(story);
+    // Paragraph numbers as they are now (paragraphs added or deleted since Apply), for the base tracking below.
+    const state = readCurrentState(story)?.state;
     if (!state) throw new FlatterUserError('Apply Flatter to this story before freezing it.');
     if (state.frozen) return { breaks: 0, hyphens: 0, linesBefore: 0, linesAfter: 0 };
     story.recompose();
@@ -454,11 +436,6 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
     text.forEach((c, k) => {
       if (c === '\r') paraStarts.push(k + 1);
     });
-    const paragraphOf = (k: number) => {
-      let p = 0;
-      while (p + 1 < paraStarts.length && paraStarts[p + 1]! <= k) p++;
-      return p;
-    };
     // Where each visible line ends (index of the next line's first character), read per frame.
     const ends: { at: number; hyphen: boolean }[] = [];
     let linesBefore = 0;
@@ -485,7 +462,7 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
     let hyphens = 0;
     // From the end backwards, so earlier positions stay valid.
     for (const e of ends.reverse()) {
-      const p = paragraphOf(e.at - 1);
+      const p = paragraphAt(paraStarts, e.at - 1);
       const base = state.tracking?.[String(p)] ?? Number(story.characters.item(Math.max(0, e.at - 1)).tracking);
       story.insertionPoints.item(e.at).contents = id.SpecialCharacters.FORCED_LINE_BREAK;
       if (e.hyphen) {
@@ -533,7 +510,8 @@ export function setWholeStory(story: Any, settings: ApplySettings = {}): { parag
     removeTeeth(doc, story);
     removeBands(doc, String(story.id));
     const port = new DomPort(doc, story, controlLayer(doc));
-    if (state.tracking) port.resetTracking(state.tracking);
+    // The tracking was reset to these bases above (resetTrackingTo): only record them, no second round of writes.
+    if (state.tracking) port.baseTracking = { ...state.tracking };
     if (settings.tracking?.enabled) port.resetLeftoverTracking();
     const session = new FlatterSession(port);
     const tPrep = Date.now();

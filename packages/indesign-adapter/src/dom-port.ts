@@ -7,6 +7,7 @@
 import { FlatterUserError } from './errors.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 import { paragraphLanguages, type LanguageRun } from './languages.ts';
+import { paragraphAt } from './paragraph-match.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 import { keepsAlignment } from './settings.ts';
 
@@ -361,11 +362,12 @@ export class DomPort implements Port {
     // Measure every paragraph not cached yet, in as few copies to the bench as possible.
     if (jobs.length) {
       const measured = this.measureParagraphs(jobs, text);
+      const byIndex = new Map(out.map((d) => [d.index, d]));
       for (const j of jobs) {
         const m = measured.get(j.index)!;
         measureCache.set(j.key, m.advances);
         measureCache.set(`tracked\u0000${j.key}`, m.trackedAdvances);
-        const data = out.find((d) => d.index === j.index)!;
+        const data = byIndex.get(j.index)!;
         data.advances = m.advances;
         data.trackedAdvances = m.trackedAdvances;
       }
@@ -413,7 +415,7 @@ export class DomPort implements Port {
       const frame = frames[ci]!;
       for (let i = 0; i < n; i++) {
         const len = contents[i]!.length;
-        const p = this.paragraphAt(first);
+        const p = paragraphAt(this.paraStarts, first);
         const pStart = this.paraStarts[p]!;
         let last = first + len - 1;
         while (last > first && /^[\s\r]$/.test(text[last] ?? '')) last--;
@@ -916,12 +918,6 @@ export class DomPort implements Port {
   }
 
   // --- helpers -------------------------------------------------------------
-
-  private paragraphAt(storyIndex: number): number {
-    let p = 0;
-    while (p + 1 < this.paraStarts.length && this.paraStarts[p + 1]! <= storyIndex) p++;
-    return p;
-  }
 
   private frames(): { page: number; left: number; right: number; top: number; bottom: number; columns: { left: number; right: number; gutter: number }[] }[] {
     const containers = asArray(this.story.textContainers);

@@ -68,3 +68,15 @@ export function remapByParagraph<T>(record: Record<string, T> | undefined, map: 
   }
   return { record: out, lost };
 }
+
+/** The paragraph a story character belongs to, given every paragraph's start index in ascending order (binary search). */
+export function paragraphAt(starts: readonly number[], index: number): number {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid]! <= index) lo = mid;
+    else hi = mid - 1;
+  }
+  return Math.max(0, lo);
+}
