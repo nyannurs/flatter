@@ -46,9 +46,15 @@
   #alarm .alarm-actions { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 6px; }
   #alarm .alarm-actions > * { margin: 0 6px 4px 0; }
   .footer { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 16px; }
-  .langrow { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  .langrow { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; margin: 2px 0 4px; }
   #langNow { flex-basis: 100%; }
   .langrow > * { margin-right: 6px; }
+  .quiet { display: flex; flex-direction: row; flex-wrap: wrap; }
+  .quiet sp-action-button { margin: 0 4px 4px 0; }
+  .buttons sp-checkbox { margin: 0 0 6px 4px; }
+  #meta { min-height: 2.6em; }
+  #details { margin: 2px 0 0; }
+  .footer { justify-content: flex-end; }
 </style>
 </head>
 <body>
@@ -66,12 +72,24 @@
     </div>
   </div>
   <sp-body size="S" id="target">Select a text frame or put the cursor in text.</sp-body>
-  <div class="langrow">
-    <sp-detail>LANGUAGE</sp-detail>
-    <sp-action-button id="langDe" size="s">German</sp-action-button>
-    <sp-action-button id="langEn" size="s">English</sp-action-button>
-    <sp-body size="XS" id="langNow"></sp-body>
+
+  <!-- Actions and the result first: they are what you look at while working; the settings follow. -->
+  <div class="buttons">
+    <sp-button id="apply" variant="cta">Apply</sp-button>
+    <sp-action-button id="setWhole">Set whole story</sp-action-button>
+    <sp-checkbox id="live" checked>Live</sp-checkbox>
   </div>
+  <div class="quiet">
+    <sp-action-button id="recompute" size="s" quiet>Recompute</sp-action-button>
+    <sp-action-button id="freeze" size="s" quiet>Freeze</sp-action-button>
+    <sp-action-button id="remove" size="s" quiet>Remove</sp-action-button>
+  </div>
+  <sp-body size="XS" class="dim" id="longHint" style="display: none">Long story? Select a few paragraphs, Apply, then Set whole story.</sp-body>
+
+  <sp-body size="S" id="status"></sp-body>
+  <sp-body size="XS" id="meta"></sp-body>
+  <sp-body size="XS" class="toggle" id="detailsToggle" style="display: none">▸ Details</sp-body>
+  <sp-body size="XS" class="dim" id="details" style="display: none"></sp-body>
 
   <sp-divider size="small"></sp-divider>
   <div>
@@ -80,9 +98,8 @@
       <sp-action-button id="styleAesthetic" size="s" selected>Aesthetic</sp-action-button>
       <sp-action-button id="styleFunctional" size="s">Functional</sp-action-button>
     </div>
-    <sp-body size="XS" class="note" id="styleHint">Strict long, short, long, short.</sp-body>
-    <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone (% of measure)</sp-label></sp-slider>
-    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label" id="bandLabel">Band (% of zone)</sp-label></sp-slider>
+    <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone %</sp-label></sp-slider>
+    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label" id="bandLabel">Band %</sp-label></sp-slider>
     <div class="row">
       <sp-picker id="phase" size="s" label="Phase">
         <sp-menu slot="options">
@@ -99,51 +116,43 @@
       </sp-picker>
     </div>
     <sp-checkbox id="continuous">Rhythm across paragraphs</sp-checkbox>
-    <sp-body size="XS" class="hint" id="continuousHint">Continue long/short from one paragraph into the next.</sp-body>
     <sp-checkbox id="showBands" checked>Show zone and band</sp-checkbox>
-    <sp-body size="XS" class="hint" id="legendAesthetic"><span class="swatch long"></span> long lines end here · <span class="swatch short"></span> short lines end here (not printed)</sp-body>
-    <sp-body size="XS" class="hint" id="legendFunctional" style="display: none"><span class="swatch zone"></span> every line ends in this zone (not printed)</sp-body>
+    <sp-body size="XS" class="hint" id="legendAesthetic"><span class="swatch long"></span> long · <span class="swatch short"></span> short (not printed)</sp-body>
+    <sp-body size="XS" class="hint" id="legendFunctional" style="display: none"><span class="swatch zone"></span> zone (not printed)</sp-body>
   </div>
 
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>HYPHENATION</sp-detail>
+    <div class="langrow">
+      <sp-action-button id="langDe" size="s">German</sp-action-button>
+      <sp-action-button id="langEn" size="s">English</sp-action-button>
+      <sp-body size="XS" id="langNow"></sp-body>
+    </div>
     <sp-picker id="hyphenation" size="s" label="Hyphenation">
       <sp-menu slot="options">
-        <sp-menu-item value="safe" selected>Safe (classes A and B)</sp-menu-item>
-        <sp-menu-item value="normal">Normal (also class C)</sp-menu-item>
+        <sp-menu-item value="safe" selected>Safe</sp-menu-item>
+        <sp-menu-item value="normal">Normal</sp-menu-item>
       </sp-menu>
     </sp-picker>
     <sp-slider id="maxHyph" min="1" max="3" step="1" value="2" show-value="true"><sp-label slot="label">Hyphens in a row</sp-label></sp-slider>
     <sp-checkbox id="sense" checked>Sinneinheiten</sp-checkbox>
-    <sp-slider id="senseBal" min="0" max="100" step="5" value="50"><sp-label slot="label">Shape ↔ Sense</sp-label></sp-slider>
-    <sp-body size="XS" class="hint" id="senseHint">Balanced: units of meaning weigh as usual.</sp-body>
+    <sp-slider id="senseBal" min="0" max="100" step="5" value="50"><sp-label slot="label" id="senseLabel">Shape ↔ Sense · Balanced</sp-label></sp-slider>
   </div>
 
   <sp-divider size="small"></sp-divider>
   <div>
     <sp-detail>LAUFWEITE</sp-detail>
     <sp-checkbox id="tracking"><span id="trackingLabel">Align line ends exactly</span></sp-checkbox>
-    <sp-body size="XS" class="hint" id="trackingHint">Per line: letter tracking and word spaces, within the limits below.</sp-body>
-    <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true" disabled><sp-label slot="label">Letter tracking ± (1/1000 em)</sp-label></sp-slider>
-    <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true" disabled><sp-label slot="label">Word spaces ± (%)</sp-label></sp-slider>
+    <div id="trackLimits" style="display: none">
+      <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true"><sp-label slot="label">Letter tracking ±</sp-label></sp-slider>
+      <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true"><sp-label slot="label">Word spaces ± %</sp-label></sp-slider>
+    </div>
   </div>
 
-  <div class="buttons">
-    <sp-button id="apply" variant="cta">Apply</sp-button>
-    <sp-action-button id="setWhole">Set whole story</sp-action-button>
-    <sp-action-button id="recompute">Recompute</sp-action-button>
-    <sp-action-button id="freeze">Freeze</sp-action-button>
-    <sp-action-button id="remove">Remove</sp-action-button>
-  </div>
-  <sp-body size="XS" class="hint">Long story: select a few paragraphs and press Apply to try settings on them, then Set whole story sets every paragraph in one go and freezes it.</sp-body>
-  <sp-checkbox id="live" checked>Live</sp-checkbox>
-  <sp-body size="XS" class="hint">Sliders reset the text while you move them.</sp-body>
-
-  <sp-body size="S" id="status"></sp-body>
-  <sp-body size="XS" id="meta"></sp-body>
+  <!-- Problems and notes at the bottom: their length changes after every slider move, and the sliders above must not jump. -->
   <div id="report"></div>
-  <div class="footer"><sp-detail id="version"></sp-detail><sp-action-button id="selfcheck" size="s" quiet>Run self-check</sp-action-button></div>
+  <div class="footer"><sp-action-button id="selfcheck" size="s" quiet>Run self-check</sp-action-button></div>
   <script src="index.js"></script>
 </div>
 </body>

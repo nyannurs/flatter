@@ -22,6 +22,7 @@ import {
   compatibilityAlarms,
   steeringFailed,
   isUserError,
+  paragraphAt,
   type SelfCheckResult,
   LANGUAGES,
   type ApplyResult,
@@ -63,6 +64,8 @@ interface PanelState {
   lastResult?: ApplyResult;
   /** The notes section of the report is open. */
   showNotes?: boolean;
+  /** The result's details (edges, strict paragraphs, tracked lines, timings) are open. */
+  showDetails?: boolean;
   /** Aesthetic (strict long/short) or functional rag (ADR-021). */
   style: 'aesthetic' | 'functional';
   /** The last tick was a draft (no word spaces): verify applies the full settings first. */
@@ -75,6 +78,8 @@ interface PanelState {
   scope?: string;
   /** The previewed paragraphs, kept when the text is deselected (Escape, a click elsewhere) until other text is selected. */
   preview?: { storyId: number; from: number; to: number };
+  /** A note for the next result (the language buttons' word about other stories, which Apply would overwrite). */
+  note?: string;
 }
 const state: PanelState = { dragging: false, busy: false, pending: false, style: 'aesthetic', lastAction: '' };
 
@@ -115,19 +120,17 @@ function settingsToUI(s: ApplySettings): void {
   syncLabels();
 }
 
-/** The story of the current selection: a text frame, or text / insertion point inside one. */
 /** Dev channel only: a story to work on instead of the selection (in a hidden throwaway document). */
 let devStory: Any | undefined;
 
+/** The story of the current selection: a text frame, or text / insertion point inside one. */
 export function targetStory(): Any | undefined {
   if (devStory?.isValid) return devStory;
   try {
     if (!app.documents.length) return undefined;
     const sel = app.selection;
     const first = Array.isArray(sel) ? sel[0] : sel?.[0];
-    if (!first) return undefined;
-    if (first.parentStory) return first.parentStory;
-    if (first.constructorName === 'TextFrame' || first.parentStory === undefined) return first.parentStory ?? undefined;
+    return first?.parentStory || undefined;
   } catch {
     /* no usable selection */
   }
@@ -150,17 +153,7 @@ function selectedParagraphs(story: Any): { from: number; to: number } | undefine
     const b = Number(first.characters.item(n - 1).index);
     const raw = story.paragraphs.everyItem().index;
     const starts = (Array.isArray(raw) ? raw : [raw]).map(Number);
-    const paragraphOf = (k: number) => {
-      let lo = 0;
-      let hi = starts.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (starts[mid]! <= k) lo = mid;
-        else hi = mid - 1;
-      }
-      return lo;
-    };
-    return { from: paragraphOf(a), to: paragraphOf(b) };
+    return { from: paragraphAt(starts, a), to: paragraphAt(starts, b) };
   } catch {
     return undefined;
   }
@@ -185,9 +178,11 @@ function workingStory(): Any | undefined {
   if (story) return story;
   return state.live?.story?.isValid ? state.live.story : undefined;
 }
-const scopeText = (scope: { from: number; to: number }) => (scope.from === scope.to ? `paragraph ${scope.from + 1}` : `paragraphs ${scope.from + 1}–${scope.to + 1}`);
+const scopeText = (scope: { from: number; to: number }) => (scope.from === scope.to ? `¶ ${scope.from + 1}` : `¶ ${scope.from + 1}–${scope.to + 1}`);
 
-const FROZEN_HINT = 'This story is frozen: its line breaks are fixed in the text.';
+const FROZEN_HINT = 'This story is frozen.';
+/** More paragraphs than this: a long story (Unfreeze does not set it live again; the panel suggests a preview). */
+const LONG_STORY = 40;
 
 /** Freeze / Unfreeze button: label for the target story; off when Flatter is not on the story. */
 function updateFreezeButton(story: Any | undefined): void {
@@ -214,12 +209,12 @@ function freezeToggle(): void {
       state.failed = undefined;
       // A long story is not set live again by itself (that is what made long stories slow): preview a selection,
       // or set the whole story again.
-      const long = Number(story.paragraphs.length) > 40;
+      const long = Number(story.paragraphs.length) > LONG_STORY;
       if (long && !selectedParagraphs(story)) {
-        setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Select a few paragraphs and press Apply to try settings on them, then Set whole story.');
+        setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Select a few paragraphs and Apply, or Set whole story.');
         return;
       }
-      setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Applying the rag again…');
+      setStatus(`Unfrozen: ${n} fixed characters removed.`, 'ok', 'Setting the rag again…');
       apply('Unfreeze');
     } catch (e) {
       fail(e);
@@ -227,7 +222,7 @@ function freezeToggle(): void {
     return;
   }
   if (!freezeArmed) {
-    setStatus('Freeze fixes every line break in the text.', 'bad', 'For hand-off of the InDesign file. Afterwards the text cannot reflow: to edit it, press Unfreeze first. Click Freeze again to confirm.');
+    setStatus('Click Confirm Freeze to fix every line break.', 'bad', 'For handing the file on. To edit the text later, press Unfreeze first.');
     $('freeze').textContent = 'Confirm Freeze';
     freezeArmed = setTimeout(() => {
       freezeArmed = undefined;
@@ -246,7 +241,7 @@ function freezeToggle(): void {
     setStatus(
       ok ? `Frozen: ${r.breaks} line breaks fixed${r.hyphens ? `, ${r.hyphens} hyphens` : ''}.` : `Frozen, but the line count changed (${r.linesBefore} → ${r.linesAfter}).`,
       ok ? 'ok' : 'bad',
-      'The teeth and strips are gone; the breaks are characters with the condition "Flatter frozen" (Window → Type & Tables → Conditional Text). Press Unfreeze to change the rag again.',
+      'Press Unfreeze to change the rag. The breaks carry the condition "Flatter frozen".',
     );
   } catch (e) {
     fail(e);
@@ -271,7 +266,8 @@ function selectedStories(): Any[] {
 /** Show the target story's language and mark the matching button. */
 function showLanguage(story: Any | undefined): void {
   const name = story ? storyLanguage(story) : '';
-  $('langNow').textContent = name ? `Now: ${name}` : '';
+  // The buttons show German and English; only another language or a mix needs words.
+  $('langNow').textContent = name && name !== LANGUAGES.de && name !== LANGUAGES.en ? `Now: ${name}` : '';
   $('langDe').selected = name === LANGUAGES.de;
   $('langEn').selected = name === LANGUAGES.en;
 }
@@ -296,14 +292,15 @@ function setLanguage(lang: keyof typeof LANGUAGES): void {
   const story = targetStory();
   showLanguage(story);
   const others = stories.filter((s) => s.id !== story?.id && storedSettings(s)).length;
+  const note = others ? `${others} other selected ${others === 1 ? 'story uses' : 'stories use'} Flatter: select ${others === 1 ? 'it' : 'each'} and press Recompute.` : '';
   if (story && storedSettings(story)) {
     state.live = undefined;
     state.failed = undefined;
+    state.note = note || undefined;
     apply('language change');
   } else {
-    setStatus(`Language set to ${LANGUAGES[lang]} for ${stories.length === 1 ? 'this story' : `${stories.length} stories`}.`, 'ok', 'Press Apply to set the rag.');
+    setStatus(`Language set to ${LANGUAGES[lang]} for ${stories.length === 1 ? 'this story' : `${stories.length} stories`}.`, 'ok', `Press Apply to set the rag. ${note}`.trim());
   }
-  if (others) $('meta').textContent += ` ${others} other selected ${others === 1 ? 'story uses' : 'stories use'} Flatter: select ${others === 1 ? 'it' : 'each'} and press Recompute.`;
 }
 
 function syncLabels(): void {
@@ -313,46 +310,46 @@ function syncLabels(): void {
   const functional = state.style === 'functional';
   $('styleAesthetic').selected = !functional;
   $('styleFunctional').selected = functional;
-  $('styleHint').textContent = functional
-    ? 'Reading first: lines end anywhere in the Flatterzone, break at Sinneinheiten and pauses, no staircases.'
-    : 'Strict long, short, long, short.';
-  $('bandLabel').textContent = functional ? 'Flutter (% of zone)' : 'Band (% of zone)';
+  $('bandLabel').textContent = functional ? 'Flutter %' : 'Band %';
+  // Phase and the rhythm across paragraphs mean nothing without long and short lines.
   $('phase').disabled = functional;
   $('continuous').disabled = functional;
-  $('continuousHint').textContent = functional ? 'Not used in the functional style.' : 'Continue long/short from one paragraph into the next.';
-  $('legendAesthetic').style.display = functional ? 'none' : '';
-  $('legendFunctional').style.display = functional ? '' : 'none';
-  $('trackingLabel').textContent = functional ? 'Rescue lines with Laufweite' : 'Align line ends exactly';
-  $('trackingHint').textContent = functional
-    ? 'Letter tracking and word spaces only for lines that would end outside the zone, within the limits below.'
-    : 'Per line: letter tracking and word spaces, within the limits below.';
-  $('trackMax').disabled = !checked('tracking');
-  $('wordMax').disabled = !checked('tracking');
+  const bands = checked('showBands');
+  $('legendAesthetic').style.display = bands && !functional ? '' : 'none';
+  $('legendFunctional').style.display = bands && functional ? '' : 'none';
+  $('trackingLabel').textContent = functional ? 'Rescue lines outside the zone' : 'Align line ends exactly';
+  $('trackLimits').style.display = checked('tracking') ? '' : 'none';
   $('senseBal').disabled = !checked('sense');
-  $('senseHint').textContent = senseHint(num('senseBal'));
+  $('senseLabel').textContent = `Shape ↔ Sense · ${senseHint(num('senseBal'))}`;
 }
 
 /** Shape ↔ Sense (ADR-025): what the slider position means. */
 function senseHint(v: number): string {
-  if (v <= 0) return 'Shape only: units of meaning are ignored.';
-  if (v >= 100) return 'Sense first: a unit of meaning is never broken, even if the rhythm gives way.';
-  if (v === 50) return 'Balanced: units of meaning weigh as usual.';
+  if (v <= 0) return 'Shape only';
+  if (v >= 100) return 'Sense first';
+  if (v === 50) return 'Balanced';
   const m = senseMultiplier(v / 100);
-  return `Units of meaning weigh ×${m < 1 ? m.toFixed(2) : m.toFixed(1)}${v > 50 ? ': the edge may give a little.' : ': the shape comes first.'}`;
+  return `×${m < 1 ? m.toFixed(2) : m.toFixed(1)}`;
 }
 
-function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = ''): void {
+function setStatus(text: string, kind: 'ok' | 'bad' | 'err' | '' = '', meta = '', details = ''): void {
   const el = $('status');
   el.textContent = text;
   el.className = kind;
   $('meta').textContent = meta;
+  // Details (the numbers behind a result) stay folded unless opened.
+  $('details').textContent = details;
+  $('detailsToggle').textContent = state.showDetails ? '▾ Details' : '▸ Details';
+  $('detailsToggle').style.display = details ? '' : 'none';
+  $('details').style.display = details && state.showDetails ? '' : 'none';
 }
 
 function render(r: ApplyResult, ms?: number): void {
   renderResult(r, ms);
-  // A preview on a few paragraphs says so, after Apply and after every slider move.
-  const p = state.preview;
-  if (p && state.scope) $('meta').textContent = `Preview on ${scopeText(p)} (select other text to preview others). Set whole story sets every paragraph with these settings. ${$('meta').textContent}`;
+  if (state.note) {
+    $('meta').textContent += ` ${state.note}`;
+    state.note = undefined;
+  }
 }
 
 function renderResult(r: ApplyResult, ms?: number): void {
@@ -402,31 +399,36 @@ function renderResult(r: ApplyResult, ms?: number): void {
       const m = p.mismatch;
       const said = m.got
         ? `InDesign ended this line at “…${m.got.text.trim()}” instead of the planned “…${m.planned.text.trim()}”.`
-        : 'InDesign did not set this line (it is overset or hidden).';
-      problems.unshift(reportItem(p.index, m.line, 'err', `${said} The lines after it shift too, so they no longer match the plan. Try Recompute; if it stays, the line is too tight for its band.`));
+        : 'InDesign did not set this line (overset or hidden).';
+      problems.unshift(reportItem(p.index, m.line, 'err', `${said} Later lines shift too. Try Recompute; if it stays, the line is too tight for its band.`));
     }
     for (const w of p.refused) notes.push(`<sp-body size="XS">¶${p.index + 1}: InDesign refused the hyphenation ${escapeHtml(w)}; re-planned.</sp-body>`);
-    for (const u of p.unsupported) problems.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${u}; Flatter cannot plan around it yet.</sp-body>`);
+    for (const u of p.unsupported) problems.push(`<sp-body size="XS" class="bad">¶${p.index + 1}: contains a ${escapeHtml(u)}; Flatter cannot plan around it yet.</sp-body>`);
   }
   const allGood = inRhythm === band && r.linesAsPlanned === r.linesPlanned;
+  const functional = state.style === 'functional';
+  const edges = functional
+    ? worstMiss > 0.05
+      ? `Worst line ${worstMiss.toFixed(1)} pt outside the zone.`
+      : 'Every line ends inside the zone.'
+    : `Long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge.`;
+  const seconds = (t: number) => (t < 1000 ? `${t} ms` : `${(t / 1000).toFixed(1)} s`);
   setStatus(
-    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} visible lines ${state.style === 'functional' ? 'inside the Flatterzone' : 'in rhythm'}`,
+    `${allGood ? '✓' : '⚠'} ${inRhythm}/${band} lines ${functional ? 'inside the zone' : 'in rhythm'}`,
     allGood ? 'ok' : 'bad',
-    (state.style === 'functional'
-      ? worstMiss > 0.05
-        ? `Worst line ${worstMiss.toFixed(1)} pt outside the Flatterzone · `
-        : 'Every line ends inside the Flatterzone · '
-      : `Edges: long lines end within ${longRange.toFixed(1)} pt of each other, short within ${shortRange.toFixed(1)} pt; worst line ${worstMiss.toFixed(1)} pt off its edge · `) +
-      `${strict}/${r.paragraphs.length} paragraphs strict · ${r.linesAsPlanned}/${r.linesPlanned} lines set as planned · ${r.trackedLines} tracked, ${r.spacedLines} with adjusted word spaces` +
-      (r.oversetLines ? ` · ${r.oversetLines} lines overset (not visible, not set)` : '') +
-      (ms !== undefined ? ` · ${ms} ms` : '') +
-      (state.lastTickMs !== undefined ? ` · last slider tick ${state.lastTickMs} ms` : ''),
+    `${r.linesAsPlanned}/${r.linesPlanned} set as planned` +
+      (r.oversetLines ? ` · ${r.oversetLines} overset` : '') +
+      (ms !== undefined ? ` · ${seconds(ms)}` : '') +
+      (problems.length ? ` · ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} listed at the bottom` : ''),
+    `${edges} ${strict}/${r.paragraphs.length} paragraphs strict. ${r.trackedLines} lines tracked, ${r.spacedLines} with adjusted word spaces.` +
+      (r.oversetLines ? ` ${r.oversetLines} lines overset (not visible, not set).` : '') +
+      (state.lastTickMs !== undefined ? ` Last slider tick ${seconds(state.lastTickMs)}.` : ''),
   );
   const parts: string[] = [];
   if (problems.length) parts.push(`<sp-detail>PROBLEMS (${problems.length})</sp-detail>`, ...problems);
   if (hidden) parts.push(`<sp-body size="XS" class="dim">${hidden} more in overset lines (not visible, not listed).</sp-body>`);
   if (notes.length) {
-    parts.push(`<sp-body size="XS" class="toggle" id="notesToggle">${state.showNotes ? '▾' : '▸'} Notes (${notes.length}): line ends, phrases, hyphenation</sp-body>`);
+    parts.push(`<sp-body size="XS" class="toggle" id="notesToggle">${state.showNotes ? '▾' : '▸'} Notes (${notes.length})</sp-body>`);
     if (state.showNotes) parts.push(...notes);
   }
   $('report').innerHTML = parts.join('');
@@ -435,13 +437,13 @@ function renderResult(r: ApplyResult, ms?: number): void {
     // Lines that do not match their measurements look exactly like this, and Recompute cured every case so far
     // (2026-10-27): measure again once, automatically, before raising the alarm.
     state.recovery = { storyId, first: diagnosis(r) };
-    setStatus('Lines did not match the plan. Measuring the story again…', '', '');
+    setStatus('Lines did not match the plan. Measuring again…', '', '');
     setTimeout(() => recompute('automatic re-measure'), 0);
     return;
   }
   if (state.recovery?.storyId === storyId && !steeringFailed(r)) {
     state.recovery = undefined;
-    $('meta').textContent += ' · Measured again automatically: the lines did not match the measurements.';
+    $('meta').textContent += ' · Measured again automatically.';
   }
   const alarms = compatibilityAlarms(r);
   if (alarms.length) {
@@ -512,12 +514,13 @@ function escapeHtml(s: string): string {
 }
 
 function fail(e: unknown): void {
+  state.note = undefined;
   const message = String((e as Error)?.message ?? e);
   if (isUserError(e)) {
     setStatus('Flatter could not set this story', 'err', `${message} Nothing was changed.`);
     return;
   }
-  setStatus('Flatter could not set this story', 'err', 'An unexpected error: see the pink box at the top. Nothing was changed.');
+  setStatus('Flatter could not set this story', 'err', 'Unexpected error: see the pink box at the top. Nothing was changed.');
   showAlarm('Something unexpected went wrong. This can mean an InDesign update changed something Flatter relies on.', [message], String((e as Error)?.stack ?? message));
 }
 
@@ -579,7 +582,7 @@ export function runSelfCheck(auto: boolean): Promise<SelfCheckResult | undefined
       return;
     }
     state.busy = true;
-    setStatus(`Checking Flatter with InDesign ${String(app.version)}…`, '', auto ? 'This runs once after each InDesign or Flatter update and takes a few seconds.' : 'Takes a few seconds.');
+    setStatus(`Checking Flatter with InDesign ${String(app.version)}…`, '', auto ? 'Once after each update; a few seconds.' : 'A few seconds.');
     setTimeout(() => {
       let result: SelfCheckResult | undefined;
       try {
@@ -651,7 +654,7 @@ function apply(action = 'Apply'): void {
   if (state.busy) return;
   state.busy = true;
   state.failed = undefined;
-  setStatus('Preparing…', '', 'Measuring the text and checking hyphenation. This happens once per story.');
+  setStatus('Measuring…', '', 'Text and hyphenation, once per story.');
   $('report').innerHTML = '';
   // Let the panel paint the status before the long synchronous work starts.
   const scope = workingScope(story);
@@ -665,6 +668,7 @@ function apply(action = 'Apply'): void {
       state.preview = scope ? { storyId: story.id, ...scope } : undefined;
       render(report, report.ms);
       updateFreezeButton(story);
+      showTarget(story);
     } catch (e) {
       state.live = undefined;
       state.failed = { storyId: story.id, message: String((e as Error)?.message ?? e) };
@@ -691,7 +695,7 @@ function setWhole(): void {
   }
   if (state.busy) return;
   state.busy = true;
-  setStatus('Setting the whole story…', '', 'Measuring and planning every paragraph, then writing the line breaks. On a long story this takes a while, and InDesign does not respond until it is done.');
+  setStatus('Setting the whole story…', '', 'InDesign does not respond until it is done.');
   $('report').innerHTML = '';
   setTimeout(() => {
     try {
@@ -703,7 +707,8 @@ function setWhole(): void {
       state.storyId = story.id;
       updateFreezeButton(story);
       const missed = r.missed ? ` ${r.missed} ${r.missed === 1 ? 'line' : 'lines'} did not fit and broke early.` : '';
-      setStatus(`Whole story set and frozen in ${(r.ms / 1000).toFixed(1)} s.`, r.missed ? 'bad' : 'ok', `${r.paragraphs} paragraphs, ${r.lines} lines, ${r.breaks} fixed line breaks (${r.hyphens} with a hyphen).${missed} To change it: Undo, or Unfreeze.`);
+      setStatus(`Whole story set and frozen in ${(r.ms / 1000).toFixed(1)} s`, r.missed ? 'bad' : 'ok', `${r.paragraphs} paragraphs, ${r.lines} lines.${missed} Undo or Unfreeze to change it.`, `${r.breaks} fixed line breaks, ${r.hyphens} with a hyphen.`);
+      showTarget(story);
     } catch (e) {
       fail(e);
     } finally {
@@ -714,15 +719,26 @@ function setWhole(): void {
 
 function remove(): void {
   const story = targetStory();
-  if (!story) return;
+  if (!story) {
+    setStatus('Select a text frame first.', 'bad');
+    return;
+  }
+  if (state.busy) return;
+  // A slider tick or verify still waiting would set the rag again right after it was removed.
+  clearTimeout(state.tickTimer);
+  clearTimeout(state.verifyTimer);
+  state.pending = false;
   try {
     const r = removeFlatter(story);
     state.live = undefined;
     state.preview = undefined;
+    state.failed = undefined;
+    state.recovery = undefined;
     updateFreezeButton(story);
-    const lost = r.paragraphsNotFound ? ` ${r.paragraphsNotFound} stored ${r.paragraphsNotFound === 1 ? 'setting' : 'settings'} of paragraphs that were deleted or whose beginning was rewritten could not be matched and were left as they are.` : '';
-    setStatus('Removed', r.paragraphsNotFound ? 'bad' : '', `${r.teethRemoved} teeth removed, ${r.settingsRestored} settings restored.${lost}`);
+    const lost = r.paragraphsNotFound ? ` ${r.paragraphsNotFound} could not be matched (paragraph deleted or its start rewritten) and stay as they are.` : '';
+    setStatus('Removed', r.paragraphsNotFound ? 'bad' : '', `${r.settingsRestored} settings restored.${lost}`);
     $('report').innerHTML = '';
+    showTarget(story);
   } catch (e) {
     fail(e);
   }
@@ -809,20 +825,47 @@ function verify(): void {
   }
 }
 
+/** The first few words of a story (reads only its start: the whole text of a long story on every selection is slow). */
+function storyStart(story: Any): string {
+  let text = '';
+  try {
+    const n = Number(story.characters.length);
+    const c = n ? story.insertionPoints.itemByRange(0, Math.min(n, 120)).texts.item(0).contents : '';
+    text = Array.isArray(c) ? c.join('') : String(c);
+  } catch {
+    /* empty story */
+  }
+  return text.replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
+}
+
+/** The story line: its first words, and the paragraphs selected or previewed; the long-story hint. */
+function showTarget(story: Any): void {
+  const words = storyStart(story);
+  const selected = selectedParagraphs(story);
+  const preview = state.preview?.storyId === story.id ? state.preview : undefined;
+  const scope = selected ? `Selected ${scopeText(selected)}` : preview ? `Preview on ${scopeText(preview)}` : '';
+  $('target').textContent = `${words}…${scope ? ` · ${scope}` : ''}`;
+  let long = false;
+  try {
+    long = Number(story.paragraphs.length) > LONG_STORY;
+  } catch {
+    /* no paragraphs */
+  }
+  $('longHint').style.display = long ? '' : 'none';
+}
+
 function onSelectionChanged(): void {
   // Flatter's own hidden measuring document opens and closes while it works.
   if (state.busy) return;
   const story = targetStory();
   if (!story) {
     $('target').textContent = 'Select a text frame or put the cursor in text.';
+    $('longHint').style.display = 'none';
     showLanguage(undefined);
     updateFreezeButton(undefined);
     return;
   }
-  const words = String(story.contents).replace(/\s+/g, ' ').trim().split(' ').slice(0, 6).join(' ');
-  const selected = selectedParagraphs(story);
-  const preview = state.preview?.storyId === story.id ? state.preview : undefined;
-  $('target').textContent = selected ? `Story: ${words}… · Selected: ${scopeText(selected)}` : preview ? `Story: ${words}… · Preview: ${scopeText(preview)}` : `Story: ${words}…`;
+  showTarget(story);
   showLanguage(story);
   updateFreezeButton(story);
   if (state.storyId !== story.id) {
@@ -836,7 +879,7 @@ function onSelectionChanged(): void {
       setStatus(FROZEN_HINT, '', 'Press Unfreeze to change the rag.');
     } else if (stored) {
       settingsToUI(stored);
-      setStatus('Flatter is applied to this story.', '', 'Move a slider or press Recompute to work on it.');
+      setStatus('Flatter is on this story.', '', 'Move a slider or press Recompute.');
     } else {
       setStatus('', '');
       $('report').innerHTML = '';
@@ -855,9 +898,6 @@ function init(): void {
     state.recovery = undefined;
     recompute('Recompute');
   });
-  $('apply').addEventListener('click', () => {
-    state.failed = undefined;
-  });
   $('remove').addEventListener('click', remove);
   $('setWhole').addEventListener('click', setWhole);
   const setStyle = (style: 'aesthetic' | 'functional') => {
@@ -871,12 +911,16 @@ function init(): void {
   $('alarmRecheck').addEventListener('click', () => void runSelfCheck(false));
   $('alarmClose').addEventListener('click', hideAlarm);
   $('alarmCopy').addEventListener('click', copyAlarmDetails);
-  $('version').textContent = `Flatter ${FLATTER_VERSION}`;
   $('brandVersion').textContent = FLATTER_VERSION;
   setTimeout(selfCheckIfNeeded, 1500);
   $('freeze').addEventListener('click', freezeToggle);
   $('langDe').addEventListener('click', () => setLanguage('de'));
   $('langEn').addEventListener('click', () => setLanguage('en'));
+  $('detailsToggle').addEventListener('click', () => {
+    state.showDetails = !state.showDetails;
+    $('detailsToggle').textContent = state.showDetails ? '▾ Details' : '▸ Details';
+    $('details').style.display = state.showDetails && $('details').textContent ? '' : 'none';
+  });
   $('report').addEventListener('click', (e: Any) => {
     let el = e.target;
     if (el?.id === 'notesToggle' || el?.parentElement?.id === 'notesToggle') {
