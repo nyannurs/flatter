@@ -1,92 +1,59 @@
 # Flatter
 
-A UXP panel plugin for Adobe InDesign that sets left-aligned ragged text (Flattersatz) in one of two styles: **Aesthetic**, a strict long, short, long, short rhythm, or **Functional**, a free rag set for reading. It can also adjust each line with letter tracking and word spaces.
+An Adobe InDesign plugin for left-aligned ragged text (Flattersatz). It sets a strict long, short, long, short rhythm (**Aesthetic**) or a free rag tuned for reading (**Functional**, after we.type's [How to Flattersatz](https://wetype.xyz/share/how-to-flattersatz)).
 
-**Status: version 0.6.8, in testing.** The plugin works end to end in InDesign 2026 and installs as a regular plugin through Creative Cloud. It is being tested on real documents. It is not signed or published on Adobe Exchange.
+**Status: version 0.6.9, in testing.** Tested on InDesign 2027 for Mac; installs through Creative Cloud. Not signed and not on the Adobe Marketplace.
 
-## What it does
+## Features
 
-- **Strict alternating rag.** A dynamic-programming solver plans every line break of a paragraph so long and short lines alternate. Each line must end inside its band: long lines near the full measure, short lines a Flatterzone shorter. Neighbouring lines keep a minimum contrast, and the report flags holes and staircases. When the strict rhythm is impossible, it falls back to the arrangement with the fewest and smallest misses.
-- **Functional style.** One switch changes the algorithm: lines end anywhere inside the Flatterzone, in no fixed order. Breaks prefer Sinneinheiten and reading pauses (after punctuation), neighbouring lines differ by at least the band so the edge flutters, and staircases are avoided. Laufweite only rescues lines that would end outside the zone. Based on the we.type guide [How to Flattersatz](https://wetype.xyz/share/how-to-flattersatz).
-- **InDesign sets exactly what was planned.** Flatter steers InDesign's Single-line Composer with invisible text-wrap "teeth" on a non-printing layer. It then reads the composed lines back, corrects any that differ and checks again. The text itself is never edited or broken by hand.
-- **Exact line ends (optional).** Per-line letter tracking and word-space adjustment move each line end onto its edge, within limits you set. Lines are measured the way InDesign sets tracked text, with ligatures broken up.
-- **Careful hyphenation.** German (2006 reform) and English, from TeX patterns plus a second opinion: a German syllable and word-joint analyser, and US and UK English patterns that must agree. Every point gets a class, and only safe points are used by default. Each point is also checked against InDesign's own hyphenation, including typed hyphens in compounds. A Sinneinheiten option keeps an article or preposition with its word, a number with its unit, dates, initials, titles and names together, and a **Shape ↔ Sense** slider sets how much they may cost the shape, up to Sense first, where a unit of meaning is never broken.
-- **Live panel.** Sliders for Flatterzone and band, as a percentage of the measure, plus hyphens in a row and the tracking and word-space limits. Results update while you drag. An optional band view shows where long lines (blue) and short lines (orange) should end, on a non-printing layer. The report lists one entry per visible line, and clicking an entry selects that line in the document.
-- **Freeze for hand-off.** Freeze fixes the current line breaks in the text: forced line breaks, plus real hyphens where InDesign hyphenated, all tagged with the condition "Flatter frozen". The file then keeps its rag on any computer, whatever its hyphenation dictionary. Unfreeze removes exactly those characters and brings the live rag back. You don't need Freeze for PDF output.
-- **Compatibility alarm.** After every InDesign or Flatter update, the panel checks once, in a hidden test document, that InDesign still behaves the way Flatter relies on. If a check fails, or something happens that should never happen (an unexpected error, InDesign ignoring the steering, no hyphenation points), a hot-magenta box appears at the top of the panel with the details to copy. **Run self-check** at the bottom of the panel runs it any time.
-- **Real layouts.** Long stories threaded through frames of different widths and column counts, lines beside images with text wrap, overset text, documents in any measurement unit, and German or English language buttons for bilingual work. Centred and right-aligned paragraphs, such as headings, keep their alignment and are left alone. Apply, slider moves and Remove are each one undo step. Remove restores every setting Flatter changed.
+- **Planned line breaks.** A solver plans every paragraph so line ends land in their bands, avoiding holes and staircases. Flatter then steers InDesign's own composer with invisible text-wrap shapes, reads the lines back and corrects them. Your text is never edited by hand.
+- **Exact line ends (optional).** Per-line letter tracking and word-space adjustment pull each line onto its edge, within limits you set.
+- **Careful hyphenation.** German (2006 rules) and English, checked against a second source and against InDesign's own dictionary. Only safe points are used by default. **Sinneinheiten** keep units of meaning together (article and noun, number and unit, names). The **Shape ↔ Sense** slider sets how much that may cost the rag.
+- **Long stories.** Select a few paragraphs to try settings on them live. Then **Set whole story** sets the entire story in one go, as fixed line breaks.
+- **Freeze** fixes the line breaks in the text for hand-off. **Unfreeze** and **Remove** undo it exactly, also after saving, reopening or editing the document.
+- **Real layouts.** Threaded frames of different widths, multi-column frames, text wrap around images, overset text, any document unit. Centred and right-aligned paragraphs are left alone. Every action is one undo step.
+- **Self-check.** After an InDesign or Flatter update, the panel checks that InDesign still behaves as Flatter expects, and shows a clear alarm if not.
 
 ## Install
 
-**You need:** Adobe InDesign 2023 (18.5) or newer, and the Creative Cloud desktop app, signed in. Flatter has been tested on InDesign 2026 for Mac. Windows and older versions should work but are untested.
+Requires InDesign 2023 (18.5) or newer and the Creative Cloud app.
 
-1. Download `Flatter-<version>.ccx` from the [Releases](../../releases) page, or get the file from whoever shared it with you.
-2. Quit InDesign.
-3. Double-click the `.ccx` file. Creative Cloud opens the plugin installer; it may warn that the plugin does not come from the Adobe Marketplace. Confirm the installation.
-4. Open InDesign. The panel is under **Plugins → Flatter**.
+1. Download `Flatter-<version>.ccx` from [Releases](../../releases).
+2. Quit InDesign, then double-click the file and confirm in Creative Cloud.
+3. Open InDesign: **Plugins → Flatter**.
 
-**Update:** install a newer `.ccx` the same way; it replaces the old version.
-
-**Uninstall:** Creative Cloud desktop app → **Stock & Marketplace** → **Plugins** → **Manage plugins** → Flatter → **⋯** → **Uninstall**.
-
-Documents keep their rag without the plugin: it is ordinary InDesign composition. Without Flatter you only cannot change it.
+To update, install a newer `.ccx` the same way. To uninstall: Creative Cloud → **Stock & Marketplace → Plugins → Manage plugins → Flatter → ⋯ → Uninstall**. Documents keep their rag without the plugin.
 
 ## Use
 
-1. Put the text cursor in a story, or select its frame.
-2. Press **German** or **English** if the language tag is wrong. The language decides hyphenation.
-3. Press **Apply**. Flatter fixes the settings it needs, for example the Single-line Composer and fixed leading, then measures, plans and steers.
-4. Choose **Aesthetic** or **Functional**. Adjust **Flatterzone** and **Band** (in Functional: **Flutter**, how much neighbouring lines differ). Turn on **Align line ends exactly** for geometric line ends (in Functional: **Rescue lines with Laufweite**).
-5. Read the report. Each entry names a line; click it to jump there.
-6. Optional, before handing the InDesign file to someone else: **Freeze**. Press **Unfreeze** to change the rag again.
-7. **Remove** takes Flatter off the story and restores the original settings, including a frozen one.
+1. Put the cursor in a story (or select its frame) and press **Apply**. Flatter switches on the settings it needs and sets the rag.
+2. Move the sliders; the text updates live. Check the language buttons under Hyphenation, since language decides hyphenation.
+3. **Long stories:** select a few paragraphs and press **Apply** to preview on them (the preview stays when you deselect). When you're happy, press **Set whole story**.
+4. **Freeze** before handing the InDesign file on; **Remove** restores the original settings.
 
-Each story keeps its own Flatter settings. Selecting a story loads them into the panel.
-
-## Status
-
-| Phase (see [docs/plan.md](docs/plan.md)) | State |
-|---|---|
-| 0 InDesign spikes | done |
-| 1 Core solver | done |
-| 2 Hyphenation | done (German, US and UK English) |
-| 3 InDesign adapter | done |
-| 4 Panel | done |
-| 5 Review and QA tooling | partly: clickable report, band view; review list not built |
-| 6 Robustness | partly: overset text, frames of different widths, any document unit |
-| 7 Packaging | partly: installable `.ccx` with licence texts, GitHub releases; not on the Adobe Marketplace |
-
-Not built yet: a review list across a whole document, tabs and anchored objects inside planned paragraphs, and automatic updates while you edit (press Recompute after edits).
-
-The day-by-day log is in [docs/progress.md](docs/progress.md), and decisions with their reasons are in [docs/decisions.md](docs/decisions.md). InDesign behaviour found by testing is in [docs/spike-results.md](docs/spike-results.md).
+Each story keeps its own settings.
 
 ## Develop
 
-Requires Node 24 and npm.
+Node 24 and npm.
 
 ```bash
 npm install
-npm test                # unit, property and snapshot tests (Vitest)
+npm test                # unit, property and snapshot tests
 npm run typecheck
-npm run sim -- --help   # simulator: text in, SVG and report out, no InDesign needed
 npm run playground      # browser playground with the same solver
-npm run test:indesign   # integration tests inside a running InDesign (throwaway documents)
-npm run panel           # dev build as "Flatter (dev)" (own plugin id, runs beside an installed release)
+npm run test:indesign   # integration tests in a running InDesign (throwaway documents)
+npm run panel           # dev build "Flatter (dev)", runs beside the installed release
 npm run package         # release build → dist/Flatter-<version>.ccx
 ```
 
-`CLAUDE.md` has the working notes: InDesign scripting pitfalls, how to load the dev panel without clicks, and conventions.
+| Folder | Contents |
+|---|---|
+| `packages/core` | line-break solver (pure TypeScript) |
+| `packages/hyphenation` | patterns, German analyser, Sinneinheiten |
+| `packages/indesign-adapter` | plan, steer, read back; InDesign DOM |
+| `packages/panel` | the UXP panel |
+| `packages/simulator` | SVG simulator and playground |
+| `tools/indesign` | scripts and tests that run inside InDesign |
 
-```
-packages/
-  core/              solver: item model, metrics, DP, checker (pure TypeScript, no InDesign APIs)
-  hyphenation/       patterns, German analyser and lexicon, classes A/B/C/X, Sinneinheiten
-  indesign-adapter/  plan → steer → read back → correct, against a Port interface; DOM implementation
-  panel/             UXP panel (plain HTML and Spectrum widgets)
-  simulator/         dev harness: Source Serif 4 metrics, SVG output, playground
-test/                reference texts and golden hyphenation corpora
-tools/indesign/      scripts and spikes that run inside InDesign, integration tests, packaging
-docs/                plan, progress log, decisions, spike results
-```
-
-Third-party components and licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+More: [plan](docs/plan.md), [progress log](docs/progress.md), [decisions](docs/decisions.md), [InDesign findings](docs/spike-results.md), working notes in `CLAUDE.md`, licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
