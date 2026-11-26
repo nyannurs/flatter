@@ -291,3 +291,7 @@ The designer found the panel too verbose and approved this layout (audit, 2026-1
 - Hints that were always visible are gone (style, rhythm across paragraphs, Laufweite, Live, the long-story sentence); the long-story hint shows only on stories of more than 40 paragraphs. The Shape ↔ Sense position is part of its label ("Balanced", "×2.4", "Sense first"). The version shows once, in the header.
 - Every function stays; the compatibility alarm is unchanged.
 
+## ADR-035: Licence: PolyForm Shield 1.0.0 (2026-11-26)
+
+The designer made the repository public and chose "free, no reselling". PolyForm Shield 1.0.0 says that: anyone may use, copy, change and pass Flatter on for any purpose, commercial client work included, except providing a product that competes with Flatter (selling it, or building a rival plugin from it). An established licence instead of a home-made one, so the terms are clear. `LICENSE.md` carries the required notice (copyright 2026 nyannurs) above the official text; `package.json` and the panel package say `PolyForm-Shield-1.0.0`; `npm run package` puts `LICENSE.md` into every `.ccx` next to the third-party licences (from the next release on; 0.6.9 does not contain it). The bundled third-party code (ISC and MIT hyphenation library and patterns) allows this.
+

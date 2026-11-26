@@ -73,6 +73,10 @@ Open the Creative Cloud app → **Manage Plugins** (in the app's menu or under S
 - Not on the Adobe Marketplace yet, which is why Creative Cloud shows a warning when you install it.
 - Found a bug or have an idea? [Open an issue](../../issues/new).
 
+## Licence
+
+Flatter is free. You may use it for any work, including paid client work, and pass it on to others. You may not sell it or use it to build a competing product. The legal text is the [PolyForm Shield License 1.0.0](LICENSE.md).
+
 ---
 
 <details>
@@ -99,6 +103,6 @@ npm run package         # release build → dist/Flatter-<version>.ccx and dist/
 | `packages/simulator` | SVG simulator and playground |
 | `tools/indesign` | scripts and tests that run inside InDesign |
 
-More: [plan](docs/plan.md), [progress log](docs/progress.md), [decisions](docs/decisions.md), [InDesign findings](docs/spike-results.md), working notes in `CLAUDE.md`. Third-party licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+More: [plan](docs/plan.md), [progress log](docs/progress.md), [decisions](docs/decisions.md), [InDesign findings](docs/spike-results.md), working notes in `CLAUDE.md`. Licence: [PolyForm Shield 1.0.0](LICENSE.md); third-party licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 </details>

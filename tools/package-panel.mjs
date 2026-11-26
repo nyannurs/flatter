@@ -18,7 +18,9 @@ const out = resolve(root, `dist/Flatter-${manifest.version}.ccx`);
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 for (const f of ['manifest.json', 'index.html', 'icons']) cpSync(resolve(plugin, f), resolve(stage, f), { recursive: true });
-// The licences of the bundled hyphenation library and patterns travel with every copy.
+// Flatter's own licence (PolyForm Shield 1.0.0) and the licences of the bundled hyphenation library and patterns travel
+// with every copy.
+cpSync(resolve(root, 'LICENSE.md'), resolve(stage, 'LICENSE.md'));
 cpSync(resolve(root, 'packages/panel/licenses/THIRD-PARTY-LICENSES.txt'), resolve(stage, 'THIRD-PARTY-LICENSES.txt'));
 // Release bundle: no dev command channel.
 execFileSync(process.execPath, [resolve(root, 'packages/panel/build.mjs'), '--out', resolve(stage, 'index.js')], { stdio: 'inherit' });
