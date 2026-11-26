@@ -29,7 +29,7 @@ npm run playground      # bundles the live playground to packages/simulator/out/
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
 npm run panel           # dev build into dist/dev-panel as "Flatter (dev)" (own plugin id: runs beside the installed release)
-npm run package         # release build → dist/Flatter-<version>.ccx (bump "version" in packages/panel/plugin/manifest.json first)
+npm run package         # release build → dist/Flatter-<version>.ccx and dist/Flatter.ccx (bump "version" in packages/panel/plugin/manifest.json first); upload both to the GitHub release (the README's download link points at releases/latest/download/Flatter.ccx) and update the README line "Version x · Mac · InDesign 2023 or newer"
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install "$PWD/dist/Flatter-<version>.ccx"   # install for the user (InDesign restart needed)
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --remove "Flatter"   # uninstall the installed release first when asked
 node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)

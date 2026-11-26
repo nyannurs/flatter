@@ -1,41 +1,84 @@
 # Flatter
 
-An Adobe InDesign plugin for left-aligned ragged text (Flattersatz). It sets a strict long, short, long, short rhythm (**Aesthetic**) or a free rag tuned for reading (**Functional**, after we.type's [How to Flattersatz](https://wetype.xyz/share/how-to-flattersatz)).
+**Beautiful ragged text in InDesign, in one click.**
 
-**Status: version 0.6.9, in testing.** Tested on InDesign 2027 for Mac; installs through Creative Cloud. Not signed and not on the Adobe Marketplace.
+Flatter is a plugin for Adobe InDesign that gives left-aligned text (Flattersatz) an even, deliberate right edge. Pick a strict long, short, long, short rhythm (**Aesthetic**) or a calm rag tuned for reading (**Functional**). Flatter chooses every line break for you, hyphenates carefully, and keeps words that belong together on one line. German and English.
 
-## Features
+### [⬇ Download Flatter](https://github.com/nyannurs/rag-indesign-plugin/releases/latest/download/Flatter.ccx)
 
-- **Planned line breaks.** A solver plans every paragraph so line ends land in their bands, avoiding holes and staircases. Flatter then steers InDesign's own composer with invisible text-wrap shapes, reads the lines back and corrects them. Your text is never edited by hand.
-- **Exact line ends (optional).** Per-line letter tracking and word-space adjustment pull each line onto its edge, within limits you set.
-- **Careful hyphenation.** German (2006 rules) and English, checked against a second source and against InDesign's own dictionary. Only safe points are used by default. **Sinneinheiten** keep units of meaning together (article and noun, number and unit, names). The **Shape ↔ Sense** slider sets how much that may cost the rag.
-- **Long stories.** Select a few paragraphs to try settings on them live. Then **Set whole story** sets the entire story in one go, as fixed line breaks.
-- **Freeze** fixes the line breaks in the text for hand-off. **Unfreeze** and **Remove** undo it exactly, also after saving, reopening or editing the document.
-- **Real layouts.** Threaded frames of different widths, multi-column frames, text wrap around images, overset text, any document unit. Centred and right-aligned paragraphs are left alone. Every action is one undo step.
-- **Self-check.** After an InDesign or Flatter update, the panel checks that InDesign still behaves as Flatter expects, and shows a clear alarm if not.
+Version 0.6.9 · Mac · InDesign 2023 or newer
 
-## Install
+---
 
-Requires InDesign 2023 (18.5) or newer and the Creative Cloud app.
+## Install (2 minutes)
 
-1. Download `Flatter-<version>.ccx` from [Releases](../../releases).
-2. Quit InDesign, then double-click the file and confirm in Creative Cloud.
-3. Open InDesign: **Plugins → Flatter**.
+You need **InDesign** and the **Creative Cloud app** (the app you installed InDesign with). Make sure you are signed in to it.
 
-To update, install a newer `.ccx` the same way. To uninstall: Creative Cloud → **Stock & Marketplace → Plugins → Manage plugins → Flatter → ⋯ → Uninstall**. Documents keep their rag without the plugin.
+1. **Open InDesign once, then quit it.** (InDesign → Quit InDesign.)
+2. **Double-click the file you downloaded** (`Flatter.ccx`, usually in your Downloads folder). The Creative Cloud app opens.
+3. Creative Cloud says the plugin is not from the Adobe Marketplace. That is expected. **Click Install.**
+4. **Open InDesign.** You find Flatter in the menu bar under **Plug-Ins → Flatter** (in older InDesign versions: **Plugins → Flatter**).
+
+That's it. To update later, download the new version and double-click it the same way.
 
 ## Use
 
-1. Put the cursor in a story (or select its frame) and press **Apply**. Flatter switches on the settings it needs and sets the rag.
-2. Move the sliders; the text updates live. Check the language buttons under Hyphenation, since language decides hyphenation.
-3. **Long stories:** select a few paragraphs and press **Apply** to preview on them (the preview stays when you deselect). When you're happy, press **Set whole story**.
-4. **Freeze** before handing the InDesign file on; **Remove** restores the original settings.
+1. Click into a text frame (or select it).
+2. Press **Apply**. Flatter sets the rag.
+3. Move the sliders. The text changes as you drag.
+   - **Flatterzone**: how far short lines may end from the right edge.
+   - **Band**: how precisely lines hit their position.
+   - **Align line ends exactly**: Flatter nudges letter and word spacing a tiny bit so every line ends exactly where it should.
+4. Check the language under **Hyphenation** (**German** / **English**). The language decides where words may be divided.
 
-Each story keeps its own settings.
+**Long texts (many pages or columns):** select a few paragraphs with the Type tool and press **Apply**. Flatter then works only on those, so the sliders stay quick. When you like the result, press **Set whole story**: every paragraph gets the same settings in one go.
 
-## Develop
+**Undo:** every action is a single Cmd+Z.
 
-Node 24 and npm.
+**Remove** takes Flatter off a story and puts every setting back the way it was.
+
+## Sending files to others
+
+Your file looks the same on computers without Flatter. If someone else will edit the InDesign file, press **Freeze** first: it fixes the line breaks so nothing shifts. **Unfreeze** brings back the editable rag. You don't need Freeze for PDF export.
+
+Flatter never changes your words. Everything it needs to undo itself is stored inside your InDesign file, so **Unfreeze** and **Remove** still work after saving, reopening or editing the document.
+
+## Something's not working?
+
+**Nothing happens when I double-click the file.**
+Install the Creative Cloud app from [adobe.com](https://www.adobe.com/creativecloud/desktop-app.html), sign in, open InDesign once, and try again.
+
+**Creative Cloud shows a red "installation failed" message.**
+Click **Details** on the message, copy the text, and [send it to us](../../issues/new).
+
+**I can't find Flatter in InDesign.**
+Quit InDesign completely and open it again. Then look under **Plug-Ins → Flatter** (in older versions: **Plugins → Flatter**).
+
+**A pink box appears at the top of the panel.**
+Flatter found something unusual in your InDesign. Press **Copy details** and [send it to us](../../issues/new).
+
+**It's slow on a long story.**
+Select a few paragraphs, press **Apply**, find your settings, then press **Set whole story** (see [Use](#use)).
+
+**Some paragraphs are not changed.**
+Centred and right-aligned paragraphs, like headings, are left alone on purpose.
+
+## Uninstall
+
+Open the Creative Cloud app → **Manage Plugins** (in the app's menu or under Stock & Marketplace) → Flatter → **•••** → **Uninstall**.
+
+## Good to know
+
+- Tested on Mac with InDesign 2026 and 2027. Windows should work but is untested.
+- Not on the Adobe Marketplace yet, which is why Creative Cloud shows a warning when you install it.
+- Found a bug or have an idea? [Open an issue](../../issues/new).
+
+---
+
+<details>
+<summary>For developers</summary>
+
+Requires Node 24 and npm.
 
 ```bash
 npm install
@@ -44,7 +87,7 @@ npm run typecheck
 npm run playground      # browser playground with the same solver
 npm run test:indesign   # integration tests in a running InDesign (throwaway documents)
 npm run panel           # dev build "Flatter (dev)", runs beside the installed release
-npm run package         # release build → dist/Flatter-<version>.ccx
+npm run package         # release build → dist/Flatter-<version>.ccx and dist/Flatter.ccx
 ```
 
 | Folder | Contents |
@@ -56,4 +99,6 @@ npm run package         # release build → dist/Flatter-<version>.ccx
 | `packages/simulator` | SVG simulator and playground |
 | `tools/indesign` | scripts and tests that run inside InDesign |
 
-More: [plan](docs/plan.md), [progress log](docs/progress.md), [decisions](docs/decisions.md), [InDesign findings](docs/spike-results.md), working notes in `CLAUDE.md`, licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+More: [plan](docs/plan.md), [progress log](docs/progress.md), [decisions](docs/decisions.md), [InDesign findings](docs/spike-results.md), working notes in `CLAUDE.md`. Third-party licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+</details>

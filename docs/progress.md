@@ -2,6 +2,12 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-26 — README for a public release
+
+The designer wants to release Flatter publicly (a fellow student sells a similar plugin), easy enough for non-technical users. README rewritten for them: one download link that always gets the newest version (`releases/latest/download/Flatter.ccx`; `npm run package` now also writes `dist/Flatter.ccx`, and v0.6.9 has it attached), a four-step install with what Creative Cloud shows and what to click (checked against Adobe's UXP install guide: open the host app once first, double-click the `.ccx`, "Install", uninstall via Manage Plugins → ••• → Uninstall), a short Use section matching the ADR-034 panel, sending files to others (Freeze), troubleshooting (double-click does nothing, failed install, panel not found, the alarm box, slow long stories, headings left alone), uninstall, and the developer part folded away.
+
+Open decisions for the designer before the release works for others: the repository is **private** (the download link and Releases page only work for others once it is public, or from a separate public repository), and Flatter has **no licence** of its own (all rights reserved by default). No screenshots yet; one of the panel would help beginners.
+
 ## 2026-11-19 (late night) — Self-check covers Set whole story; release 0.6.9
 
 - The self-check (after every InDesign or Flatter update, and on demand) now also runs Set whole story with precise Laufweite on its hidden test story: every line must end where planned, the story must be marked frozen, and Unfreeze must remove exactly the inserted characters and give the text back. `i20-selfcheck` checks that this step ran; all nine checks pass on InDesign 22.0 (1.3–1.7 s).
