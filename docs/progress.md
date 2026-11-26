@@ -6,7 +6,7 @@ Newest entry first. Each entry says what changed, where things stand, and what c
 
 - README: a screenshot of the 0.6.9 panel (`docs/images/panel.png`, cut out of the designer's screenshot with transparent rounded corners), to the right of the introduction.
 - The designer: Apply and Run self-check did nothing in 0.6.9. The panel had started (its selection listener was registered, the story line showed the selected story) and the engine set a copy of the story without error, but InDesign had run for 21 hours and sat at 100 % CPU in its own run-loop/window code (`sample`: main thread in CoreFoundation run-loop observers, nothing of Flatter's). A panel gets no time then, so no click reached it. Restarting InDesign fixed it. If the panel ignores every click, even Run self-check, check `ps -o %cpu= -p $(pgrep -x "Adobe InDesign 2027")` before suspecting Flatter.
-- Found on the way (open): a copy of that story (2 paragraphs, Avara ß Black, facing pages, spread ruler origin) set only 2 of 16 lines as planned (`i21-font-mismatch`, 4 rounds). Earlier Avara stories set every line; not yet investigated.
+- Found on the way (open): a copy of that story (2 paragraphs, Avara ß Black, facing pages, spread ruler origin) set only 2 of 16 lines as planned (`i21-font-mismatch`, 4 rounds). Earlier Avara stories set every line. The copy was made while InDesign was in the stuck state; the designer thinks the result came from that and asked not to pursue it. Re-run `i21-font-mismatch` on such a story if lines go wrong again.
 
 ## 2026-11-26 — README for a public release
 
