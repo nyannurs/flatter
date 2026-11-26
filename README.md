@@ -10,6 +10,10 @@ Flatter is a plugin for Adobe InDesign that gives left-aligned text (Flattersatz
 
 Version 0.6.9 · Mac · InDesign 2023 or newer
 
+## AI Disclaimer
+
+This plugin was built by iterating with Claude Code. I did not write a single line of code.
+
 ---
 
 ## Install (2 minutes)
