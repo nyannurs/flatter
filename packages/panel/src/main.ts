@@ -804,7 +804,7 @@ function applyWhole(): void {
         const back = job.cancel();
         forgetSession();
         finish();
-        setStatus('Cancelled', '', back ? 'The story is as it was before.' : 'The line breaks were taken out again; press Remove to restore the original paragraph settings.');
+        setStatus('Cancelled', '', back ? 'The story is as it was before.' : 'The line breaks were taken out again; press Remove rag to restore the original paragraph settings.');
         return;
       }
       const done = job.step();
@@ -862,7 +862,7 @@ function remove(): void {
     forgetSession();
     updateUnfreezeButton(story);
     const lost = r.paragraphsNotFound ? ` ${r.paragraphsNotFound} could not be matched (paragraph deleted or its start rewritten) and stay as they are.` : '';
-    setStatus('Removed', r.paragraphsNotFound ? 'bad' : '', `${r.settingsRestored} settings restored.${lost}`);
+    setStatus('Rag removed', r.paragraphsNotFound ? 'bad' : '', `${r.settingsRestored} settings restored.${lost}`);
     $('report').innerHTML = '';
     showTarget(story);
   } catch (e) {

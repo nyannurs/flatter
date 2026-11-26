@@ -1,5 +1,7 @@
 # Flatter
 
+<img src="docs/images/panel.png" alt="The Flatter panel in InDesign" width="260" align="right">
+
 **Beautiful ragged text in InDesign.**
 
 Flatter is a plugin for Adobe InDesign that gives ragged text (Flattersatz) an even, deliberate edge. Pick a strict long, short, long, short rhythm (**Aesthetic**) or a calm rag tuned for reading (**Functional**). Flatter chooses every line break for you, hyphenates carefully, and keeps phrases together. Left- and right-aligned text, German and English.
@@ -41,13 +43,13 @@ Flatter works in two steps: try your settings on a few paragraphs, then set the 
 
 **Language:** Flatter hyphenates each word by the dictionary language you assigned in InDesign (Character or Paragraph panel). Its own rules cover German and English; other languages use InDesign's hyphenation only.
 
-**Remove** takes Flatter off a story and puts every setting back the way it was.
+**Remove rag** takes Flatter off a story and puts every setting back the way it was.
 
 ## After Apply to whole story
 
 The whole story is **frozen**: its line breaks are fixed in the text, so it looks the same on every computer, in the PDF and for anyone who edits the file. Flatter never changes your words; the fixed breaks are marked and can always be taken out again.
 
-**To change the text or the rag later:** press **Unfreeze**, edit, then **Preview** and **Apply to whole story** again. Unfreeze and Remove still work after saving, reopening or editing the document.
+**To change the text or the rag later:** press **Unfreeze**, edit, then **Preview** and **Apply to whole story** again. Unfreeze and Remove rag still work after saving, reopening or editing the document.
 
 ## Something's not working?
 
