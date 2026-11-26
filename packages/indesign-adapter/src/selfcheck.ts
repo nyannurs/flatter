@@ -81,7 +81,9 @@ export function selfCheck(): SelfCheckResult {
       return r.trackedLines + r.spacedLines > 0 ? true : 'no line was tracked';
     });
     check('No compatibility alarms', () => {
-      const alarms = plain ? compatibilityAlarms(plain) : [];
+      // No result to look at is not a pass (2026-11-26).
+      if (!plain) return 'no result';
+      const alarms = compatibilityAlarms(plain);
       return alarms.length ? alarms.join(' ') : true;
     });
     check('Freeze and Unfreeze', () => {

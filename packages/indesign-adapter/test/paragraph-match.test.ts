@@ -67,3 +67,17 @@ describe('paragraphAt', () => {
     expect(paragraphAt([], 3)).toBe(0);
   });
 });
+
+describe('alignPrints with repeated fingerprints', () => {
+  it('does not anchor on empty paragraphs', () => {
+    // The first empty paragraph was deleted: "Text one" must keep its record.
+    const map = alignPrints(['', 'Text one', '', 'Text two'], ['Text one', '', 'Text two']);
+    expect(map.get(1)).toBe(0);
+    expect(map.get(3)).toBe(2);
+  });
+
+  it('prefers an anchor confirmed by the next paragraph over a repeated line', () => {
+    const map = alignPrints(['A', '* * *', 'B', '* * *', 'C'], ['* * *', 'B', '* * *', 'C']);
+    expect([...map.entries()]).toEqual([[1, 0], [2, 1], [3, 2], [4, 3]]);
+  });
+});

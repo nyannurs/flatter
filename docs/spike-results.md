@@ -238,3 +238,40 @@ The designer finds long stories in facing pages with three columns each "agonizi
   A tick here is: write the shapes, recompose, read the lines back. The comb's lines were identical to the teeth's on every tick.
 - **Full Apply, 8 pages of three columns (62,000 characters), script run to completion**: 129 s (prepare 7 s, steer and verify 109 s, check 11 s), 12 rounds (the maximum), only **762 of 1,513 lines as planned**; slider tick 8 s + 8 s, verify 22 s, 831/1,529. Every round re-reads the whole story (about 9 s), and lines settle about one column boundary per round: when a planned paragraph has a different line count, all later lines move to other slots, so their teeth sit one line off until the next round. With 24 columns the rounds run out halfway.
 
+## Set whole story in chunks (2026-11-26, InDesign 2027 22.0, `i47-chunk-start`, `i48-redo`, `i45-set-whole`)
+
+- **Start cost of a script call** (from a script, three-column story, 300 forced breaks with a condition plus 300 tracking ranges): UXP script text with `require('indesign')` and nothing else 251 ms; ExtendScript text 48 ms the first time, then 0 ms. Writing the same: UXP 689 ms (with start), ExtendScript 331–347 ms.
+- ExtendScript reads its job from an app label (`app.insertLabel` from UXP, `app.extractLabel` in ExtendScript; UXP has no `scriptArgs`), parsed with `eval` (ExtendScript has no JSON). Its last expression is `doScript`'s result.
+- **Undo and redo of merged steps** (one ENTIRE_SCRIPT step, then steps with AUTO_UNDO): undo takes back all of them (ExtendScript and UXP function steps; a UXP script text step does not merge cleanly: undo left its first part). Redo replays only the first step: "xABC → undo x → redo xA".
+- **8 facing pages, three columns, 152 paragraphs, precise Laufweite**: Set whole story as a job 9.7 s in 24 steps (measuring 6.3 s, 22 write chunks of about 140 ms, check 0.3 s); 1,574 lines, none missed; one undo restores the original text; again after Unfreeze 5.5 s. Before (one UXP script): 21 s and 16 s.
+
+## Indents next to text wrap (2026-11-26, `i49-indent-wrap`)
+
+Frame 100–400 pt, paragraph indents left 15, right 20, first line 10, a tooth on the first line; text of tiny words so a line ends within about 5 pt of its limit.
+
+| | Left-aligned, tooth from the right at x 300 | Right-aligned, tooth from the left ending at x 200 |
+|---|---|---|
+| honourTextIndentsWithTextWrap on (default) | line ends at 298 (right indent not applied at the wrap) | text starts at 229 (≥ 200 + left 15 + first 10) |
+| off | line ends at 298 | text starts at 214 (≥ 200 + first 10 only) |
+
+Away from wrap objects both indents apply as usual. The preference is `doc.textPreferences.honourTextIndentsWithTextWrap`.
+
+## Edge-case stress test (2026-11-26, `i50-edge-stress`)
+
+18 cases, each on its own page of a throwaway facing-pages document (page-relative ruler origin, or cases on one spread overlap): left and right-aligned text, plain and with images (bounding-box wrap, 6 pt offset) on either side of the column, indents (left 12, right 18, first 10) with and without images, a hanging indent, a centred head with alternating left and right paragraphs, right-aligned in three columns, towards-spine text across a spread, a 3-line drop cap, a 12 pt frame inset, right-aligned text through two frames of different widths. Per case: Preview on the whole story, Apply to whole story, Unfreeze, Remove.
+
+- Before the fixes: right-aligned text 1–4 of 10–113 lines as planned live (teeth wrapped text on their left side), drop cap 6/24 (cap baseline), spine 14/32, mixed 13/40, two overset stories counted pushed-out lines as misses. Apply to whole story set every case correctly already.
+- After (ADR-037): every case every line as planned, live and whole, with and without Laufweite, no alarm, text and alignments restored. A right-aligned line ending 3.4 pt short of the edge is a hyphenated line (the hyphen is not a character).
+
+## InDesign special characters (2026-11-26, `i52-specials`, `i50-edge-stress`)
+
+One story per character, inserted every fifth word, Preview on the whole story (`i52-specials`; app labels `flatter-i52-only` = comma-separated names, `flatter-i52-page` = page index).
+
+- **Fixed-width spaces** (em U+2003, en U+2002, third, quarter, sixth, figure U+2007, punctuation U+2008, thin U+2009, hair U+200A): InDesign never breaks a line at them. A frame ending just after "dieser" with an em space after it moves "dieser" to the next line; without a frame edge the line fits. Measured widths match InDesign exactly (bench vs. story positions). Before the fix 10–12 of 16 lines as planned, after 16/16.
+- **No-break space, fixed-width no-break space, flush space, end nested style (U+0003), section marker (U+0019), zero-width non-joiner and joiner, discretionary line break (U+200B)**: 16/16 without changes.
+- **Page number markers** (U+0018, current and next page): InDesign sets every digit of the page's number but reports the marker's position as one digit wide, and the bench measures it on page 1. On page 15: 2/16 lines as planned; with the width taken as one digit × the length of the page's name, 16/16.
+- **Indent to Here** (U+0007): after it, lines start where its next character stands. Modelled from the read-back: one per paragraph (the usual hanging layout) 32/32; several per paragraph (each line starting further right) still converge poorly (2/9).
+- **Right indent tab** (U+0008) and **tab**: not modelled; reported as unsupported, no alarm, text restored.
+- **Footnote references, inline graphics, soft hyphens, non-breaking hyphens, dashes, guillemets and quotes**: every line as planned (inline graphics are reported as anchored objects but steer correctly).
+- Stress test after all fixes: 27 cases (18 layouts plus 9 with special characters), all pass; tabs and right indent tabs pass as "reported, text restored".
+

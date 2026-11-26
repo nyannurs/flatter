@@ -8,11 +8,11 @@ air any back ball base bath bed bell birth black blood board boat body book bott
 brush case care cast check child church class clock coast cook corn country court cross cup day dead
 door down draw dream dress drive dust earth east every eye face fall farm father fire fish flag flash
 floor flower fly foot fore free friend front gate gold grand grass green ground guard hair half hand
-hard head heart high hill home horse house ice in keep keeper land last law life light line lock long
+hard head heart high hill home horse house ice keep keeper land last law life light line lock long
 mail main make maker man mark market master mid mind moon mother news night north note off office
 out over page paper pass path place play point port post power press print proof rail rain right
 road room round run sail school sea set setter shelf shop side sign snow some south space stair
-stand star stone store storm street style sun table tail taker time tooth top town tree type under up
+stand star stone store storm street style sun table tail taker time tooth top town tree type under
 wall ware watch water way week west where white wide wind window wood word work world worth writer yard
 `.trim().split(/\s+/),
 );

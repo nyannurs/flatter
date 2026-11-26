@@ -3,6 +3,7 @@
  * as one undo step ("Flatter: …") through app.doScript (spike S8).
  */
 import { FlatterUserError } from './errors.ts';
+import { bakeChunks, insertedLength, type BreakWrite, type TrackingWrite } from './bake-chunks.ts';
 import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
 import { asArray, CONTROL_LAYER, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
 import { paragraphLanguages } from './languages.ts';
@@ -52,9 +53,10 @@ export function settingValue(v: unknown): SettingValue {
  * After a failed operation, undo whatever it changed before failing (its own undo step only),
  * so a story is never left with fixed settings but no record of the originals.
  */
-function rollBack(name: string): void {
+function rollBack(name: string, inDoc?: Any): void {
   try {
-    const doc = indesign().app.activeDocument;
+    // The story's own document: the self-check works in a hidden one while the user's document is active (2026-11-26).
+    const doc = inDoc ?? indesign().app.activeDocument;
     if (doc && String(doc.undoName) === name) doc.undo();
   } catch {
     /* nothing to undo */
@@ -80,15 +82,16 @@ export function inPoints<T>(fn: () => T): T {
 }
 
 /** One undo step of its own; on failure whatever it changed is rolled back. */
-function undoable<T>(name: string, fn: () => T): T {
-  return undoableMode(name, 'entire', fn);
+function undoable<T>(name: string, fn: () => T, doc?: Any): T {
+  return undoableMode(name, 'entire', fn, doc);
 }
 
-export function checkSettings(story: Any): Check {
-  return inPoints(() => readSettings(story));
+/** The settings Flatter needs, checked for the whole story or only paragraphs from..to (a preview). */
+export function checkSettings(story: Any, only?: { from: number; to: number }): Check {
+  return inPoints(() => readSettings(story, only));
 }
 
-function readSettings(story: Any): Check {
+function readSettings(story: Any, only?: { from: number; to: number }): Check {
   const doc = story.parent;
   const paras = story.paragraphs;
   const issues: SettingIssue[] = [];
@@ -97,8 +100,10 @@ function readSettings(story: Any): Check {
   const runs = readLanguageRuns(story);
   const starts = asArray(paras.everyItem().index).map(Number);
   const text = Array.from(String(story.contents));
-  for (let p = 0; p < paras.length; p++) {
-    // Centred and right-aligned paragraphs are left alone (ADR-026).
+  const first = only ? Math.max(0, only.from) : 0;
+  const last = only ? Math.min(paras.length - 1, only.to) : paras.length - 1;
+  for (let p = first; p <= last; p++) {
+    // Centred paragraphs are left alone (ADR-026).
     if (keepsAlignment(alignments[p]!)) continue;
     const para = paras.item(p);
     const current: Record<string, SettingValue> = {};
@@ -135,11 +140,13 @@ function enumName(v: SettingValue, attribute: string): SettingValue {
   return v;
 }
 
+/** A stored value as InDesign takes it back: enum names become enum values. */
 function setValue(attribute: string, v: SettingValue): unknown {
   const id = indesign();
   if (attribute === 'leading' && v === 'AUTO') return id.Leading.AUTO;
-  if (attribute === 'justification' && typeof v === 'string') return id.Justification[v];
-  if (attribute === 'providerHyphenationStyle' && typeof v === 'string') return id.HyphenationStyleEnum[v];
+  const enums: Record<string, Any> = { justification: id.Justification, providerHyphenationStyle: id.HyphenationStyleEnum, balanceRaggedLines: id.BalanceLinesStyle };
+  const e = enums[attribute];
+  if (e && typeof v === 'string' && e[v] !== undefined) return e[v];
   return v;
 }
 
@@ -180,8 +187,12 @@ function readCurrentState(story: Any): { state: StoryState; lost: number } | und
 }
 
 /** Fix the settings the plugin needs, remembering the originals for Remove. */
-function fixSettingsInPlace(story: Any, state: StoryState): void {
-  const { paragraphIssues } = checkSettings(story);
+/**
+ * Fix the settings Flatter needs and record the originals for Remove. A preview fixes only its own paragraphs
+ * (2026-11-26: a preview on five paragraphs made a whole justified story left-aligned); Apply to whole story all.
+ */
+function fixSettingsInPlace(story: Any, state: StoryState, only?: { from: number; to: number }): void {
+  const { paragraphIssues } = checkSettings(story, only);
   const paras = story.paragraphs;
   for (const issue of paragraphIssues) {
     const key = String(issue.paragraph);
@@ -205,9 +216,8 @@ function fixSettingsInPlace(story: Any, state: StoryState): void {
 export interface ApplyReport extends ApplyResult {
   ms: number;
   probes: number;
-  check: Check;
   /** Where the time went, in ms. */
-  timings: { fixSettings: number; prepare: number; plan: number; steerAndVerify: number; check: number };
+  timings: { fixSettings: number; prepare: number; plan: number; steerAndVerify: number };
 }
 
 /** A story Flatter is working on, kept alive by the panel between slider ticks. */
@@ -251,16 +261,18 @@ export function liveIsStale(live: LiveSession): boolean {
   return storySignature(live.story) !== live.signature;
 }
 
-function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T {
+function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T, doc?: Any): T {
   const id = indesign();
   let result: T | undefined;
   let error: unknown;
+  let failed = false;
   id.app.doScript(
     () => {
       try {
         result = inPoints(fn);
       } catch (e) {
         error = e;
+        failed = true;
       }
     },
     id.ScriptLanguage.UXPSCRIPT,
@@ -269,9 +281,9 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
     mode === 'entire' ? id.UndoModes.ENTIRE_SCRIPT : id.UndoModes.AUTO_UNDO,
     name,
   );
-  if (error) {
+  if (failed) {
     // Ticks merge into the previous step: rolling back would discard the whole Apply.
-    if (mode === 'entire') rollBack(name);
+    if (mode === 'entire') rollBack(name, doc);
     throw error;
   }
   return result as T;
@@ -284,12 +296,12 @@ function undoableMode<T>(name: string, mode: 'entire' | 'merge', fn: () => T): T
 export function openSession(story: Any, settings: ApplySettings = {}, opts: { fixSettings?: boolean; paragraphs?: { from: number; to: number } } = {}): { live: LiveSession; report: ApplyReport } {
   const t0 = Date.now();
   if (isFrozen(story)) throw new FlatterUserError('This story is frozen. Unfreeze it to change the rag.');
-  return undoableMode('Flatter: Apply', 'entire', () => {
+  return undoableMode('Flatter: Preview', 'entire', () => {
     const doc = story.parent;
     const state: StoryState = readCurrentState(story)?.state ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
     state.settings = settings;
     const tFix = Date.now();
-    if (opts.fixSettings !== false) fixSettingsInPlace(story, state);
+    if (opts.fixSettings !== false) fixSettingsInPlace(story, state, opts.paragraphs);
     const fixMs = Date.now() - tFix;
     const layer = controlLayer(doc);
     const port = new DomPort(doc, story, layer);
@@ -313,11 +325,9 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
     const result = session.verify(settings.maxRounds ?? DEFAULT_MAX_ROUNDS);
     port.dropParkedTeeth();
     saveState(story, state, port);
-    const tCheck = Date.now();
-    const check = checkSettings(story);
-    const timings = { fixSettings: fixMs, prepare: tPlan - tPrep, plan: tSteer - tPlan, steerAndVerify: tCheck - tSteer, check: Date.now() - tCheck };
-    return { live: { story, port, session, state, signature: storySignature(story) }, report: { ...result, ms: Date.now() - t0, probes: port.probes, check, timings } };
-  });
+    const timings = { fixSettings: fixMs, prepare: tPlan - tPrep, plan: tSteer - tPlan, steerAndVerify: Date.now() - tSteer };
+    return { live: { story, port, session, state, signature: storySignature(story) }, report: { ...result, ms: Date.now() - t0, probes: port.probes, timings } };
+  }, story.parent);
 }
 
 /**
@@ -327,9 +337,15 @@ export function openSession(story: Any, settings: ApplySettings = {}, opts: { fi
 export function liveUpdate(live: LiveSession, settings: ApplySettings, firstOfDrag: boolean): void {
   undoableMode('Flatter: Adjust', firstOfDrag ? 'entire' : 'merge', () => {
     live.session.plan(settings);
-    live.session.steer();
+    try {
+      live.session.steer();
+    } catch {
+      // Cmd+Z took back teeth or strips the port still remembers: find them again and steer once more (2026-11-26).
+      live.port.forgetObjects();
+      live.session.steer();
+    }
     live.state.settings = settings;
-  });
+  }, live.story.parent);
 }
 
 /** After a pause: read back, re-plan refused points, move misplaced teeth. Merges into the current step. */
@@ -339,7 +355,7 @@ export function liveVerify(live: LiveSession): ApplyResult {
     live.port.dropParkedTeeth();
     saveState(live.story, live.state, live.port);
     return r;
-  });
+  }, live.story.parent);
 }
 
 function saveState(story: Any, state: StoryState, port: DomPort): void {
@@ -390,9 +406,14 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
       for (const [p, attrs] of Object.entries(state.originals)) {
         const para = paras.item(Number(p));
         if (!para.isValid) continue;
+        // One setting InDesign does not take back must not stop the others (2026-11-26).
         for (const [a, v] of Object.entries(attrs)) {
-          para[a] = setValue(a, v);
-          settingsRestored++;
+          try {
+            para[a] = setValue(a, v);
+            settingsRestored++;
+          } catch {
+            /* left as Flatter set it */
+          }
         }
       }
       for (const [p, t] of Object.entries(state.tracking ?? {})) {
@@ -404,7 +425,7 @@ export function removeFlatter(story: Any): { teethRemoved: number; settingsResto
     }
     story.insertLabel(STORY_LABEL, '');
     return { teethRemoved, settingsRestored, paragraphsNotFound: current?.lost ?? 0 };
-  });
+  }, story.parent);
 }
 
 /** Condition that marks the characters Freeze inserts, so Unfreeze removes exactly those. */
@@ -483,84 +504,223 @@ export function freezeFlatter(story: Any): { breaks: number; hyphens: number; li
     state.frozen = { at: new Date().toISOString(), breaks: ends.length, hyphens };
     story.insertLabel(STORY_LABEL, JSON.stringify(state));
     return { breaks: ends.length, hyphens, linesBefore, linesAfter };
-  });
+  }, story.parent);
+}
+
+export interface WholeStoryResult {
+  paragraphs: number;
+  lines: number;
+  breaks: number;
+  hyphens: number;
+  missed: number;
+  ms: number;
+  timings: Record<string, number>;
+}
+
+/** Where a Set whole story job stands, for the panel's progress bar. */
+export interface WholeStoryProgress {
+  phase: 'measuring' | 'writing' | 'checking' | 'done';
+  /** Write chunks done and in total (0 of 0 until measuring is done). */
+  done: number;
+  total: number;
+  /** Paragraphs Flatter sets (known after measuring). */
+  paragraphs: number;
 }
 
 /**
- * Set the whole story with these settings and freeze it, in one undo step "Flatter: Set whole story" (2026-11-19).
- * Measures and plans every paragraph, then writes the tracking and a forced line break at every planned line end,
- * without teeth and without read-back rounds: the breaks hold the lines wherever they land, so the columns and frames
- * do not matter. The result is frozen like Freeze's (same condition), so Unfreeze and Remove work as usual.
- * `missed` counts lines InDesign still broke on its own (a planned line wider than it measured).
+ * Set whole story as a job of steps (2026-11-26, ADR-036): every paragraph with these settings, written as fixed line
+ * breaks (frozen), without the live steering that makes long stories slow (ADR-032). Each `step()` is one InDesign
+ * script call, so the panel can redraw a progress bar (and offer Cancel) between steps. The first step opens the undo
+ * step "Flatter: Set whole story" (unfreeze, settings, measuring, planning); the write chunks and the final check merge
+ * into it, so one Cmd+Z undoes everything. Text edited between steps (the document stays usable) stops the job and
+ * rolls it back: the planned positions would no longer fit.
  */
-export function setWholeStory(story: Any, settings: ApplySettings = {}): { paragraphs: number; lines: number; breaks: number; hyphens: number; missed: number; ms: number; timings: Record<string, number> } {
+export interface WholeStoryJob {
+  /** Run the next step. Returns true when the job is finished (then `result` is set). Throws after rolling back. */
+  step(): boolean;
+  /** Undo everything written so far (between steps). True when the story is exactly as before. */
+  cancel(): boolean;
+  progress(): WholeStoryProgress;
+  result?: WholeStoryResult;
+}
+
+const WHOLE_STORY_UNDO = 'Flatter: Set whole story';
+
+export function startWholeStory(story: Any, settings: ApplySettings = {}): WholeStoryJob {
   const t0 = Date.now();
-  return undoable('Flatter: Set whole story', () => {
+  const timings: Record<string, number> = {};
+  let phase: WholeStoryProgress['phase'] = 'measuring';
+  let port: DomPort | undefined;
+  let state: StoryState | undefined;
+  let list: ReturnType<FlatterSession['bakeList']> = [];
+  let chunks: { breaks?: BreakWrite[]; tracking?: TrackingWrite[] }[] = [];
+  let next = 0;
+  let expectedLength = 0;
+  let breaks = 0;
+  let tWrite = 0;
+  let trackingWrites = 0;
+
+  let opened = false;
+  /**
+   * Take back what the job wrote after its first step: undo its step when it is still the document's last one, else
+   * (something was done in between) remove the inserted characters by their condition, as Unfreeze does.
+   */
+  const takeBack = (): boolean => {
+    if (!opened) return true;
+    opened = false;
     const doc = story.parent;
-    unfreezeInPlace(story);
-    const state: StoryState = readCurrentState(story)?.state ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
-    // Tracking from an earlier rag back to the base first: everything after (settings, measuring, inserting the
-    // breaks) is several times slower in text split into thousands of tracking ranges (2026-11-19).
-    resetTrackingTo(story, state.tracking);
-    state.settings = settings;
-    delete state.frozen;
-    const tFix = Date.now();
-    fixSettingsInPlace(story, state);
-    // A live rag (a preview) gives way: its teeth and strips go, its tracking is reset before measuring.
-    removeTeeth(doc, story);
-    removeBands(doc, String(story.id));
-    const port = new DomPort(doc, story, controlLayer(doc));
-    // The tracking was reset to these bases above (resetTrackingTo): only record them, no second round of writes.
-    if (state.tracking) port.baseTracking = { ...state.tracking };
-    if (settings.tracking?.enabled) port.resetLeftoverTracking();
-    const session = new FlatterSession(port);
-    const tPrep = Date.now();
-    try {
-      session.prepare(settings);
-    } finally {
-      port.dispose();
+    if (String(doc.undoName) === WHOLE_STORY_UNDO) {
+      doc.undo();
+      return true;
     }
-    const tPlan = Date.now();
-    session.plan(settings);
-    const list = session.bakeList();
-    let cond = doc.conditions.itemByName(FROZEN_CONDITION);
-    if (!cond.isValid) cond = doc.conditions.add({ name: FROZEN_CONDITION });
-    cond.visible = true;
-    const tWrite = Date.now();
-    const written = port.bake(list, FROZEN_CONDITION);
-    const tCheck = Date.now();
-    // Lines InDesign broke on its own: every visible line should end at a forced break or a paragraph end.
-    story.recompose();
-    const text = Array.from(String(story.contents));
-    // Paragraph number of every character, to look only at the paragraphs Flatter set (not centred heads).
-    const planned = new Set(list.map((p) => p.index));
-    const paragraphAt: number[] = [];
-    let para = 0;
-    for (const c of text) {
-      paragraphAt.push(para);
-      if (c === '\r') para++;
-    }
-    let lines = 0;
-    let missed = 0;
-    for (const container of asArray(story.textContainers)) {
-      const n = Number(container.lines.length);
-      if (!n) continue;
-      const lengths = asArray(container.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
-      let at = Number(container.lines.item(0).characters.item(0).index);
-      for (const len of lengths) {
-        at += len;
-        if (!planned.has(paragraphAt[at - 1] ?? -1)) continue;
-        lines++;
-        const last = text[at - 1] ?? '';
-        if (text[at] !== undefined && !/[\r\n\u2028\u0003\u0004\u0018\u0019]/.test(last)) missed++;
+    undoable('Flatter: Clean up', () => {
+      const current = readCurrentState(story)?.state;
+      if (!current) return;
+      current.frozen = { at: '', breaks: 0, hyphens: 0 };
+      unfreezeInPlace(story, current);
+    }, doc);
+    return false;
+  };
+  const fail = (e: unknown): never => {
+    phase = 'done';
+    // A failed first step rolled its own undo step back (undoable).
+    takeBack();
+    throw e;
+  };
+
+  const measure = (): void => {
+    undoable(WHOLE_STORY_UNDO, () => {
+      const doc = story.parent;
+      unfreezeInPlace(story);
+      state = readCurrentState(story)?.state ?? { version: 1, settings, originals: {}, storyOriginals: {}, appliedAt: '' };
+      // Tracking from an earlier rag back to the base first: everything after (settings, measuring, inserting the
+      // breaks) is several times slower in text split into thousands of tracking ranges (2026-11-19).
+      resetTrackingTo(story, state.tracking);
+      state.settings = settings;
+      delete state.frozen;
+      const tFix = Date.now();
+      fixSettingsInPlace(story, state);
+      // A live rag (a preview) gives way: its teeth and strips go, its tracking is reset before measuring.
+      removeTeeth(doc, story);
+      removeBands(doc, String(story.id));
+      port = new DomPort(doc, story, controlLayer(doc));
+      // The tracking was reset to these bases above (resetTrackingTo): only record them, no second round of writes.
+      if (state.tracking) port.baseTracking = { ...state.tracking };
+      if (settings.tracking?.enabled) port.resetLeftoverTracking();
+      const session = new FlatterSession(port);
+      const tPrep = Date.now();
+      try {
+        session.prepare(settings);
+      } finally {
+        port.dispose();
       }
+      const tPlan = Date.now();
+      session.plan(settings);
+      list = session.bakeList();
+      let cond = doc.conditions.itemByName(FROZEN_CONDITION);
+      if (!cond.isValid) cond = doc.conditions.add({ name: FROZEN_CONDITION });
+      cond.visible = true;
+      const writes = port.bakeWrites(list);
+      const split = bakeChunks(writes.tracking, writes.breaks);
+      chunks = [...split.breaks.map((b) => ({ breaks: b })), ...split.tracking.map((t) => ({ tracking: t }))];
+      breaks = writes.breaks.length;
+      trackingWrites = writes.tracking.length;
+      expectedLength = Number(story.characters.length);
+      // The record now, not only at the end: if the job stops half-way, Remove still finds the originals.
+      saveState(story, state, port);
+      Object.assign(timings, { fixSettings: tPrep - tFix, prepare: tPlan - tPrep, plan: Date.now() - tPlan });
+    }, story.parent);
+    opened = true;
+    phase = chunks.length ? 'writing' : 'checking';
+    tWrite = Date.now();
+  };
+
+  const write = (): void => {
+    const chunk = chunks[next]!;
+    if (!story.isValid || Number(story.characters.length) !== expectedLength) {
+      throw new FlatterUserError('The text changed while Flatter was setting the whole story. Press Apply to whole story again.');
     }
-    const hyphens = list.reduce((s, p) => s + p.breaks.filter((b) => b.hyphen).length, 0);
-    state.frozen = { at: new Date().toISOString(), breaks: written.breaks, hyphens };
-    saveState(story, state, port);
-    const timings = { fixSettings: tPrep - tFix, prepare: tPlan - tPrep, plan: tWrite - tPlan, write: tCheck - tWrite, trackingWrites: written.tracking, trackingMs: written.trackingMs, breaksMs: written.breaksMs, check: Date.now() - tCheck };
-    return { paragraphs: list.length, lines, breaks: written.breaks, hyphens, missed, ms: Date.now() - t0, timings };
-  });
+    // Something else became the last undo step (an edit, Cmd+Z): the next chunk would merge into it (2026-11-26).
+    if (String(story.parent.undoName) !== WHOLE_STORY_UNDO) {
+      throw new FlatterUserError('The document changed while Flatter was setting the whole story. Press Apply to whole story again.');
+    }
+    port!.writeChunk(chunk, FROZEN_CONDITION);
+    expectedLength += chunk.breaks ? insertedLength(chunk.breaks) : 0;
+    next++;
+    if (next === chunks.length) {
+      phase = 'checking';
+      timings.write = Date.now() - tWrite;
+    }
+  };
+
+  const check = (): WholeStoryResult =>
+    undoableMode(WHOLE_STORY_UNDO, 'merge', () => {
+      const tCheck = Date.now();
+      // Lines InDesign broke on its own: every visible line should end at a forced break or a paragraph end.
+      story.recompose();
+      const text = Array.from(String(story.contents));
+      // Paragraph number of every character, to look only at the paragraphs Flatter set (not centred heads).
+      const planned = new Set(list.map((p) => p.index));
+      const paragraphOf: number[] = [];
+      let para = 0;
+      for (const c of text) {
+        paragraphOf.push(para);
+        if (c === '\r') para++;
+      }
+      let lines = 0;
+      let missed = 0;
+      for (const container of asArray(story.textContainers)) {
+        const n = Number(container.lines.length);
+        if (!n) continue;
+        const lengths = asArray(container.lines.everyItem().contents).map((c: Any) => Array.from(String(c)).length);
+        let at = Number(container.lines.item(0).characters.item(0).index);
+        for (const len of lengths) {
+          at += len;
+          if (!planned.has(paragraphOf[at - 1] ?? -1)) continue;
+          lines++;
+          const last = text[at - 1] ?? '';
+          if (text[at] !== undefined && !/[\r\n\u2028\u0003\u0004\u0018\u0019]/.test(last)) missed++;
+        }
+      }
+      const hyphens = list.reduce((s, p) => s + p.breaks.filter((b) => b.hyphen).length, 0);
+      state!.frozen = { at: new Date().toISOString(), breaks, hyphens };
+      saveState(story, state!, port!);
+      Object.assign(timings, { trackingWrites, chunks: chunks.length, check: Date.now() - tCheck });
+      return { paragraphs: list.length, lines, breaks, hyphens, missed, ms: Date.now() - t0, timings };
+    }, story.parent);
+
+  const job: WholeStoryJob = {
+    step() {
+      try {
+        if (phase === 'measuring') measure();
+        else if (phase === 'writing') write();
+        else if (phase === 'checking') {
+          job.result = check();
+          phase = 'done';
+          opened = false;
+        }
+      } catch (e) {
+        // measure() rolled its own undo step back already; later steps merged into it.
+        fail(e);
+      }
+      return phase === 'done';
+    },
+    cancel() {
+      phase = 'done';
+      return takeBack();
+    },
+    progress: () => ({ phase, done: next, total: chunks.length, paragraphs: list.length }),
+  };
+  return job;
+}
+
+/** Set whole story in one go (all steps of startWholeStory): tests, the self-check and scripts. */
+export function setWholeStory(story: Any, settings: ApplySettings = {}): WholeStoryResult {
+  const job = startWholeStory(story, settings);
+  while (!job.step()) {
+    /* next step */
+  }
+  return job.result!;
 }
 
 /** Take the characters Freeze inserted back out (no undo step of its own). */
@@ -574,7 +734,9 @@ function unfreezeInPlace(story: Any, given?: StoryState): number {
     resetTrackingTo(story, state.tracking);
     removed = removeByCondition(story, cond);
   }
-  if (cond.isValid && removed === 0) {
+  // The per-character fallback only for a frozen story whose GREP change removed nothing: it reads every '-' and
+  // line break, and ran for every story once the condition existed in a document (2026-11-26).
+  if (cond.isValid && removed === 0 && state?.frozen) {
     const text = Array.from(String(story.contents));
     for (let k = text.length - 1; k >= 0; k--) {
       if (text[k] !== '\n' && text[k] !== '-') continue;
@@ -637,7 +799,7 @@ function removeByCondition(story: Any, cond: Any): number {
 
 /** Unfreeze: remove the fixed line breaks and hyphens Freeze inserted. One undo step. Apply again afterwards. */
 export function unfreezeFlatter(story: Any): number {
-  return undoable('Flatter: Unfreeze', () => unfreezeInPlace(story));
+  return undoable('Flatter: Unfreeze', () => unfreezeInPlace(story), story.parent);
 }
 
 /** The languages the panel's buttons set (InDesign language names). */
@@ -652,7 +814,7 @@ export function setStoryLanguage(stories: readonly Any[], language: string): num
   return undoable('Flatter: Language', () => {
     for (const story of stories) story.texts.item(0).appliedLanguage = language;
     return stories.length;
-  });
+  }, stories[0]?.parent);
 }
 
 /** The story's language name, or "mixed" when its text uses more than one. */

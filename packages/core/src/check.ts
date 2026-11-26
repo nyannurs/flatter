@@ -49,7 +49,7 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
           kind: 'band',
           severity: 'error',
           line: i,
-          message: `Line ends ${fmt(off)} pt outside the Flatterzone (${line.gap < 0 ? 'too long' : 'too short: a hole in the rag'}).`,
+          message: `Line ends ${fmt(off)} pt outside the rag zone (${line.gap < 0 ? 'too long' : 'too short: a hole in the rag'}).`,
         });
       }
     } else if (line.kind === 'band') {
@@ -193,7 +193,8 @@ export function checkPlan(lines: readonly PlannedLine[], items: readonly Item[],
         message: 'The last line is only the end of a hyphenated word.',
       });
     }
-    if (singleWord && letters > 0 && letters < P.lastLine.minLetters) {
+    // After a forced line break the last line cannot be longer: the rule does not apply (same as the solver).
+    if (singleWord && letters > 0 && letters < P.lastLine.minLetters && prev.kind !== 'forced') {
       out.push({
         kind: 'last-line-short-word',
         severity: 'error',

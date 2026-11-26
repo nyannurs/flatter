@@ -10,7 +10,7 @@ try {
   const proto = DomPort.prototype as Any;
   const probe = proto.probe;
   proto.probe = function (words: string[]) {
-    return new Map(words.map((w) => [w, []]));
+    return new Map(words.map((w): [string, number[]] => [w, []]));
   };
   let broken: Any;
   try {

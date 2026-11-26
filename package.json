@@ -6,16 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/hyphenation --noEmit && tsc -p packages/indesign-adapter --noEmit && tsc -p packages/panel --noEmit && tsc -p packages/simulator --noEmit && tsc -p packages/simulator/playground --noEmit",
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/hyphenation --noEmit && tsc -p packages/indesign-adapter --noEmit && tsc -p packages/panel --noEmit && tsc -p packages/simulator --noEmit && tsc -p packages/simulator/playground --noEmit && tsc -p tools/indesign/spikes --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "node --experimental-strip-types packages/simulator/src/cli.ts",
     "playground": "node packages/simulator/build-playground.mjs",
-    "corpus-report": "node packages/hyphenation/scripts/corpus-report.ts",
+    "corpus-report": "node --experimental-strip-types packages/hyphenation/scripts/corpus-report.ts",
     "test:indesign": "tools/indesign/integration.sh",
     "panel": "node packages/panel/build.mjs --dev",
     "panel:watch": "node packages/panel/build.mjs --dev --watch",
-    "panel:release": "node packages/panel/build.mjs",
     "package": "node tools/package-panel.mjs"
   },
   "engines": {

@@ -5,7 +5,8 @@
  */
 import { opposite, solveParagraph, type FlatterSettings, type HyphenClass, type Item, type Plan, type Role } from '@flatter/core';
 import { createHyphenator, createSenseRule, type Hyphenator, type HyphenLanguage } from '@flatter/hyphenation';
-import { bandsFor, slotsForPlan, toothFor, sameSlot, type BandSpec, type LineSlot, type ToothSpec } from './geometry.ts';
+import { bandsFor, mergeBands, slotsForPlan, textArea, toothFor, sameSlot, type BandSpec, type LineSlot, type ToothSpec } from './geometry.ts';
+import { ragOnLeft } from './settings.ts';
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
 import { predictSlots, type FlowParagraph } from './flow.ts';
 import { languageOf, MIXED_LANGUAGES, NO_LANGUAGE } from './languages.ts';
@@ -92,7 +93,7 @@ export function compatibilityAlarms(r: ApplyResult): string[] {
   const out: string[] = [];
   if (steeringFailed(r)) {
     const { planned, asPlanned } = supportedLines(r);
-    out.push(`InDesign did not follow Flatter's line steering: only ${asPlanned} of ${planned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Recompute and see whether this goes away.`);
+    out.push(`InDesign did not follow Flatter's line steering: only ${asPlanned} of ${planned} visible lines were set as planned (normally all of them). If the text or its formatting was just edited, press Preview again and see whether this goes away.`);
   }
   const { checked, empty } = r.probeCheck;
   if (checked >= 10 && empty / checked >= 0.8) {
@@ -126,7 +127,7 @@ export function hyphenLanguage(name: string): HyphenLanguage {
 /** The hyphenation module's language for an InDesign language name, or undefined when our rules do not cover it. */
 export function knownHyphenLanguage(name: string): HyphenLanguage | undefined {
   if (/German|Deutsch/i.test(name)) return /Swiss|Schweiz/i.test(name) ? 'de-CH' : 'de';
-  if (/UK|British/i.test(name)) return 'en-GB';
+  if (/\bUK\b|British/i.test(name)) return 'en-GB';
   if (/English|Englisch/i.test(name)) return 'en-US';
   return undefined;
 }
@@ -222,9 +223,12 @@ export class FlatterSession {
         return mergePoints(ours, theirs ? (theirs.get(w) ?? []) : undefined);
       };
       const sense = settings.sense ?? lang.startsWith('de');
-      const measured = itemsFromMeasured(data.chars, data.advances, {
+      // A drop cap hangs beside the lines: its characters take no room in the first line.
+      const caps = data.dropCap?.chars ?? 0;
+      const capless = (a: readonly number[]) => (caps ? a.map((x, k) => (k < caps ? 0 : x)) : [...a]);
+      const measured = itemsFromMeasured(data.chars, capless(data.advances), {
         hyphenWidth: data.hyphenWidth,
-        ...(data.trackedAdvances?.length === data.advances.length ? { trackedAdvances: data.trackedAdvances } : {}),
+        ...(data.trackedAdvances?.length === data.advances.length ? { trackedAdvances: capless(data.trackedAdvances) } : {}),
         points,
         hardBreaks: (c) => probed?.get(c),
         ...(sense ? { breakCost: createSenseRule(lang) } : {}),
@@ -232,11 +236,13 @@ export class FlatterSession {
       this.work.push({ data, measured, items: measured.items, plan: undefined as unknown as Plan, refused: [] });
     }
     this.readBack();
-    this.overset = this.port.overset();
   }
 
   private readBack(): void {
     this.current = this.port.readLines();
+    // Steering can push the last lines out of the frame (or pull them back in): whether the story overflows is read
+    // with every read-back, not only before the first steering (2026-11-26).
+    this.overset = this.port.overset();
     this.byParagraph = new Map();
     for (const l of this.current) {
       const list = this.byParagraph.get(l.paragraph);
@@ -307,12 +313,14 @@ export class FlatterSession {
       const now = this.linesOf(w.data.index).map((l) => l.slot);
       const ahead = predicted.get(w.data.index);
       const slots = ahead
-        ? ahead.slice(0, w.plan.lines.length).map((s, i) => (now[i] && now[i]!.page === s.page && now[i]!.column === s.column && Math.abs(now[i]!.baseline - s.baseline) < 0.01 ? now[i]! : s))
+        ? ahead.slice(0, w.plan.lines.length).map((s, i) => (now[i] && now[i]!.page === s.page && now[i]!.column === s.column && Math.abs(now[i]!.baseline - s.baseline) < 0.01 ? now[i]! : withCap(w.data, i, s, now[i], now.length > 1 ? now[now.length - 1] : undefined)))
         : slotsForPlan(w.plan.lines.length, now, w.data.leading);
       this.usedSlots.set(w.data.index, slots);
       w.plan.lines.forEach((line, i) => {
         const slot = slots[i];
-        const t = slot && toothFor(line, slot, w.data.index, i);
+        const ragLeft = !!slot && ragOnLeft(w.data.alignment, slot.rightHand ?? true);
+        const indentAfterWrap = ragLeft ? (w.data.indentsAtWrap !== false ? (w.data.leftIndent ?? 0) : 0) + (i === 0 ? w.data.firstLineIndent : 0) : 0;
+        const t = slot && toothFor(line, slot, w.data.index, i, { ragLeft, indentAfterWrap });
         if (t) this.teeth.push(t);
       });
     }
@@ -328,9 +336,9 @@ export class FlatterSession {
     }
     if (this.port.setBands) {
       const bands: BandSpec[] = this.settings.showBands
-        ? this.work.flatMap((w) => bandsFor(w.plan, this.usedSlots.get(w.data.index) ?? [], w.data.leading))
+        ? this.work.flatMap((w) => bandsFor(w.plan, this.usedSlots.get(w.data.index) ?? [], w.data.leading, w.data.alignment))
         : [];
-      this.port.setBands(bands);
+      this.port.setBands(mergeBands(bands));
     }
   }
 
@@ -362,6 +370,8 @@ export class FlatterSession {
       out.set(d.index, {
         index: d.index, lines: w.plan.lines.length, leading: d.leading, size: d.size, firstLineIndent: d.firstLineIndent,
         ...(d.leftIndent !== undefined ? { leftIndent: d.leftIndent } : {}),
+        ...(d.rightIndent !== undefined ? { rightIndent: d.rightIndent } : {}),
+        ...(d.indentsAtWrap !== undefined ? { indentsAtWrap: d.indentsAtWrap } : {}),
         ...(d.spaceBefore !== undefined ? { spaceBefore: d.spaceBefore } : {}),
         ...(d.spaceAfter !== undefined ? { spaceAfter: d.spaceAfter } : {}),
       });
@@ -379,10 +389,16 @@ export class FlatterSession {
     let best = Infinity;
     let stale = 0;
     this.roundLog = [];
+    // Rounds of this verify only (it counted on across slider moves before, 2026-11-26).
+    this.rounds = 0;
+    // The last thing done was steering, so the read-back no longer shows the current lines.
+    let steered = false;
     for (let round = 0; round < maxRounds; round++) {
       this.rounds++;
       this.readBack();
+      steered = false;
       let changed = false;
+      let resolved = false;
       let open = 0;
       let learned = false;
       const log = { open: 0, widths: 0, refused: 0, moved: 0 };
@@ -394,6 +410,7 @@ export class FlatterSession {
         if (!sameWidths(widths, w.widths)) {
           w.widths = widths;
           w.plan = solve(itemsFor(w), w.data, this.settings, w.plan.startRole, widths);
+          resolved = true;
           changed = true;
           open++;
           log.open++;
@@ -424,6 +441,7 @@ export class FlatterSession {
             const same = new Set(sameWordPoints(w.items, line.breakAt));
             w.items = w.items.map((it, k) => (same.has(k) && it.type === 'penalty' ? { ...it, quality: 'X' as HyphenClass } : it));
             w.plan = solve(itemsFor(w), w.data, this.settings, w.plan.startRole, w.widths);
+            resolved = true;
           }
         }
         changed = true;
@@ -436,9 +454,15 @@ export class FlatterSession {
         best = Math.min(best, open);
         stale = 0;
       } else if (++stale >= 3) break;
+      // Rhythm across paragraphs: a paragraph planned again may end on the other role, so the ones after it start
+      // again from there (2026-11-26).
+      if (resolved && this.settings.continuous) this.solveAll(this.settings);
       this.avoidColumnEndHyphens();
       this.steer();
+      steered = true;
     }
+    // Out of rounds right after steering: read back once more, so the result describes what InDesign now shows.
+    if (steered) this.readBack();
     return this.result();
   }
 
@@ -472,7 +496,12 @@ export class FlatterSession {
     const linesAsPlanned = results.reduce((s, r) => s + r.linesAsPlanned, 0);
     const trackedLines = this.work.reduce((s, w) => s + w.plan.stats.trackedLines, 0);
     const spacedLines = this.work.reduce((s, w) => s + w.plan.stats.spacedLines, 0);
-    const oversetLines = this.overset ? this.work.reduce((s, w) => s + Math.max(0, w.plan.lines.length - this.linesOf(w.data.index).length), 0) : 0;
+    // Overset lines are the missing lines of the last paragraph with any visible line, and all lines of the paragraphs
+    // after it; a paragraph further up that InDesign set with fewer lines is a miss, not overset (2026-11-26).
+    const lastShown = this.current.reduce((m, l) => Math.max(m, l.paragraph), -1);
+    const oversetLines = this.overset
+      ? this.work.reduce((s, w) => s + (w.data.index > lastShown ? w.plan.lines.length : w.data.index === lastShown ? Math.max(0, w.plan.lines.length - this.linesOf(w.data.index).length) : 0), 0)
+      : 0;
     return { paragraphs: results, rounds: this.rounds, linesPlanned: linesPlanned - oversetLines, linesAsPlanned, teeth: this.teeth.length, trackedLines, spacedLines, oversetLines, probeCheck: { ...this.probeCheck }, roundLog: [...this.roundLog] };
   }
 
@@ -497,9 +526,41 @@ export function applyToPort(port: Port, settings: ApplySettings = {}): ApplyResu
  * that column's width and the column the measure was taken from. Undefined when every line has the
  * paragraph's measure.
  */
+/**
+ * Lines whose start Flatter takes from the read-back instead of the column and indents: the lines beside a drop cap,
+ * and every line of a paragraph with Indent to Here (2026-11-26).
+ */
+function startReadBack(data: ParagraphData, i: number): boolean {
+  return (!!data.dropCap && i < data.dropCap.lines) || !!data.indentHere;
+}
+
+/**
+ * A predicted slot for such a line: flow.ts does not know the cap or the indent, so its text starts that much further
+ * right than predicted, as far as the read-back shows now (for Indent to Here, the paragraph's last line read back).
+ */
+function withCap(data: ParagraphData, i: number, predicted: LineSlot, current: LineSlot | undefined, lastRead?: LineSlot): LineSlot {
+  if (!startReadBack(data, i)) return predicted;
+  const now = current ?? (data.indentHere && i > 0 ? lastRead : undefined);
+  if (!now?.columnBounds || now.columnLeft === undefined) return predicted;
+  const indents = { left: data.leftIndent ?? 0, right: data.rightIndent ?? 0, first: data.firstLineIndent, atWrap: data.indentsAtWrap !== false };
+  const capWidth = now.startX - textArea(now.columnBounds, [now.columnLeft, now.columnRight], indents, i === 0)[0];
+  return capWidth > 0 ? { ...predicted, startX: predicted.startX + capWidth } : predicted;
+}
+
 export function lineMeasuresFor(data: ParagraphData, slots: readonly LineSlot[]): number[] | undefined {
   if (data.columnWidth === undefined || !slots.length) return undefined;
-  const out = slots.map((s) => (s.columnLeft === undefined ? data.measure : data.measure + (s.columnRight - s.columnLeft - data.columnWidth!)));
+  const indents = { left: data.leftIndent ?? 0, right: data.rightIndent ?? 0, first: 0, atWrap: data.indentsAtWrap !== false };
+  // The measure without the first-line indent (the solver takes that off line 1 itself), by the indent rules next to
+  // text wrap (textArea); without the column's own bounds, its width change only.
+  const out = slots.map((s, i) => {
+    if (s.columnLeft === undefined) return data.measure;
+    // Lines beside a drop cap or after Indent to Here: from where their text starts (read back) to the right edge
+    // (the solver takes the first-line indent off line 1 itself, so it is added back there).
+    if (startReadBack(data, i) && s.columnBounds) return textArea(s.columnBounds, [s.columnLeft, s.columnRight], indents, false)[1] - s.startX + (i === 0 ? data.firstLineIndent : 0);
+    if (!s.columnBounds || data.rightIndent === undefined) return data.measure + (s.columnRight - s.columnLeft - data.columnWidth!);
+    const [l, r] = textArea(s.columnBounds, [s.columnLeft, s.columnRight], indents, false);
+    return r - l;
+  });
   return out.every((m) => Math.abs(m - data.measure) < 0.01) ? undefined : out;
 }
 
@@ -615,7 +676,15 @@ function itemsFor(w: Working): Item[] {
  */
 function plannedLastVisible(w: Working, line: Plan['lines'][number]): number {
   const range = line.endItem > line.startItem ? w.measured.charRange[line.endItem - 1] : undefined;
-  if (range) return range[1] - 1;
+  if (range) {
+    // InDesign reports a line's last visible character: a fixed space at the line end does not count.
+    let k = range[1] - 1;
+    while (k > 0 && /\s/.test(w.data.chars[k] ?? '')) k--;
+    return k;
+  }
+  // The empty last line after a forced line break at the paragraph end ("…Zufall.\n"): InDesign reports it at the
+  // paragraph's end (2026-11-26: it fell back to 0 and the paragraph never counted as set as planned).
+  if (line.startItem >= w.items.length) return w.data.chars.length;
   return w.measured.charRange[line.startItem]?.[0] ?? 0;
 }
 

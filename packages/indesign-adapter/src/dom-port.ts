@@ -5,11 +5,13 @@
  * probing with "x <word>" in a scratch frame, settings re-applied in place.
  */
 import { FlatterUserError } from './errors.ts';
+import type { BreakWrite, TrackingWrite } from './bake-chunks.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
 import { paragraphLanguages, type LanguageRun } from './languages.ts';
 import { paragraphAt } from './paragraph-match.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
-import { keepsAlignment } from './settings.ts';
+import { textArea } from './geometry.ts';
+import { keepsAlignment, ragOnLeft } from './settings.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
@@ -47,48 +49,37 @@ const BATCH_SCRIPT = [
 ].join('\n');
 
 /**
- * Set whole story (2026-11-19): forced line breaks (with a hyphen where a planned line ends inside a word) at every
- * planned line end, from the end of the story backwards so earlier positions stay valid, then the planned tracking
- * at positions moved by the inserted characters. The inserted characters carry the condition Freeze uses, so Unfreeze
- * and Remove take them out again. Breaks first: inserting text after the tracking had split the story into thousands
- * of style ranges cost 23–33 ms per break; before it, 5 ms ("-\n" in one write). 8 pages of three columns: writing
- * 38–52 s → 15 s.
+ * Set whole story, one chunk of writes (2026-11-26, ADR-036): forced line breaks (with a hyphen where a planned line
+ * ends inside a word), tagged with the condition Freeze uses so Unfreeze and Remove take them out again, or tracking
+ * ranges. ExtendScript, not UXP: an ExtendScript text starts at once (a UXP script spends 0.25–1.3 s loading
+ * InDesign's DOM) and wrote twice as fast (`i47-chunk-start`). The job comes in the app label below (UXP has no
+ * script arguments for ExtendScript); positions are story indices, breaks sorted from the end.
  */
+const BAKE_LABEL = 'flatter-bake';
 const BAKE_SCRIPT = [
-  "const id = require('indesign');",
-  'const app = id.app;',
-  "const job = JSON.parse(require('uxp').script.args[0]);",
-  'const doc = app.documents.itemByID(job.doc);',
-  'const story = doc.stories.itemByID(job.story);',
-  'const chars = story.characters;',
-  'const cond = doc.conditions.itemByName(job.condition);',
-  'const ips = story.insertionPoints;',
-  'const t0 = Date.now();',
-  'for (const b of job.breaks) {',
-  "  ips.item(b[0]).contents = b[1] ? '-\\n' : '\\n';",
-  '  chars.itemByRange(b[0], b[0] + (b[1] ? 1 : 0)).applyConditions([cond], true);',
-  '}',
-  'const t1 = Date.now();',
-  '// Inserted characters before a position, counted from the start (breaks are sorted from the end).',
-  'const asc = job.breaks.map((b) => [b[0], b[1] ? 2 : 1]).reverse();',
-  'const before = [0];',
-  'for (const a of asc) before.push(before[before.length - 1] + a[1]);',
-  'const shift = (k) => {',
-  '  let lo = 0;',
-  '  let hi = asc.length;',
-  '  while (lo < hi) {',
-  '    const mid = (lo + hi) >> 1;',
-  '    if (asc[mid][0] <= k) lo = mid + 1;',
-  '    else hi = mid;',
+  `var job = eval('(' + app.extractLabel('${BAKE_LABEL}') + ')');`,
+  'var doc = app.documents.itemByID(job.doc);',
+  'var story = doc.stories.itemByID(job.story);',
+  'var chars = story.characters;',
+  'var n = 0;',
+  'if (job.breaks) {',
+  '  var cond = doc.conditions.itemByName(job.condition);',
+  '  var ips = story.insertionPoints;',
+  '  for (var i = 0; i < job.breaks.length; i++) {',
+  '    var b = job.breaks[i];',
+  "    ips.item(b[0]).contents = b[1] ? '-\\n' : '\\n';",
+  '    chars.itemByRange(b[0], b[0] + (b[1] ? 1 : 0)).applyConditions([cond], true);',
+  '    n++;',
   '  }',
-  '  return k + before[lo];',
-  '};',
-  'for (const w of job.tracking) {',
-  '  const a = shift(w[0]);',
-  '  const e = shift(w[1]);',
-  '  (a === e ? chars.item(a) : chars.itemByRange(a, e)).tracking = w[2];',
   '}',
-  "require('uxp').script.setResult('done ' + (job.tracking.length + job.breaks.length) + ' ' + (Date.now() - t1) + ' ' + (t1 - t0));",
+  'if (job.tracking) {',
+  '  for (var j = 0; j < job.tracking.length; j++) {',
+  '    var w = job.tracking[j];',
+  '    (w[0] === w[1] ? chars.item(w[0]) : chars.itemByRange(w[0], w[1])).tracking = w[2];',
+  '    n++;',
+  '  }',
+  '}',
+  "'done ' + n;",
 ].join('\n');
 
 /** Probe cache entries from other versions are dropped (see the DomPort constructor). */
@@ -302,8 +293,16 @@ export class DomPort implements Port {
     const spaceBefore = asArray(paras.everyItem().spaceBefore).map(Number);
     const spaceAfter = asArray(paras.everyItem().spaceAfter).map(Number);
     const alignments = asArray(paras.everyItem().justification).map(String);
+    const capLines = asArray(paras.everyItem().dropCapLines).map(Number);
+    const capChars = asArray(paras.everyItem().dropCapCharacters).map(Number);
     const column = this.columnWidth();
     const visibleEnd = this.visibleEnd();
+    let indentsAtWrap = true;
+    try {
+      indentsAtWrap = this.doc.textPreferences.honourTextIndentsWithTextWrap !== false;
+    } catch {
+      /* older InDesign: its default */
+    }
     const languageRuns = readLanguageRuns(story);
     const out: ParagraphData[] = [];
     const jobs: (MeasureJob & { key: string })[] = [];
@@ -315,7 +314,7 @@ export class DomPort implements Port {
       const end = start + len;
       // Leave out paragraphs that start in the overset text: none of their lines can be steered.
       // A paragraph that starts in a frame is planned whole; only its visible lines get teeth.
-      // Centred and right-aligned paragraphs are left alone (ADR-026).
+      // Centred paragraphs are left alone (ADR-026); right-aligned ones are ragged on the left (ADR-037).
       if (start <= visibleEnd && len > 1 && !keepsAlignment(alignments[p]!) && (!this.only || (p >= this.only.from && p <= this.only.to))) {
         let chars = text.slice(start, end);
         if (chars[chars.length - 1] === '\r') chars = chars.slice(0, -1);
@@ -354,6 +353,11 @@ export class DomPort implements Port {
           spaceBefore: spaceBefore[p]!,
           spaceAfter: spaceAfter[p]!,
           hyphenateAcrossColumns: acrossColumns[p]!,
+          rightIndent: right[p]!,
+          alignment: alignments[p]!,
+          indentsAtWrap,
+          ...(capLines[p]! > 0 && capChars[p]! > 0 ? { dropCap: { lines: capLines[p]!, chars: capChars[p]! } } : {}),
+          ...(chars.includes('\u0007') ? { indentHere: true } : {}),
           ...(chars.includes('ß') && sharpSInCapitals(para) ? { unsupported: [SHARP_S_CAPS] } : {}),
         });
       }
@@ -372,8 +376,37 @@ export class DomPort implements Port {
         data.trackedAdvances = m.trackedAdvances;
       }
     }
+    for (const data of out) this.markerWidths(data);
     this.paragraphsCache = out;
     return out;
+  }
+
+  /**
+   * Page number markers (U+0018: current or next page number) show the page's number, but the bench sets them on its own
+   * first page as one digit. On page 15 a line with one was a digit too narrow and lost its last word (2026-11-26).
+   * InDesign also reports the marker's position as one digit wide while it sets every digit, so the width is the
+   * bench's one-digit width times the characters of the page's name (a read per marker).
+   */
+  private markerWidths(data: ParagraphData): void {
+    if (!data.chars.includes('\u0018')) return;
+    const start = this.paraStarts[data.index]!;
+    const advances = [...data.advances];
+    const tracked = data.trackedAdvances ? [...data.trackedAdvances] : undefined;
+    data.chars.forEach((c, k) => {
+      if (c !== '\u0018') return;
+      let digits = 1;
+      try {
+        const frame = asArray(this.story.characters.item(start + k).parentTextFrames)[0];
+        digits = Math.max(1, Array.from(String(frame?.parentPage?.name ?? '1')).length);
+      } catch {
+        /* overset: one digit */
+      }
+      const extra = advances[k]! * (digits - 1);
+      advances[k] = advances[k]! + extra;
+      if (tracked) tracked[k] = tracked[k]! + extra;
+    });
+    data.advances = advances;
+    if (tracked) data.trackedAdvances = tracked;
   }
 
   probe(words: readonly string[], data: ParagraphData, language = data.language): Map<string, number[]> {
@@ -397,7 +430,7 @@ export class DomPort implements Port {
     const text = Array.from(String(story.contents));
     const frames = this.frames();
     const containers = asArray(story.textContainers);
-    const sizeOf = new Map((this.paragraphsCache ?? []).map((p) => [p.index, p.size]));
+    const dataOf = new Map((this.paragraphsCache ?? []).map((p) => [p.index, p]));
     const out: ReadLine[] = [];
     const lineInPara = new Map<number, number>();
     let first = -1;
@@ -419,17 +452,40 @@ export class DomPort implements Port {
         const p = paragraphAt(this.paraStarts, first);
         const pStart = this.paraStarts[p]!;
         let last = first + len - 1;
-        while (last > first && /^[\s\r]$/.test(text[last] ?? '')) last--;
+        while (last > first && /^[\s\r\u00ad]$/.test(text[last] ?? '')) last--;
         const lastChar = text[first + len - 1] ?? '';
         const nextChar = text[first + len] ?? '';
+        // A line ending at the user's discretionary hyphen is hyphenated too (2026-11-26: it read back as not
+        // hyphenated, so Preview refused every soft hyphen while Apply to whole story used them).
+        const softHyphen = lastChar === '\u00ad';
         const col = frame.columns.find((c) => xs[i]! >= c.left - 0.5 && xs[i]! <= c.right + 0.5) ?? frame.columns[0]!;
-        const size = sizeOf.get(p) ?? 10;
-        const [left, right] = this.wrapNarrowed(frame.page, baselines[i]!, size, col.left, col.right);
+        const data = dataOf.get(p);
+        const size = data?.size ?? 10;
+        let [left, right] = this.wrapNarrowed(frame.page, baselines[i]!, size, col.left, col.right);
         const column = columnBase[ci]! + frame.columns.indexOf(col);
-        const slot: LineSlot = { page: frame.page, baseline: baselines[i]!, startX: xs[i]!, columnLeft: left, columnRight: right, gutter: col.gutter, size, limit: frame.bottom, column, columnBounds: [col.left, col.right] };
         const k = lineInPara.get(p) ?? 0;
+        // A right-aligned line starts where its text happens to begin (the rag): its measure starts at the column, the
+        // indents and any wrap object on the left (ADR-037).
+        // The first line of a drop-cap paragraph starts with the cap, and InDesign reports the cap's baseline (lines
+        // further down) for it: its text, position and baseline, start at the next character (2026-11-26).
+        let baseline = baselines[i]!;
+        let capX: number | undefined;
+        if (k === 0 && data?.dropCap) {
+          try {
+            const c = story.characters.item(first + data.dropCap.chars);
+            capX = Number(c.horizontalOffset);
+            baseline = Number(c.baseline);
+            [left, right] = this.wrapNarrowed(frame.page, baseline, size, col.left, col.right);
+          } catch {
+            /* the cap fills the line */
+          }
+        }
+        const startX = data && ragOnLeft(data.alignment, frame.rightHand)
+          ? textArea([col.left, col.right], [left, right], { left: data.leftIndent ?? 0, right: data.rightIndent ?? 0, first: data.firstLineIndent, atWrap: data.indentsAtWrap !== false }, k === 0)[0]
+          : (capX ?? xs[i]!);
+        const slot: LineSlot = { page: frame.page, baseline, startX, columnLeft: left, columnRight: right, gutter: col.gutter, size, limit: frame.bottom, column, columnBounds: [col.left, col.right], rightHand: frame.rightHand };
         lineInPara.set(p, k + 1);
-        out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: /\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar), slot });
+        out.push({ paragraph: p, line: k, lastVisible: last - pStart, hyphenated: softHyphen || (/\p{L}/u.test(lastChar) && /\p{L}/u.test(nextChar)), slot });
         first += len;
       }
     });
@@ -496,15 +552,22 @@ export class DomPort implements Port {
   }
 
   /** Teeth of this story with the bounds last written; filled on first use (one label scan). */
-  private teethCache: { rect: Any; bounds: number[]; page: number; label: string }[] | undefined;
+  private teethCache: { rect: Any; bounds: number[]; page: number; label: string; textOnRight: boolean }[] | undefined;
 
   /** Counters for performance diagnosis (spike S4). */
   teethStats = { created: 0, moved: 0, parked: 0, relabelled: 0 };
 
+  /** Forget the teeth and strips remembered (Cmd+Z may have taken some back); the next write finds them again. */
+  forgetObjects(): void {
+    this.teethCache = undefined;
+    this.bandCache = undefined;
+    this.batch = undefined;
+  }
+
   setTeeth(teeth: readonly ToothSpec[]): void {
     const id = this.id;
     if (!this.teethCache) {
-      this.teethCache = this.existingTeeth().map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), label: '' }));
+      this.teethCache = this.existingTeeth().map((rect: Any) => ({ rect, bounds: rect.geometricBounds.map(Number), page: Number(rect.parentPage?.documentOffset ?? -1), label: '', textOnRight: String(rect.textWrapPreferences.textWrapSide) === 'RIGHT_SIDE' }));
     }
     const cache = this.teethCache;
     // Teeth are reused per page, in order: matching them by list position made a tooth jump pages
@@ -533,15 +596,21 @@ export class DomPort implements Port {
           have.bounds = [...t.bounds];
           this.teethStats.moved++;
         }
+        // A tooth reused for a line on the other side (right-aligned text, ADR-037): the text goes on its other side.
+        if (have.textOnRight !== !!t.textOnRight) {
+          have.rect.textWrapPreferences.textWrapSide = t.textOnRight ? id.TextWrapSideOptions.RIGHT_SIDE : id.TextWrapSideOptions.LEFT_SIDE;
+          have.textOnRight = !!t.textOnRight;
+        }
         have.label = label;
         used.add(have);
         continue;
       }
       none ??= this.doc.swatches.itemByName('None');
       const rect = this.doc.pages.item(t.page).rectangles.add({ geometricBounds: t.bounds, strokeWeight: 0, strokeColor: none, fillColor: none, itemLayer: this.layer, nonprinting: true });
-      rect.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
+      // The text goes on the tooth's left side (a line ending at it), or its right side for right-aligned text.
+      rect.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: t.textOnRight ? id.TextWrapSideOptions.RIGHT_SIDE : id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
       rect.insertLabel(TOOTH_LABEL, this.storyKey());
-      const entry = { rect, bounds: [...t.bounds], page: t.page, label };
+      const entry = { rect, bounds: [...t.bounds], page: t.page, label, textOnRight: !!t.textOnRight };
       pool.push(entry);
       cache.push(entry);
       used.add(entry);
@@ -610,32 +679,40 @@ export class DomPort implements Port {
   }
 
   /**
-   * Set whole story: write each paragraph's tracking and insert forced line breaks at the planned line ends, in one
-   * script InDesign runs to completion. Breaks are paragraph-relative character positions where the next line starts.
-   * Throws when the script does not report everything done (the caller's undo step is then rolled back).
+   * Set whole story: every paragraph's tracking and the forced line breaks at the planned line ends, as story
+   * positions in the text before any break goes in (bake-chunks.ts splits and moves them). Breaks are
+   * paragraph-relative character positions where the next line starts.
    */
-  bake(paragraphs: readonly { index: number; spans: readonly TrackingSpan[]; breaks: readonly { at: number; hyphen: boolean }[] }[], condition: string): { tracking: number; breaks: number; ms: number; trackingMs: number; breaksMs: number } {
+  bakeWrites(paragraphs: readonly { index: number; spans: readonly TrackingSpan[]; breaks: readonly { at: number; hyphen: boolean }[] }[]): { tracking: TrackingWrite[]; breaks: BreakWrite[] } {
     if (!this.paraStarts.length) this.paragraphs();
     this.beginWrites();
     for (const p of paragraphs) this.setTracking(p.index, p.spans);
-    const tracking = this.batch!.tracking;
+    const tracking = this.batch!.tracking.map(([a, e, v]): TrackingWrite => [a, e, v]);
     this.batch = undefined;
-    const breaks: [number, boolean][] = [];
+    const breaks: BreakWrite[] = [];
     for (const p of paragraphs) {
       const start = this.paraStarts[p.index]!;
       // The inserted characters take the formatting of the character before them: the trailing space or the line's
       // last glyph, which carry the paragraph's base tracking (no span covers them).
       for (const b of p.breaks) breaks.push([start + b.at, b.hyphen]);
     }
-    breaks.sort((a, b) => b[0] - a[0]);
-    const t0 = Date.now();
-    const job = JSON.stringify({ doc: Number(this.doc.id), story: Number(this.story.id), tracking, breaks, condition });
-    const result = String(this.id.app.doScript(BAKE_SCRIPT, this.id.ScriptLanguage.UXPSCRIPT, [job], this.id.UndoModes.AUTO_UNDO, 'Flatter'));
-    const [word, count, trackingMs, breaksMs] = result.split(' ');
-    if (word !== 'done' || Number(count) !== tracking.length + breaks.length) throw new Error(`Set whole story: InDesign did not finish writing the line breaks (${result.slice(0, 120)})`);
     this.written.clear();
     this.lastSpans.clear();
-    return { tracking: tracking.length, breaks: breaks.length, ms: Date.now() - t0, trackingMs: Number(trackingMs), breaksMs: Number(breaksMs) };
+    return { tracking, breaks };
+  }
+
+  /** Write one chunk of Set whole story (one ExtendScript call; it merges into the open undo step). */
+  writeChunk(chunk: { breaks?: readonly BreakWrite[]; tracking?: readonly TrackingWrite[] }, condition: string): void {
+    const app = this.id.app;
+    const count = (chunk.breaks?.length ?? 0) + (chunk.tracking?.length ?? 0);
+    app.insertLabel(BAKE_LABEL, JSON.stringify({ doc: Number(this.doc.id), story: Number(this.story.id), condition, ...chunk }));
+    let result = '';
+    try {
+      result = String(app.doScript(BAKE_SCRIPT, this.id.ScriptLanguage.JAVASCRIPT, [], this.id.UndoModes.AUTO_UNDO, 'Flatter'));
+    } finally {
+      app.insertLabel(BAKE_LABEL, '');
+    }
+    if (result !== `done ${count}`) throw new Error(`Set whole story: InDesign did not finish writing (${result.slice(0, 120)})`);
   }
 
   private bandCache: { rect: Any; bounds: number[]; page: number; kind: BandSpec['kind'] }[] | undefined;
@@ -920,7 +997,7 @@ export class DomPort implements Port {
 
   // --- helpers -------------------------------------------------------------
 
-  private frames(): { page: number; left: number; right: number; top: number; bottom: number; columns: { left: number; right: number; gutter: number }[] }[] {
+  private frames(): { page: number; rightHand: boolean; left: number; right: number; top: number; bottom: number; columns: { left: number; right: number; gutter: number }[] }[] {
     const containers = asArray(this.story.textContainers);
     return containers.map((f: Any) => {
       const [top, left, bottom, right] = f.geometricBounds.map(Number);
@@ -935,7 +1012,14 @@ export class DomPort implements Port {
         const cl = left + il! + k * (colW + gutter);
         return { left: cl, right: cl + colW, gutter: k < count - 1 ? gutter : 4 };
       });
-      return { page: Number(f.parentPage?.documentOffset ?? 0), left, right, top: top + it!, bottom: bottom - ib!, columns };
+      // Left-hand pages of facing spreads; single-sided pages count as right-hand (spine on the left).
+      let rightHand = true;
+      try {
+        rightHand = String(f.parentPage?.side ?? '') !== 'LEFT_HAND';
+      } catch {
+        /* on the pasteboard */
+      }
+      return { page: Number(f.parentPage?.documentOffset ?? 0), rightHand, left, right, top: top + it!, bottom: bottom - ib!, columns };
     });
   }
 

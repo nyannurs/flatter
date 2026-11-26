@@ -49,8 +49,8 @@ inNewDocument((doc: Any) => {
     cases.push({
       case: name,
       issuesBefore: before.paragraphIssues.length,
-      storyIssuesAfter: r.check.storyIssues,
-      issuesAfter: r.check.paragraphIssues.filter((i) => i.required).length,
+      storyIssuesAfter: checkSettings(story).storyIssues,
+      issuesAfter: checkSettings(story).paragraphIssues.filter((i) => i.required).length,
       lines: `${r.linesAsPlanned}/${r.linesPlanned}`,
       strict: r.paragraphs.filter((p) => p.plan.feasible).length + '/' + r.paragraphs.length,
       refused: r.paragraphs.flatMap((p) => p.refused),

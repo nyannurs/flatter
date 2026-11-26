@@ -4,39 +4,42 @@
 <meta charset="utf-8">
 <style>
   /* Text uses Spectrum elements (sp-heading, sp-body, sp-detail), which follow InDesign's theme. */
-  .head { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+  html, body { height: 100%; margin: 0; }
+  #scroll { height: 100%; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 10px 12px 24px; }
+  /* Everything wraps inside the panel. */
+  sp-body, sp-detail, sp-heading, sp-label, div { white-space: normal; overflow-wrap: anywhere; }
+  sp-heading { margin: 0 0 2px; }
   sp-divider { margin: 10px 0 8px; }
   sp-slider { width: 100%; margin-bottom: 2px; }
-  .row { display: flex; flex-direction: row; }
-  .row > * { flex: 1; margin-right: 6px; }
-  .row > *:last-child { margin-right: 0; }
   sp-picker { width: 100%; }
   sp-checkbox { display: flex; margin: 2px 0; }
-  /* Everything wraps inside the panel: checkboxes keep short labels; longer explanations go in .hint lines. */
-  sp-body, sp-detail, sp-heading, sp-label, div { white-space: normal; overflow-wrap: anywhere; }
-  #scroll { overflow-x: hidden; }
-  .brand { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; }
-  .brand sp-heading { margin: 0 8px 0 0; }
-  .buttons { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 10px; }
-  .buttons sp-button, .buttons sp-action-button { margin: 0 6px 6px 0; }
+  .row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .row > * { flex: 1 1 110px; margin: 0 6px 4px 0; }
+  .row > *:last-child { margin-right: 0; }
+  .choices { display: flex; flex-direction: row; flex-wrap: wrap; margin: 2px 0 4px; }
+  .choices > * { margin: 0 6px 4px 0; }
+  .section { margin: 0 0 4px; }
+  .dim { opacity: 0.7; }
+  #langNow { margin: 0 0 4px; }
+  .actions { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 12px; }
+  .actions > * { margin: 0 6px 6px 0; }
+  #estimate { text-align: right; margin: 0 0 4px; }
+  .quiet { display: flex; flex-direction: row; flex-wrap: wrap; }
+  .quiet sp-action-button { margin: 0 4px 4px 0; }
+  #progress { margin: 6px 0 4px; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.3); overflow: hidden; margin: 6px 0 4px; }
+  .bar > div { height: 6px; width: 0; background: #378ef0; }
+  .progress-row { display: flex; flex-direction: row; justify-content: space-between; flex-wrap: wrap; }
+  .locked { opacity: 0.45; }
   #status { margin-top: 8px; font-weight: bold; }
   .ok { color: #2d9d4f; }
   .bad { color: #d7a015; }
   .err { color: #e34850; }
-  #report sp-body { margin: 2px 0; }
-  html, body { height: 100%; margin: 0; }
-  #scroll { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 10px 12px 24px; }
-  .jump { cursor: pointer; text-decoration: underline dotted; }
-  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
-  .swatch.long { background: rgba(37, 99, 235, 0.6); }
-  .swatch.short { background: rgba(234, 88, 12, 0.6); }
-  .swatch.zone { background: rgba(13, 148, 136, 0.6); }
-  .stylerow { display: flex; flex-direction: row; flex-wrap: wrap; margin: 2px 0 2px; }
-  .stylerow > * { margin: 0 6px 4px 0; }
-  .note { margin: 0 0 6px; }
-  .hint { margin: 0 0 4px 26px; }
-  .dim { opacity: 0.7; }
+  #meta { min-height: 2.6em; }
+  #details { margin: 2px 0 0; }
   .toggle { cursor: pointer; margin-top: 8px; }
+  .jump { cursor: pointer; text-decoration: underline dotted; }
+  #report sp-body { margin: 2px 0; }
   #report sp-detail { display: block; margin: 8px 0 2px; }
   #alarm { background: #e0007a; color: #ffffff; border-left: 6px solid #ffe600; border-radius: 4px; padding: 8px 10px; margin: 8px 0; }
   #alarm .alarm-title { font-weight: bold; font-size: 12px; letter-spacing: 0.08em; margin-bottom: 4px; }
@@ -45,21 +48,13 @@
   #alarm textarea { width: 100%; height: 70px; margin-top: 6px; font-size: 10px; color: #ffffff; background: rgba(0, 0, 0, 0.3); border: none; }
   #alarm .alarm-actions { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 6px; }
   #alarm .alarm-actions > * { margin: 0 6px 4px 0; }
-  .footer { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 16px; }
-  .langrow { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; margin: 2px 0 4px; }
-  #langNow { flex-basis: 100%; }
-  .langrow > * { margin-right: 6px; }
-  .quiet { display: flex; flex-direction: row; flex-wrap: wrap; }
-  .quiet sp-action-button { margin: 0 4px 4px 0; }
-  .buttons sp-checkbox { margin: 0 0 6px 4px; }
-  #meta { min-height: 2.6em; }
-  #details { margin: 2px 0 0; }
-  .footer { justify-content: flex-end; }
 </style>
 </head>
 <body>
 <div id="scroll">
-  <div class="head"><div class="brand"><sp-heading size="S">Flatter</sp-heading><sp-detail id="brandVersion"></sp-detail></div><sp-detail id="modeTag">FLATTERSATZ</sp-detail></div>
+  <!-- Panel layout (ADR-036): top to bottom in the order of work. Language and hyphenation first, then the rag, then
+       Preview (a few paragraphs, live) and Apply to whole story (frozen, in one go, with a progress bar). -->
+  <sp-heading size="S" id="brand">Flatter</sp-heading>
   <!-- Compatibility alarm: only for things that should never happen (an InDesign update changed something). -->
   <div id="alarm" style="display: none">
     <div class="alarm-title">COMPATIBILITY ALARM</div>
@@ -73,86 +68,83 @@
   </div>
   <sp-body size="S" id="target">Select a text frame or put the cursor in text.</sp-body>
 
-  <!-- Actions and the result first: they are what you look at while working; the settings follow. -->
-  <div class="buttons">
-    <sp-button id="apply" variant="cta">Apply</sp-button>
-    <sp-action-button id="setWhole">Set whole story</sp-action-button>
-    <sp-checkbox id="live" checked>Live</sp-checkbox>
+  <div id="settings">
+    <sp-divider size="small"></sp-divider>
+    <div class="section">
+      <sp-detail>HYPHENATION</sp-detail>
+      <sp-body size="XS" id="langNow"></sp-body>
+      <sp-picker id="hyphenation" size="s" label="Hyphenation">
+        <sp-menu slot="options">
+          <sp-menu-item value="safe" selected>Safe</sp-menu-item>
+          <sp-menu-item value="normal">Normal</sp-menu-item>
+        </sp-menu>
+      </sp-picker>
+      <sp-slider id="maxHyph" min="1" max="3" step="1" value="2" show-value="true"><sp-label slot="label">Hyphens in a row</sp-label></sp-slider>
+      <sp-checkbox id="sense" checked>Keep phrases together</sp-checkbox>
+      <sp-slider id="senseBal" min="0" max="100" step="5" value="50"><sp-label slot="label" id="senseLabel">Shape ↔ Sense · Balanced</sp-label></sp-slider>
+    </div>
+
+    <sp-divider size="small"></sp-divider>
+    <div class="section">
+      <sp-detail>RAG</sp-detail>
+      <div class="choices">
+        <sp-action-button id="styleAesthetic" size="s" selected>Aesthetic</sp-action-button>
+        <sp-action-button id="styleFunctional" size="s">Functional</sp-action-button>
+      </div>
+      <sp-checkbox id="tracking"><span id="trackingLabel">Align line ends exactly</span></sp-checkbox>
+      <div id="trackLimits" style="display: none">
+        <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true"><sp-label slot="label">Letter tracking ±</sp-label></sp-slider>
+        <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true"><sp-label slot="label">Word spaces ± %</sp-label></sp-slider>
+      </div>
+      <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Rag zone %</sp-label></sp-slider>
+      <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label" id="bandLabel">Band %</sp-label></sp-slider>
+      <div class="row">
+        <sp-picker id="phase" size="s" label="Phase">
+          <sp-menu slot="options">
+            <sp-menu-item value="long" selected>Start long</sp-menu-item>
+            <sp-menu-item value="short">Start short</sp-menu-item>
+            <sp-menu-item value="auto">Auto</sp-menu-item>
+          </sp-menu>
+        </sp-picker>
+        <sp-picker id="mode" size="s" label="Mode">
+          <sp-menu slot="options">
+            <sp-menu-item value="strict" selected>Strict</sp-menu-item>
+            <sp-menu-item value="soft">Soft</sp-menu-item>
+          </sp-menu>
+        </sp-picker>
+      </div>
+      <sp-checkbox id="continuous">Rhythm across paragraphs</sp-checkbox>
+      <sp-checkbox id="showBands" checked>Show zone and band</sp-checkbox>
+    </div>
+  </div>
+
+  <sp-divider size="small"></sp-divider>
+  <div class="actions">
+    <sp-button id="preview" variant="cta">Preview</sp-button>
+    <sp-button id="applyWhole" variant="secondary">Apply to whole story</sp-button>
+  </div>
+  <sp-body size="XS" class="dim" id="estimate"></sp-body>
+  <div id="progress" style="display: none">
+    <sp-body size="S" id="progressLabel">Setting the whole story…</sp-body>
+    <div class="bar"><div id="progressBar"></div></div>
+    <div class="progress-row">
+      <sp-body size="XS" class="dim" id="progressDone"></sp-body>
+      <sp-body size="XS" class="dim" id="progressLeft"></sp-body>
+    </div>
+    <sp-action-button id="cancelWhole" size="s" quiet>Cancel</sp-action-button>
   </div>
   <div class="quiet">
-    <sp-action-button id="recompute" size="s" quiet>Recompute</sp-action-button>
-    <sp-action-button id="freeze" size="s" quiet>Freeze</sp-action-button>
+    <sp-action-button id="unfreeze" size="s" quiet style="display: none">Unfreeze</sp-action-button>
     <sp-action-button id="remove" size="s" quiet>Remove</sp-action-button>
   </div>
-  <sp-body size="XS" class="dim" id="longHint" style="display: none">Long story? Select a few paragraphs, Apply, then Set whole story.</sp-body>
 
   <sp-body size="S" id="status"></sp-body>
   <sp-body size="XS" id="meta"></sp-body>
   <sp-body size="XS" class="toggle" id="detailsToggle" style="display: none">▸ Details</sp-body>
   <sp-body size="XS" class="dim" id="details" style="display: none"></sp-body>
 
-  <sp-divider size="small"></sp-divider>
-  <div>
-    <sp-detail>RAG</sp-detail>
-    <div class="stylerow">
-      <sp-action-button id="styleAesthetic" size="s" selected>Aesthetic</sp-action-button>
-      <sp-action-button id="styleFunctional" size="s">Functional</sp-action-button>
-    </div>
-    <sp-slider id="zone" min="8" max="25" step="0.5" value="20" show-value="true"><sp-label slot="label">Flatterzone %</sp-label></sp-slider>
-    <sp-slider id="band" min="10" max="90" step="1" value="50" show-value="true"><sp-label slot="label" id="bandLabel">Band %</sp-label></sp-slider>
-    <div class="row">
-      <sp-picker id="phase" size="s" label="Phase">
-        <sp-menu slot="options">
-          <sp-menu-item value="long" selected>Start long</sp-menu-item>
-          <sp-menu-item value="short">Start short</sp-menu-item>
-          <sp-menu-item value="auto">Auto</sp-menu-item>
-        </sp-menu>
-      </sp-picker>
-      <sp-picker id="mode" size="s" label="Mode">
-        <sp-menu slot="options">
-          <sp-menu-item value="strict" selected>Strict</sp-menu-item>
-          <sp-menu-item value="soft">Soft</sp-menu-item>
-        </sp-menu>
-      </sp-picker>
-    </div>
-    <sp-checkbox id="continuous">Rhythm across paragraphs</sp-checkbox>
-    <sp-checkbox id="showBands" checked>Show zone and band</sp-checkbox>
-    <sp-body size="XS" class="hint" id="legendAesthetic"><span class="swatch long"></span> long · <span class="swatch short"></span> short (not printed)</sp-body>
-    <sp-body size="XS" class="hint" id="legendFunctional" style="display: none"><span class="swatch zone"></span> zone (not printed)</sp-body>
-  </div>
-
-  <sp-divider size="small"></sp-divider>
-  <div>
-    <sp-detail>HYPHENATION</sp-detail>
-    <div class="langrow">
-      <sp-action-button id="langDe" size="s">German</sp-action-button>
-      <sp-action-button id="langEn" size="s">English</sp-action-button>
-      <sp-body size="XS" id="langNow"></sp-body>
-    </div>
-    <sp-picker id="hyphenation" size="s" label="Hyphenation">
-      <sp-menu slot="options">
-        <sp-menu-item value="safe" selected>Safe</sp-menu-item>
-        <sp-menu-item value="normal">Normal</sp-menu-item>
-      </sp-menu>
-    </sp-picker>
-    <sp-slider id="maxHyph" min="1" max="3" step="1" value="2" show-value="true"><sp-label slot="label">Hyphens in a row</sp-label></sp-slider>
-    <sp-checkbox id="sense" checked>Sinneinheiten</sp-checkbox>
-    <sp-slider id="senseBal" min="0" max="100" step="5" value="50"><sp-label slot="label" id="senseLabel">Shape ↔ Sense · Balanced</sp-label></sp-slider>
-  </div>
-
-  <sp-divider size="small"></sp-divider>
-  <div>
-    <sp-detail>LAUFWEITE</sp-detail>
-    <sp-checkbox id="tracking"><span id="trackingLabel">Align line ends exactly</span></sp-checkbox>
-    <div id="trackLimits" style="display: none">
-      <sp-slider id="trackMax" min="0" max="30" step="1" value="5" show-value="true"><sp-label slot="label">Letter tracking ±</sp-label></sp-slider>
-      <sp-slider id="wordMax" min="0" max="50" step="1" value="25" show-value="true"><sp-label slot="label">Word spaces ± %</sp-label></sp-slider>
-    </div>
-  </div>
-
   <!-- Problems and notes at the bottom: their length changes after every slider move, and the sliders above must not jump. -->
   <div id="report"></div>
-  <div class="footer"><sp-action-button id="selfcheck" size="s" quiet>Run self-check</sp-action-button></div>
   <script src="index.js"></script>
 </div>
 </body>

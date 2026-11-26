@@ -6,6 +6,7 @@
  * the same columns, first baselines and gaps between paragraphs as read back, the planned number of lines.
  * Pure: no InDesign APIs, tested in Node.
  */
+import { textArea } from './geometry.ts';
 import type { LineSlot } from './geometry.ts';
 import type { ReadLine } from './port.ts';
 
@@ -19,7 +20,10 @@ export interface FlowParagraph {
   spaceBefore?: number;
   spaceAfter?: number;
   leftIndent?: number;
+  rightIndent?: number;
   firstLineIndent?: number;
+  /** Text indents honoured next to text wrap (textArea). */
+  indentsAtWrap?: boolean;
 }
 
 /** Narrow a column [left, right] by text wrap at a baseline (the port knows the wrap objects). */
@@ -119,7 +123,7 @@ export function predictSlots(current: readonly ReadLine[], paragraphs: readonly 
           baseline = undefined;
           continue;
         }
-        slots.push(slotAt(col.template, b, size, i === 0 ? (p.firstLineIndent ?? 0) : 0, p.leftIndent, narrow));
+        slots.push(slotAt(col.template, b, size, i === 0, p, narrow));
         baseline = b;
         placed = true;
       }
@@ -145,11 +149,11 @@ function fits(col: Column, baseline: number, size: number): boolean {
   return room;
 }
 
-function slotAt(template: LineSlot, baseline: number, size: number, firstIndent: number, leftIndent: number | undefined, narrow?: Narrow): LineSlot {
+function slotAt(template: LineSlot, baseline: number, size: number, firstLine: boolean, p: FlowParagraph, narrow?: Narrow): LineSlot {
   const [left, right] = template.columnBounds ?? [template.columnLeft ?? template.startX, template.columnRight];
   const [nl, nr] = narrow ? narrow(template.page, baseline, size, left, right) : [left, right];
-  // Text starts at the column plus the paragraph's indent, or at a wrap object on the left.
-  const indent = leftIndent ?? Math.max(0, template.startX - left);
-  const startX = (nl > left + 0.01 ? nl : left + indent) + firstIndent;
+  // Text starts at the column plus the paragraph's indents, or next to a wrap object on the left (textArea).
+  const indents = { left: p.leftIndent ?? Math.max(0, template.startX - left), right: p.rightIndent ?? 0, first: p.firstLineIndent ?? 0, atWrap: p.indentsAtWrap !== false };
+  const startX = textArea([left, right], [nl, nr], indents, firstLine)[0];
   return { ...template, baseline, size, startX, columnLeft: nl, columnRight: nr };
 }

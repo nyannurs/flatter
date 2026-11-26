@@ -130,9 +130,13 @@ export function createHyphenator(opts: HyphenatorOptions): Hyphenator {
         p.joint = joints.includes(i) && !ambiguousJoints.includes(i);
         p.quality = p.joint ? 'A' : 'B';
         p.reasons.push(p.joint ? 'both sources agree; main joint' : 'both sources agree');
-      } else {
+      } else if (authSet.has(i)) {
         p.quality = 'C';
-        p.reasons.push(`only ${authSet.has(i) ? authority.name : opinion.name} allows it`);
+        p.reasons.push(`only ${authority.name} allows it`);
+      } else {
+        // Plan §5.3: class C means the authority accepts it. A point only our second opinion allows is never offered.
+        p.quality = 'X';
+        p.reasons.push(`only ${opinion.name} allows it`);
       }
       if (ambiguousJoints.includes(i)) {
         p.quality = 'C';

@@ -37,7 +37,12 @@ export interface MeasuredParagraph {
   unsupported: string[];
 }
 
-const NO_BREAK_SPACE = /^[\u00a0\u202f\u2007]$/;
+/**
+ * Spaces InDesign never breaks a line at: the no-break spaces, and every fixed-width space (en, em, third, quarter,
+ * sixth, figure, punctuation, thin, hair: measured in i54-space-break and i56-space-sum, 2026-11-26; Flatter planned
+ * breaks there and InDesign set shorter lines).
+ */
+const NO_BREAK_SPACE = /^[\u00a0\u202f\u2002-\u200a]$/;
 const FORCED_BREAK = /^[\n\u2028]$/;
 const SPACE = /^[ \u2002-\u200a\u00a0\u202f\u2007]$/;
 const DISCRETIONARY = '\u00ad';
@@ -75,8 +80,8 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
       k++;
       continue;
     }
-    if (c === '\t' || c === '\ufffc') {
-      unsupported.push(c === '\t' ? 'tab' : 'anchored object');
+    if (c === '\t' || c === '\ufffc' || c === '\u0008') {
+      unsupported.push(c === '\t' ? 'tab' : c === '\u0008' ? 'right indent tab' : 'anchored object');
       items.push({ type: 'box', width: advances[k]!, text: c });
       charRange.push([k, k + 1]);
       k++;
@@ -94,7 +99,7 @@ export function itemsFromMeasured(chars: readonly string[], advances: readonly n
     }
     // A word: everything up to the next space or forced break.
     let e = k;
-    while (e < chars.length && !SPACE.test(chars[e]!) && !FORCED_BREAK.test(chars[e]!) && chars[e] !== '\t' && chars[e] !== '\ufffc') e++;
+    while (e < chars.length && !SPACE.test(chars[e]!) && !FORCED_BREAK.test(chars[e]!) && chars[e] !== '\t' && chars[e] !== '\ufffc' && chars[e] !== '\u0008') e++;
     const word = chars.slice(k, e).join('');
     if (pendingGlue && prevWord !== undefined && opts.breakCost) {
       const extra = opts.breakCost(prevWord, word);

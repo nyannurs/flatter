@@ -67,11 +67,3 @@ export interface Penalty {
 
 export type Item = Box | Glue | Penalty;
 
-export const box = (width: number, text?: string): Box =>
-  text === undefined ? { type: 'box', width } : { type: 'box', width, text };
-
-export const glue = (width: number, opts: Omit<Glue, 'type' | 'width'> = {}): Glue => ({
-  type: 'glue',
-  width,
-  ...opts,
-});

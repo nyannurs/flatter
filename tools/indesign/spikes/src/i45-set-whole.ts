@@ -2,7 +2,7 @@
 // columns: Apply on four paragraphs only, then the whole story written as fixed line breaks in one go, then Unfreeze
 // and Remove must give the text back exactly. App label "flatter-i45-pages" sets the page count (default 8).
 import { DE_TEXT, app, id, inNewDocument, asArray, type Any } from './lib.ts';
-import { CONTROL_LAYER, isFrozen, openSession, removeFlatter, setWholeStory, unfreezeFlatter } from '@flatter/indesign-adapter';
+import { CONTROL_LAYER, isFrozen, openSession, removeFlatter, setWholeStory, startWholeStory, unfreezeFlatter } from '@flatter/indesign-adapter';
 
 inNewDocument((doc: Any) => {
   const pages = Number(app.extractLabel('flatter-i45-pages') || '8');
@@ -35,12 +35,36 @@ inNewDocument((doc: Any) => {
   const [{ report: preview }, previewMs] = timed(() => openSession(story, settings, { paragraphs: { from: 2, to: 5 } }));
   const previewParagraphs = preview.paragraphs.map((p) => p.index);
 
-  // 2. The whole story, frozen.
-  const [whole, wholeMs] = timed(() => setWholeStory(story, settings));
+  // 2. The whole story, frozen, step by step as the panel runs it (2026-11-26): measuring, write chunks, check.
+  const job = startWholeStory(story, settings);
+  const steps: number[] = [];
+  const [, wholeMs] = timed(() => {
+    for (;;) {
+      const t = Date.now();
+      const done = job.step();
+      steps.push(Date.now() - t);
+      if (done) break;
+    }
+  });
+  const whole = job.result!;
   const frozen = isFrozen(story);
   const teethAfter = teeth();
   const text = String(story.contents);
   const forcedBreaks = Array.from(text).filter((c) => c === '\n').length;
+  // One Cmd+Z undoes all of it. Redo brings back only the first step (InDesign redoes merged steps only up to the
+  // first, `i48-redo`): reported, not required.
+  const undoName = String(doc.undoName);
+  doc.undo();
+  const undoneToOriginal = String(story.contents) === original && !isFrozen(story);
+  const redoName = String(doc.redoName);
+  doc.redo();
+  const after = String(story.contents);
+  const redone = after === text && isFrozen(story);
+  const redoInfo0 = { redoName, undoNameAfter: String(doc.undoName), breaksAfterRedo: Array.from(after).filter((c) => c === '\n').length, lengthAfterRedo: after.length, frozenAfterRedo: isFrozen(story) };
+  const redoInfo = redoInfo0;
+  // Back to the plain text, then set it once more for the Unfreeze test below.
+  doc.undo();
+  const rewhole = setWholeStory(story, settings);
 
   // 3. Unfreeze gives the text back exactly.
   const [removed, unfreezeMs] = timed(() => unfreezeFlatter(story));
@@ -57,13 +81,13 @@ inNewDocument((doc: Any) => {
 
   const pass =
     previewParagraphs.length === 4 && previewParagraphs[0] === 2 && previewParagraphs[3] === 5 && preview.linesAsPlanned === preview.linesPlanned &&
-    frozen && teethAfter === 0 && whole.missed === 0 && forcedBreaks === whole.breaks && removed === whole.breaks + whole.hyphens &&
+    frozen && teethAfter === 0 && whole.missed === 0 && undoName === 'Flatter: Set whole story' && undoneToOriginal && forcedBreaks === whole.breaks && removed === rewhole.breaks + rewhole.hyphens &&
     sameAfterUnfreeze && again.missed === 0 && sameAfterRemove && tracking.length === 1 && tracking[0] === 0;
   return {
     pass,
     pages,
     preview: { paragraphs: previewParagraphs, lines: `${preview.linesAsPlanned}/${preview.linesPlanned}`, ms: previewMs },
-    whole: { ...whole, wallMs: wholeMs, frozen, teethAfter, forcedBreaks },
+    whole: { ...whole, wallMs: wholeMs, frozen, teethAfter, forcedBreaks, steps: steps.length, slowestStepMs: Math.max(...steps), firstStepMs: steps[0], undoName, undoneToOriginal, redone, redoInfo },
     unfreeze: { removed, sameAfterUnfreeze, ms: unfreezeMs, rangesAfter: Number(story.textStyleRanges.length) },
     again: { missed: again.missed, ms: againMs, timings: again.timings, rangesAfterUnfreeze, rangesBeforeAgain },
     remove: { sameAfterRemove, tracking },

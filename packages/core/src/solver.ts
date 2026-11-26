@@ -184,9 +184,12 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
       // Tracked, the line also takes on the width of its broken-up ligatures.
       const ligExtra = trackUnit > 0 ? M.trackedExtra(g.start, g.end) : 0;
       let overfull = 0;
-      if (content - shrink > avail + TOL || g.width - shrink > avail + TOL) {
+      // Too wide even with the most tracking. Tracking also breaks ligatures, which widens the line (ligExtra): a line
+      // that only fits by tracking must fit with that too (2026-11-26: soft mode priced such lines as band misses).
+      const tooWide = (w: number) => w > avail + TOL && w + (shrink > 0 ? ligExtra : 0) - shrink > avail + TOL;
+      if (tooWide(content) || tooWide(g.width)) {
         // Too wide. Soft mode may keep the shortest possible line when nothing fits.
-        if (hard || i !== fromIdx) return content - shrink > avail + TOL ? 'stop' : 'next';
+        if (hard || i !== fromIdx) return tooWide(content) ? 'stop' : 'next';
         overfull = g.width - avail;
       }
 
@@ -221,7 +224,6 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
               (overfull > 0 ? SOFT_COST.overfull * (1 + overfull) : 0);
           }
         }
-        if (overfull > 0 && hard) return 'next';
         if (dist > TOL) {
           if (hard) return 'next';
           if (allowSkip && gap > hi + Z) return 'short';
@@ -283,7 +285,6 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
             cost = node.cost + W.trackingBase + W.trackingSlope * (tracking / Math.max(1, P.tracking.max)) ** 2;
           }
         }
-        if (overfull > 0 && hard) return 'next';
         if (dist > TOL) {
           if (hard) return 'next';
           // A line far shorter than any band is only worth keeping when nothing longer fits.
@@ -300,6 +301,14 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
             cost += SOFT_COST.contrast + SOFT_COST.bandSlope * ((contrast - diff) / band) ** 2;
           }
         }
+      }
+
+      // Whatever the tracking did, a line that still ends past the measure is overfull: never in strict, the highest
+      // soft cost otherwise (2026-11-26).
+      if (!exempt && gap < -TOL && overfull <= 0) {
+        if (hard) return 'next';
+        overfull = -gap;
+        cost += SOFT_COST.overfull * (1 + overfull);
       }
 
       // Cost of the break itself.
@@ -339,7 +348,9 @@ function runDP(M: ParagraphMetrics, P: ResolvedParams, startRole: Role, hard: bo
           cost += SOFT_COST.lastLineRule;
         }
         const letters = M.letters(g.start, g.end);
-        if (singleWord && letters > 0 && letters < P.lastLine.minLetters) {
+        // A last line right after a forced line break cannot be longer: the rule cannot apply there (2026-11-26: it
+        // pushed the whole paragraph into soft mode).
+        if (singleWord && letters > 0 && letters < P.lastLine.minLetters && !(a >= 0 && M.isForced(a))) {
           if (hard) return 'next';
           cost += SOFT_COST.lastLineRule;
         }

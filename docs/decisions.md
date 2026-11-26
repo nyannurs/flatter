@@ -132,7 +132,7 @@ The designer asked whether the solver uses Laufweite, then decided: add tracking
 - **Sliders in relative units**: Flatterzone in % of each paragraph's measure (8–25 %, default 20 %), band in % of the zone (default 50 %), so paragraphs with different indents share one setting (`zoneShare`, `bandShare` in ApplySettings).
 - **Live loop**: input → 30 ms debounce → `liveUpdate` (re-plan + move teeth, no read-back) → 250 ms after the last tick `liveVerify` (read back, re-plan refused points, move misplaced teeth, drop parked teeth). The first tick of a drag opens the undo step "Flatter: Adjust"; later ticks and the verify merge into it (AUTO_UNDO).
 - **Target**: the story of the current selection (text frame or text cursor). Stored settings are loaded into the panel when the selection moves to a story Flatter has been applied to.
-- **Dev builds** poll the application label `flatter-dev-command` every 300 ms and answer in `flatter-dev-result`, so terminal scripts can drive tests inside the loaded panel. Release builds (`npm run panel:release`) leave this out.
+- **Dev builds** poll the application label `flatter-dev-command` every 300 ms and answer in `flatter-dev-result`, so terminal scripts can drive tests inside the loaded panel. Release builds (`npm run package`) leave this out.
 - **Loading for development**: `tools/indesign/uxp-load.mjs` talks to the UXP Developer Tool service directly (Adobe's CLI does not run on Node 24).
 
 ## ADR-013: Laufweite for geometric precision; Variation removed (2026-10-16)
@@ -294,4 +294,40 @@ The designer found the panel too verbose and approved this layout (audit, 2026-1
 ## ADR-035: Licence: PolyForm Shield 1.0.0 (2026-11-26)
 
 The designer made the repository public and chose "free, no reselling". PolyForm Shield 1.0.0 says that: anyone may use, copy, change and pass Flatter on for any purpose, commercial client work included, except providing a product that competes with Flatter (selling it, or building a rival plugin from it). An established licence instead of a home-made one, so the terms are clear. `LICENSE.md` carries the required notice (copyright 2026 nyannurs) above the official text; `package.json` and the panel package say `PolyForm-Shield-1.0.0`; `npm run package` puts `LICENSE.md` into every `.ccx` next to the third-party licences (from the next release on; 0.6.9 does not contain it). The bundled third-party code (ISC and MIT hyphenation library and patterns) allows this.
+
+## ADR-036: Preview first, Apply to whole story with progress (2026-11-26)
+
+The designer's workflow for every story: click a text frame, Preview (a few paragraphs, live), adjust, Apply to whole story. New users must not start a live run on a long story by accident. The designer specified the panel top to bottom; it replaces the ADR-034 layout.
+
+- **Panel, top to bottom**: "Flatter v. x" (no superscript, no FLATTERSATZ tag); the story line (first words, the paragraphs Preview works on); Hyphenation (German / English, Safe / Normal, hyphens in a row, Keep phrases together, Shape ↔ Sense); Rag (Aesthetic / Functional, Align line ends exactly with its limits, Rag zone, Band, Start long / Strict, Rhythm across paragraphs / Show zone and band); then **Preview** next to **Apply to whole story**, with "412 ¶ · about 20 s" under them; Unfreeze (only for a frozen story) and Remove as quiet buttons; status and problems at the bottom. Removed: Live (Preview is always live), Recompute (Preview measures afresh each time), Freeze (Apply to whole story freezes), the colour swatches, the Run self-check button (the check still runs after every update; the alarm box keeps its button).
+- **English names**: Flatterzone → "Rag zone", Sinneinheiten → "Keep phrases together" (panel and messages; code keeps its names).
+- **Preview never takes the whole story by itself**: selected text → its paragraphs; a cursor → five paragraphs from its paragraph; a selected frame → five from the frame's first paragraph; nothing usable → the story's first five. Sliders without a preview take the same paragraphs.
+- **Apply to whole story as a job** (`startWholeStory`, `WholeStoryJob.step()`): step 1 opens the undo step "Flatter: Set whole story" (unfreeze, settings, measuring, planning, and the record so Remove works even if the job stops); then write chunks (200 breaks or 600 tracking ranges each, `bakeChunks`); then the check. Later steps merge into the first (AUTO_UNDO): one Cmd+Z undoes all. The panel redraws the progress bar between steps; Cancel takes everything back; text changed between steps stops the job and takes it back.
+- **ExtendScript for the write chunks**: an ExtendScript text starts at once, a UXP script text needs 0.25–1.3 s to load InDesign's DOM, and ExtendScript wrote twice as fast (`i47-chunk-start`). 8 pages of three columns: writing 14.6 s → 3.1 s, Set whole story 21 s → 9.7 s (second run 16 s → 5.5 s).
+- **Known InDesign limit**: redo after undoing merged steps replays only the first step (`i48-redo`; slider drags behave the same). After Cmd+Z, Cmd+Shift+Z leaves the settings and the record but no line breaks; Apply to whole story again sets them.
+- **Estimate**: characters × milliseconds per character (defaults 0.16 with Laufweite, 0.12 without, from the 8-page test); the panel learns the rate on the computer after each run (localStorage).
+- **Band strips**: one per column and kind instead of one per paragraph and column (`mergeBands`): about 48 instead of 380 on 8 pages; they move only when the zone or band changes.
+
+## ADR-037: Right-aligned text, indents next to wrap, drop caps (2026-11-26)
+
+The designer wants Flatter to work on every story that needs a rag: left- or right-aligned. This reverses the part of ADR-026 that left right-aligned paragraphs alone; centred paragraphs are still left alone.
+
+- **Right-aligned text is ragged on the left.** Its teeth come in from the left (text wrap on the tooth's right side; a reused tooth switches side only when needed), the zone and band strips start at the measure's left edge, and a right-aligned line's start is worked out from the column, its indents and any wrap object (`textArea`), not read from where its text begins. "Towards spine" and "Away from spine" are left- or right-aligned depending on the page side of each line (`ragOnLeft`, `LineSlot.rightHand`; single-sided pages count as right-hand). Justified text still becomes left-aligned.
+- **Indents next to text wrap** (`i49-indent-wrap`, measured): next to a wrap object on the left InDesign adds the first-line indent, and the left indent only with "honour text indents with text wrap" (on by default); next to one on the right it drops the right indent. One rule (`textArea`) now places right-aligned lines, predicts lines beside images (it left out the left indent with the preference on) and gives per-line measures (it took off the right indent beside an image on the right).
+- **Drop caps**: the cap's characters take no room in the first line; the lines beside the cap are as wide as the read-back shows. InDesign reports the cap's baseline for the first line, so its position comes from the first character after the cap.
+- **Overset is read with every read-back**: steering that pushed a last line out of the frame counted it as a miss.
+- Stress test `i50-edge-stress` (in `test:indesign`): 18 cases, with and without Laufweite, all lines as planned live and as Apply to whole story, text and alignments back.
+
+## ADR-038: Codebase audit; no language buttons; InDesign special characters (2026-11-26)
+
+The designer asked for a codebase audit (bugs, dead code, robustness, best practice) and for the stress test to cover InDesign's special characters. Four reviewers read the solver and hyphenation, the adapter logic, the InDesign layer and the panel; a fifth collected Adobe's UXP guidance. Every finding was checked against the code before it was fixed; the full list and the plain-language report are in `docs/audit-2026-11.md`.
+
+- **No German / English buttons.** They only set the dictionary language of whole stories, which is the typographer's job in InDesign; Flatter hyphenates every word in its own language anyway (ADR-028). The panel says so when a story's language is one Flatter's own rules do not cover.
+- **Preview fixes settings only for its own paragraphs** (composer, alignment, leading); Apply to whole story fixes all. A preview no longer un-justifies the rest of a story.
+- **Fixed-width spaces never break a line in InDesign** (em, en, third, quarter, sixth, figure, punctuation, thin, hair; measured): they are no-break glue now. Flatter had planned breaks there.
+- **Page number markers** (U+0018) are set with every digit of the page's name, but measured on the bench's page 1 and reported by InDesign as one digit wide: their width is the one-digit width times the length of the page name.
+- **Indent to Here**: lines of such a paragraph start where the read-back shows (like the lines beside a drop cap); predicted lines take the paragraph's last read-back start.
+- **Right indent tab** is reported as unsupported, like a tab (no false alarm).
+- Undo steps roll back in the story's own document; the whole-story job stops when another undo step came in between; slider moves after Cmd+Z find the teeth again; soft hyphens at line ends count as hyphenated; Remove restores settings one at a time.
+- Spikes are typechecked (`tools/indesign/spikes/tsconfig.json`, in `npm run typecheck`); `panel:release` and the stale bundle in `packages/panel/plugin/` are gone (release builds only through `npm run package`).
 

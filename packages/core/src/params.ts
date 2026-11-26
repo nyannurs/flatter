@@ -243,11 +243,6 @@ export function defaultFlatterzone(measure: number, charsPerLine?: number): numb
   return measure / (narrow ? 7 : 5);
 }
 
-/** Slider range for the Flatterzone: roughly W/12 … W/4. */
-export function flatterzoneRange(measure: number): { min: number; max: number } {
-  return { min: measure / 12, max: measure / 4 };
-}
-
 /** Below W/10 the result belongs to the Rauhsatz tradition, not Flattersatz (plan §2A.2). */
 export function modeLabel(flatterzone: number, measure: number): 'Flattersatz' | 'Rauhsatz' {
   return flatterzone < measure / 10 ? 'Rauhsatz' : 'Flattersatz';

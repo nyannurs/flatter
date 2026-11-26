@@ -22,14 +22,14 @@ The user wants any Claude Code instance to be able to pick up this project. At t
 ```bash
 npm install             # workspace install (npm workspaces)
 npm test                # vitest: unit, scenario, property and simulator snapshot tests
-npm run typecheck       # tsc for core, simulator and playground
+npm run typecheck       # tsc for every package and the InDesign spikes
 npm run sim -- --help   # simulator CLI: text -> SVG + report (default: German reference text, 60 chars)
 npm run sim -- --tracking 10 --precise --word-spaces 25   # precise Laufweite with word spaces; prints edge precision
 npm run playground      # bundles the live playground to packages/simulator/out/playground.html
 npm run corpus-report -- de de   # golden-corpus review: unsafe points, wrong class A, coverage (also en-US, en-GB)
 npm run test:indesign   # adapter integration tests inside the running InDesign (throwaway documents)
 npm run panel           # dev build into dist/dev-panel as "Flatter (dev)" (own plugin id: runs beside the installed release)
-npm run package         # release build → dist/Flatter-<version>.ccx and dist/Flatter.ccx (bump "version" in packages/panel/plugin/manifest.json first); upload both to the GitHub release (the README's download link points at releases/latest/download/Flatter.ccx) and update the README line "Version x · Mac · InDesign 2023 or newer"
+npm run package         # release build → dist/Flatter-<version>.ccx and dist/Flatter.ccx (bump "version" in packages/panel/plugin/manifest.json first); upload both to the GitHub release (the README's download link points at releases/latest/download/Flatter.ccx) and update the README line "Version x · Mac · English InDesign 2026 or newer"
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install "$PWD/dist/Flatter-<version>.ccx"   # install for the user (InDesign restart needed)
 "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --remove "Flatter"   # uninstall the installed release first when asked
 node tools/indesign/uxp-load.mjs load     # load the panel into InDesign via the UXP Developer Tool service (no clicks)
@@ -56,7 +56,7 @@ packages/indesign-adapter/  InDesign side. Pure, Node-tested: items.ts (items fr
                       points), geometry.ts (teeth), settings.ts (required settings), apply.ts (plan → steer → read back →
                       re-plan loop against the Port interface). UXP only: dom-port.ts (Port with the DOM), dom.ts
                       (applyFlatter / removeFlatter / checkSettings, one undo step each). Tests use a fake greedy composer.
-packages/panel/       UXP panel (layout ADR-034): plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
+packages/panel/       UXP panel (layout ADR-036): plugin/ (manifest, index.html, icons; index.js is built), src/main.ts (UI and live
                       loop: debounce 30 ms, verify after 250 ms), src/dev.ts (dev-build command channel and the S4 test).
 packages/simulator/   dev harness, never shipped: Source Serif 4 metrics (opentype.js) + Liang patterns (hyphen) -> SVG,
                       CLI (src/cli.ts), playground (playground/, build-playground.mjs), local server (serve.mjs),
@@ -67,10 +67,11 @@ docs/plan.md          architecture and implementation plan (source of truth for 
 docs/progress.md      status log and next steps
 docs/decisions.md     ADRs and the designer's answers to plan §11
 docs/spike-results.md InDesign spike findings (Phase 0)
+docs/audit-2026-11.md plain-language codebase audit for the designer (size, bugs fixed, open questions)
 InDesign Test File/   the user's local InDesign test document; git-ignored on purpose
 ```
 
-Threaded frames of different widths are supported (per-line measures, ADR-018); the panel has German / English language buttons. Long stories: a text selection makes Apply a preview on those paragraphs, and Set whole story writes the whole story frozen in one go (ADR-032, `setWholeStory`, `i45-set-whole`).
+Left- and right-aligned text, indents, drop caps, text wrap and threaded frames of different widths are supported (per-line measures, ADR-018, ADR-037); the panel has German / English language buttons. Workflow (ADR-036): Preview works live on a few paragraphs (the selection, or five from the cursor or frame), Apply to whole story writes the whole story frozen as a job of steps with a progress bar (`startWholeStory`, `setWholeStory` runs all steps; write chunks are ExtendScript, `bake-chunks.ts`; `i45-set-whole`).
 
 Planned but not created yet: review list (Phase 5), signing and licence texts in the package (Phase 7). Freeze/Unfreeze exists (ADR-019).
 
@@ -103,6 +104,8 @@ tools/indesign/run.sh some-script.jsx                    # ExtendScript; result 
 - Units: always run DOM work inside `inPoints` (dom.ts); the user's TestFile is in millimetres.
 - Tests that run several Apply variants in one document must `removeFlatter` between them: teeth are labelled by story id and stay behind when frames are removed.
 - Long stories: `i31-stress.ts` builds a long mixed story (paragraph styles, columns, image wrap, breaks, special characters; app labels `flatter-i31-groups`, `flatter-i31-rounds`, `flatter-progress-file`) and prints a per-method profile. Not in `test:indesign` (minutes). `i40-stress-file.ts` writes the designer's manual stress-test document `InDesign Test File/Flatter Stress Test.indd` (app label `flatter-stress-path`).
+- Special characters (ADR-038): fixed-width spaces are no-break in InDesign; page number markers are measured as one digit × the page name's length; Indent to Here lines start where the read-back shows; tabs and right indent tabs are reported as unsupported. `i52-specials` tests one character at a time.
+- Edge cases (ADR-037): right-aligned text is ragged on the left (teeth from the left, `ragOnLeft`), indents next to text wrap follow `textArea` (measured in `i49-indent-wrap`), drop caps are supported. `i50-edge-stress` (in `test:indesign`) covers 18 layouts; app labels `flatter-i50-only` (filter by case name) and `flatter-i50-tracking` = yes (with Laufweite). Spikes on facing pages must set `viewPreferences.rulerOrigin = PAGE_ORIGIN`, or page coordinates are spread coordinates.
 - Languages: every word is hyphenated and probed in its own language (ADR-028, `languages.ts`); `i32-mixed-inline.ts` covers languages, fonts and sizes inside words.
 - `tools/indesign/spikes/src/i14-analyse.ts` compares settings variants on a copy of the user's Flatter story (rhythm problems, hyphens, lines as planned).
 - Performance: never read thousands of character positions in a frame of the user's document (it slows every later change to that frame); measure in the hidden bench document (ADR-016). `i3-user-copy.ts` prints a per-method profile.
@@ -110,8 +113,10 @@ tools/indesign/run.sh some-script.jsx                    # ExtendScript; result 
 - Never register event listeners from a one-off script: when the script ends InDesign shows the user an error dialog for every event ("Script context is not available anymore"). Listeners belong in the loaded panel. If one slips through, find it in `app.eventListeners` (by id) and remove only that one.
 - To see whether InDesign is running use `pgrep -x "Adobe InDesign 2027"`; a pattern on its path also matches AdobeIPCBroker. Do not relaunch InDesign when the user has closed it (`run.sh` launches it).
 - A UXP script whose text contains "async" followed by a word runs asynchronously (time-shared, several times slower); `run.sh` polls for the result, so a script must always write its result label, even on error. `build-spikes.mjs` rewrites the only such phrase (an error message in the `hyphen` package), so spikes now run synchronously; `run.sh` allows them an hour.
+- ExtendScript from UXP (2026-11-26): `app.doScript(text, ScriptLanguage.JAVASCRIPT, ...)` starts at once (a UXP script text spends 0.25–1.3 s on `require('indesign')`); pass data through an app label. Redo after undoing merged AUTO_UNDO steps replays only the first step (`i48-redo`).
 - Speed (2026-11-18, `docs/spike-results.md` "Speed"): DOM calls made inline in the panel are 6–10 times slower than in a script InDesign runs to completion; `i41-speed` (with `packages/panel/src/bench.ts` and the dev command `bench`) and `i42-comb` measure it.
-- Do not reload the dev panel repeatedly while testing: each load registers a selection listener, and a reloaded panel's old listener makes InDesign show "Script context is not available anymore" on every selection (the user then has to click Yes or restart InDesign). Do not give `entrypoints.setup` a `plugin` lifecycle hook: with one (0.6.3, 0.6.4) the panel never started in InDesign 2027 (no listener, Apply did nothing, nothing in the UXP log). A panel loaded through the UDT only runs once it is shown; the UXP log is in `~/Library/Logs/Adobe/Adobe InDesign 2024/UXPLogs_*.log` (that folder name also for 2027).
+- Reloading the dev panel is safe since 2026-11-26: the panel labels its selection listener (`flatter-owner` = `flatter-dev`) and removes its own old one on start. Builds before that left an orphan listener, which makes InDesign show "Script context is not available anymore" on every selection; remove such a listener by id (check `eventType` and label first).
+- UXP `sp-picker`: `value` has only a getter; select the `sp-menu-item` instead (`pick` in main.ts). Do not give `entrypoints.setup` a `plugin` lifecycle hook: with one (0.6.3, 0.6.4) the panel never started in InDesign 2027 (no listener, Apply did nothing, nothing in the UXP log). A panel loaded through the UDT only runs once it is shown; the UXP log is in `~/Library/Logs/Adobe/Adobe InDesign 2024/UXPLogs_*.log` (that folder name also for 2027).
 
 ## Environment gotchas
 

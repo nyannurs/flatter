@@ -7,7 +7,7 @@ node tools/indesign/build-spikes.mjs i >/dev/null
 # i46 saves throwaway files next to the built spikes (git-ignored).
 osascript -e "tell application id \"com.adobe.InDesign\" to do script \"app.insertLabel('flatter-i46-dir', '$PWD/tools/indesign/spikes/dist')\" language javascript" >/dev/null
 status=0
-for t in i1-adapter i2-tracking i18-language i19-freeze i20-selfcheck i22-edit-after-apply i24-duplicate i27-capitals i29-mixed-paragraphs i30-sense-balance i32-mixed-inline i45-set-whole i46-persist; do
+for t in i1-adapter i2-tracking i18-language i19-freeze i20-selfcheck i22-edit-after-apply i24-duplicate i27-capitals i29-mixed-paragraphs i30-sense-balance i32-mixed-inline i45-set-whole i46-persist i50-edge-stress; do
   out="$(tools/indesign/run.sh "tools/indesign/spikes/dist/$t.idjs")"
   if printf '%s' "$out" | grep -q '"pass": true'; then echo "PASS $t"; else echo "FAIL $t"; printf '%s\n' "$out" | head -40; status=1; fi
 done

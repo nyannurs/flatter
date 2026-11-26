@@ -58,13 +58,20 @@ const EN_NAME_SUFFIXES = words('Jr. Sr. II III IV');
 const EN_MONTHS = words('January February March April May June July August September October November December');
 
 const UNITS = words(`% ‰ °C °F ° € $ £ ¥ EUR USD CHF GBP kg g mg µg t m cm mm µm km dm l ml dl cl ha s ms min h pt px pc
-  in ft mi oz lb kB MB GB TB kW W V A Hz kHz MHz Uhr Prozent Grad Euro Dollar Franken Meter Kilometer Zentimeter Millimeter
+  ft mi oz lb kB MB GB TB kW W V A Hz kHz MHz Uhr Prozent Grad Euro Dollar Franken Meter Kilometer Zentimeter Millimeter
   Kilogramm Gramm Liter Stunden Minuten Sekunden Seiten Punkt percent degrees dollars euros meters metres kilometres
   kilometers pages points`);
 
 const core = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}.%‰°€$£¥]+$/gu, '');
 const bare = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
-const endsClause = (t: string) => /[,;:!?)\]»«"”“–—]$/.test(t) || (/\.$/.test(t) && !/^\p{L}{1,4}\.$/u.test(core(t)));
+const EN_ABBREVIATIONS = words('etc. vs. e.g. i.e. cf. approx. no. No. fig. Fig. p. pp. vol. Vol. ed. eds. ch. Ch.');
+/**
+ * A token ending in a full stop is an abbreviation (no clause end) when it is an initial ("J."), has a full stop inside
+ * ("z.B.", "e.g.") or is a listed abbreviation. Short words ending a sentence ("an.", "mit.", "it.") end a clause
+ * (2026-11-26: every word of 1–4 letters counted as an abbreviation).
+ */
+const isAbbreviation = (t: string) => /^\p{L}\.$/u.test(t) || /\p{L}\.\p{L}/u.test(t) || DE_ABBREVIATIONS.has(t) || EN_ABBREVIATIONS.has(t) || EN_TITLES.has(t);
+const endsClause = (t: string) => /[,;:!?)\]»«"”“–—]$/.test(t) || (/\.$/.test(t) && !isAbbreviation(core(t)));
 const NUMBER = /^[+\-−±]?\d[\d.,'’\u00a0\u202f\u2009]*$/; // digit groups: thin and no-break spaces
 
 export function createSenseRule(language: HyphenLanguage, costs: Partial<SenseCosts> = {}): BreakCostRule {

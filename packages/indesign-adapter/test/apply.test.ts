@@ -11,6 +11,32 @@ const DE = [
 const de = createHyphenator({ language: 'de' });
 const ourSafe = (w: string) => de.classify(w).filter((p) => p.quality === 'A' || p.quality === 'B').map((p) => p.index);
 
+describe('a forced line break at the paragraph end', () => {
+  it('counts the empty last line as set as planned', () => {
+    const fake = new FakeInDesign([`${DE[0]}\n`, DE[1]!], { measure: 240, accepts: ourSafe });
+    const r = applyToPort(fake);
+    expect(r.linesAsPlanned).toBe(r.linesPlanned);
+    expect(r.rounds).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('right-aligned text (ADR-037)', () => {
+  it('steers right-aligned paragraphs with teeth from the left, as planned', () => {
+    for (const measure of [220, 260]) {
+      const fake = new FakeInDesign(DE, { measure, accepts: ourSafe, alignments: ['RIGHT_ALIGN', 'LEFT_ALIGN', 'RIGHT_ALIGN'] });
+      const r = applyToPort(fake, { showBands: true });
+      expect(r.linesAsPlanned, `measure ${measure}`).toBe(r.linesPlanned);
+      // Teeth of right-aligned paragraphs sit in the left half of the column, the others in the right half.
+      for (const t of fake.teeth) {
+        const centre = (t.bounds[1] + t.bounds[3]) / 2;
+        expect(t.paragraph === 1 ? centre > measure / 2 : centre < measure / 2, `tooth of ¶${t.paragraph + 1}`).toBe(true);
+      }
+      // Its strips start at the left edge of the measure.
+      expect(fake.bands.some((b) => b.kind === 'long' && Math.abs(b.bounds[1]) < 0.01)).toBe(true);
+    }
+  });
+});
+
 describe('apply loop against a greedy composer', () => {
   it('steers every line as planned when InDesign accepts our points', () => {
     for (const measure of [220, 260, 300]) {

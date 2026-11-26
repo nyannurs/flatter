@@ -32,6 +32,8 @@ export interface FakeOptions {
   hyphenateAcrossColumns?: boolean;
   /** Compounds whose typed hyphen InDesign will not break after (like "master-builder" with hyphenation on). */
   refusesAfterHyphen?: (compound: string, at: number) => boolean;
+  /** Justification per paragraph (default LEFT_ALIGN); RIGHT_ALIGN is ragged on the left, steered by teeth from the left. */
+  alignments?: string[];
 }
 
 const advance = (c: string) => (c === ' ' ? 2.5 : /[il.,:;'’!]/.test(c) ? 2.5 : /[mwMW]/.test(c) ? 7.5 : 5);
@@ -43,7 +45,7 @@ export class FakeInDesign implements Port {
   /** Tracking units per paragraph and character (1/1000 em). */
   tracking = new Map<number, number[]>();
   private readonly texts: string[];
-  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom' | 'runs' | 'columnLines' | 'hideColumns' | 'hyphenateAcrossColumns'>> & { spaceBefore: number; frameFrom?: { line: number; measure: number }; runs?: (LanguageRun[] | undefined)[]; columnLines?: number; hideColumns?: boolean; hyphenateAcrossColumns?: boolean };
+  private readonly o: Required<Omit<FakeOptions, 'spaceBefore' | 'frameFrom' | 'runs' | 'columnLines' | 'hideColumns' | 'hyphenateAcrossColumns' | 'alignments'>> & { alignments?: string[]; spaceBefore: number; frameFrom?: { line: number; measure: number }; runs?: (LanguageRun[] | undefined)[]; columnLines?: number; hideColumns?: boolean; hyphenateAcrossColumns?: boolean };
   /** Every probe call: the language asked for (undefined = the paragraph's) and the words. */
   probes: { language: string | undefined; words: string[] }[] = [];
 
@@ -67,6 +69,7 @@ export class FakeInDesign implements Port {
       spaceBefore: index > 0 ? this.o.spaceBefore : 0,
       spaceAfter: 0,
       ...(this.o.hyphenateAcrossColumns !== undefined ? { hyphenateAcrossColumns: this.o.hyphenateAcrossColumns } : {}),
+      ...(this.o.alignments?.[index] ? { alignment: this.o.alignments[index] } : {}),
     }));
   }
 
@@ -123,7 +126,9 @@ export class FakeInDesign implements Port {
       const chars = [...text];
       let start = 0;
       let line = 0;
-      while (start < chars.length) {
+      // A forced line break at the paragraph end leaves an empty last line, as in InDesign (it holds only the return).
+      const forcedEnd = /[\n\u2028]$/.test(text);
+      while (start < chars.length || (forcedEnd && line > 0 && start === chars.length)) {
         let baseline = atTop ? this.o.leading : y + this.o.leading + (line === 0 && paragraph > 0 ? this.o.spaceBefore : 0);
         if (bottom !== undefined && !atTop && baseline + 0.3 * this.o.size > bottom) {
           column++;
@@ -137,15 +142,23 @@ export class FakeInDesign implements Port {
           ...(this.o.maxLines !== undefined ? { limit: this.o.leading * this.o.maxLines } : bottom !== undefined ? { limit: bottom } : {}),
           ...(columnLines && !this.o.hideColumns ? { column, columnBounds: [x0, x0 + measure] as [number, number] } : {}),
         };
-        const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size && t.bounds[3] > x0 && t.bounds[1] < x0 + measure + 10);
-        const max = tooth ? Math.min(tooth.bounds[1] - slot.startX, measure) : measure;
+        if (start >= chars.length) {
+          out.push({ paragraph, line, lastVisible: chars.length, hyphenated: false, slot });
+          storyLine++;
+          y = baseline;
+          break;
+        }
+        const tooth = this.teeth.find((t) => t.bounds[0] <= baseline && t.bounds[2] >= baseline - this.o.size && t.bounds[3] > x0 - 3 && t.bounds[1] < x0 + measure + 10);
+        // A tooth in the left half comes in from the left (right-aligned text): the line may use the room right of it.
+        const fromLeft = !!tooth && (tooth.bounds[1] + tooth.bounds[3]) / 2 < x0 + measure / 2;
+        const max = !tooth ? measure : fromLeft ? Math.min(x0 + measure - Math.max(x0, tooth.bounds[3]), measure) : Math.min(tooth.bounds[1] - slot.startX, measure);
         const track = this.tracking.get(paragraph) ?? [];
         // The last line of a column: no line below it fits.
         const lastInColumn = bottom !== undefined && baseline + this.o.leading + 0.3 * this.o.size > bottom;
         const noHyphen = lastInColumn && this.o.hyphenateAcrossColumns === false;
         const { end, hyphenated } = this.breakLine(chars, start, max, (k) => advance(chars[k]!) + ((track[k] ?? 0) * this.o.size) / 1000, noHyphen);
         let last = end - 1;
-        while (last > start && chars[last] === ' ') last--;
+        while (last > start && /\s/.test(chars[last]!)) last--;
         out.push({ paragraph, line, lastVisible: last, hyphenated, slot });
         start = end;
         while (start < chars.length && chars[start] === ' ') start++;

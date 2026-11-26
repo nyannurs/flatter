@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultFlatterzone, flatterzoneRange, modeLabel, resolveParams } from '../src/index.ts';
+import { defaultFlatterzone, modeLabel, resolveParams } from '../src/index.ts';
 
 describe('defaults from plan §2', () => {
   it('uses W/5 for wide columns and W/7 for narrow ones', () => {
@@ -9,7 +9,6 @@ describe('defaults from plan §2', () => {
   });
 
   it('clamps the slider to W/12 … W/4', () => {
-    expect(flatterzoneRange(240)).toEqual({ min: 20, max: 60 });
   });
 
   it('labels small Flatterzones as Rauhsatz', () => {

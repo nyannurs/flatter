@@ -37,17 +37,31 @@ export function alignPrints(stored: readonly string[], current: readonly string[
       out.set(i++, j++);
       continue;
     }
+    // Resume at the nearest pair that is a real anchor: not an empty paragraph, and (when there is one) followed by a
+    // matching pair too. Empty paragraphs and repeated lines ("* * *") matched by accident and gave a paragraph's
+    // record to another one (2026-11-26). Without a confirmed pair, the nearest unconfirmed one is taken.
+    const anchor = (a: number, b: number, confirmed: boolean) => {
+      const x = stored[i + a];
+      if (x === undefined || x === '' || x !== current[j + b]) return false;
+      if (!confirmed) return true;
+      const nx = stored[i + a + 1];
+      const ny = current[j + b + 1];
+      return nx === undefined || ny === undefined || nx === ny;
+    };
     let found = false;
-    for (let d = 1; d <= RESYNC_WINDOW && !found; d++) {
-      for (let a = 0; a <= d; a++) {
-        const b = d - a;
-        if (i + a < stored.length && j + b < current.length && stored[i + a] === current[j + b]) {
-          i += a;
-          j += b;
-          found = true;
-          break;
+    for (const confirmed of [true, false]) {
+      for (let d = 1; d <= RESYNC_WINDOW && !found; d++) {
+        for (let a = 0; a <= d; a++) {
+          const b = d - a;
+          if (anchor(a, b, confirmed)) {
+            i += a;
+            j += b;
+            found = true;
+            break;
+          }
         }
       }
+      if (found) break;
     }
     if (!found) {
       i++;

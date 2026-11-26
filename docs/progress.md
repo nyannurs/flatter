@@ -2,6 +2,49 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-26 (night, late) — Release 0.7.0: InDesign 2026 or newer, README for the new workflow
+
+The designer's answers to the audit's open points: raise the minimum (manifest `minVersion` 21.0.0, InDesign 2026), say "English InDesign" in the README, leave tabs unsupported for now (a tab's width depends on where it lands, which changes with every break; a right indent tab makes its line flush right), leave several Indent to Here per paragraph, and do not split the long files (only a moderate gain for AI maintenance). README rewritten for the Preview → Apply to whole story workflow, frozen results, languages from InDesign's dictionaries, right-aligned text; the panel screenshot was taken out because it shows the 0.6.9 layout (a new one is needed). Version 0.7.0 built and installed for the designer in place of 0.6.9; not uploaded as a GitHub release yet (the README's download link still serves 0.6.9 until it is).
+
+## 2026-11-26 (late night) — Codebase audit done; special characters; no language buttons (ADR-038); not released, not committed
+
+Asked by the designer: a codebase audit (report in `docs/audit-2026-11.md`), special characters in the stress test, and (their call) no German / English buttons.
+
+- **Audit fixes** (details in ADR-038 and the report): solver (tracking and broken ligatures, overfull lines, last line after a forced break), hyphenation (sentence ends after short words, opinion-only points are class X), adapter (empty last line after a forced break, read-back after the last steer, rhythm across paragraphs after re-plans, overset counting, fingerprint anchors, drop caps in predicted slots), InDesign layer (undo in the story's document, Preview fixes only its paragraphs, Remove one setting at a time, whole-story job guarded against other undo steps, Cmd+Z then slider, soft hyphens), panel (one set of state helpers, locked during Apply to whole story, honest Cancel, Notes toggle, jump-to-line, messages). Dead code removed.
+- **Special characters**: fixed-width spaces are no-break (measured), page number widths from the page name, Indent to Here from the read-back, right indent tab reported as unsupported.
+- **Language buttons removed**; a note shows for languages outside German and English.
+- **Build**: `panel:release` and the stale `packages/panel/plugin/index.js` removed; spikes typechecked; `corpus-report` runs with type stripping; `panel-command.sh` escapes single quotes.
+- Tests: 220 unit tests, typecheck clean (all packages and spikes); `i50-edge-stress` 27 cases pass.
+
+Open for the designer: `minVersion` says InDesign 2023 (18.5) but only 2026 and 2027 were tested; composer and language names are untested in a non-English InDesign; splitting the three longest files (`main.ts`, `dom.ts`, `dom-port.ts`) is proposed, not done.
+
+## 2026-11-26 (night) — Right-aligned text, indents, drop caps; edge-case stress test (ADR-037); not released
+
+Asked by the designer: Flatter should work on every left- or right-aligned story; stress-test images with text wrap, right-aligned text and indents.
+
+- **Right-aligned text** is now set ragged on the left (teeth from the left, mirrored strips); towards / away from spine follow the page side. Centred paragraphs are still left alone.
+- **Indents** next to text wrap follow InDesign's measured rules (`textArea`, `i49-indent-wrap`); two older inaccuracies fixed on the way (left indent beside an image on the left, right indent beside an image on the right).
+- **Drop caps** supported; **overset** re-read after every steering pass.
+- **Panel**: the selection listener carries a label naming its owner (`flatter` or `flatter-dev`, `listener.insertLabel`), and a new start removes its own old listener first, so reloading or updating the panel no longer leaves "Script context is not available anymore" dialogs behind (an id kept in an app label was not safe: listener ids start again after an InDesign restart). Verified: three reloads, always exactly one dev listener.
+- **Bug fixed (also in 0.6.9)**: selecting a story Flatter had set threw in `settingsToUI` (a UXP `sp-picker`'s `value` has only a getter), so the stored phase, mode and hyphenation were not shown and the rest of the selection update stopped. Pickers are now set by selecting their menu item (`pick`).
+- Rag checkboxes stacked (they overlapped side by side in a narrow panel).
+- **Stress test** `i50-edge-stress` (18 cases, in `test:indesign`): all pass, with and without Laufweite. 217 unit tests green, typecheck clean; `test:indesign` 14/14 after all changes (with the stress test).
+
+Next: the codebase audit (asked by the designer).
+
+## 2026-11-26 (evening) — Preview-first panel, Apply to whole story with progress (ADR-036); not released
+
+Asked by the designer (they test the dev build before any release):
+
+- **Panel** rebuilt in the designer's order (ADR-036): header "Flatter v. x", story line, Hyphenation, Rag, then Preview next to Apply to whole story with an estimate, Unfreeze (frozen stories only) and Remove, status and problems. Rag zone and Keep phrases together replace Flatterzone and Sinneinheiten in the panel and messages. Live, Recompute, Freeze, the swatches and the self-check button are gone (the check still runs after updates).
+- **Preview** takes the selected paragraphs, or five from the cursor or the selected frame; it never sets a whole story live by itself.
+- **Apply to whole story** runs as a job of steps with a progress bar, time left and Cancel; one undo step; write chunks in ExtendScript. 8 pages: 21 s → 9.7 s.
+- **Band strips**: one per column (`mergeBands`).
+- Tests: `bake-chunks.test.ts` (property test: chunks keep every tracking range on its characters), `mergeBands` tests; 211 unit tests green, typecheck clean. `i45-set-whole` runs the job step by step and checks the single undo; passes in InDesign. The dev panel loads, and its self-check (which runs Set whole story) passes in the panel.
+- Not tested by script: the panel's progress bar and Cancel (the designer tests them in "Flatter (dev)"). README not updated yet (it describes 0.6.9; update it with the next release).
+
+Next (asked by the designer, in this order): right-aligned text (rag on the left), a stress test of edge cases (text wrap around images, right-aligned text and similar), then a codebase audit for a layman with a size count.
+
 ## 2026-11-26 (later) — Panel screenshot; "Apply does nothing" was InDesign stuck
 
 - README: a screenshot of the 0.6.9 panel (`docs/images/panel.png`, cut out of the designer's screenshot with transparent rounded corners), to the right of the introduction.

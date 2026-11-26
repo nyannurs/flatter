@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlannedLine } from '@flatter/core';
-import { bandsFor, checkParagraph, checkStory, itemsFromMeasured, mergePoints, sameWordPoints, toothFor, type LineSlot } from '../src/index.ts';
+import { bandsFor, mergeBands, ragOnLeft, textArea, checkParagraph, checkStory, itemsFromMeasured, mergePoints, sameWordPoints, toothFor, type LineSlot } from '../src/index.ts';
 
 const adv = (s: string) => [...s].map((c) => (c === ' ' ? 2.5 : 5));
 
@@ -169,6 +169,62 @@ describe('bandsFor', () => {
     // First line indented by 10: starts at 50 with 190 available; the measure still ends at 240.
     const bands = bandsFor(plan([190, 200]), [slot(0, 100, 50), slot(0, 112, 40)], 12);
     expect(bands[0]!.bounds[3]).toBeCloseTo(240);
+  });
+});
+
+describe('indents next to text wrap (i49-indent-wrap)', () => {
+  const ind = { left: 15, right: 20, first: 10, atWrap: true };
+  it('applies both indents away from wrap objects', () => {
+    expect(textArea([100, 400], [100, 400], ind, true)).toEqual([125, 380]);
+    expect(textArea([100, 400], [100, 400], ind, false)).toEqual([115, 380]);
+  });
+  it('drops the right indent next to a wrap object on the right', () => {
+    expect(textArea([100, 400], [100, 300], ind, false)).toEqual([115, 300]);
+  });
+  it('adds the first-line indent next to a wrap object on the left, the left indent only when honoured', () => {
+    expect(textArea([100, 400], [200, 400], ind, true)).toEqual([225, 380]);
+    expect(textArea([100, 400], [200, 400], { ...ind, atWrap: false }, true)).toEqual([210, 380]);
+    expect(textArea([100, 400], [200, 400], { ...ind, atWrap: false }, false)).toEqual([200, 380]);
+  });
+});
+
+describe('which side is ragged', () => {
+  it('puts the rag on the left for right-aligned text and spine alignments on the matching page side', () => {
+    expect(ragOnLeft('LEFT_ALIGN')).toBe(false);
+    expect(ragOnLeft('RIGHT_ALIGN')).toBe(true);
+    expect(ragOnLeft(undefined)).toBe(false);
+    // Towards the spine: left-aligned on a right-hand page, right-aligned on a left-hand page; away from it the opposite.
+    expect(ragOnLeft('TO_BINDING_SIDE', true)).toBe(false);
+    expect(ragOnLeft('TO_BINDING_SIDE', false)).toBe(true);
+    expect(ragOnLeft('AWAY_FROM_BINDING_SIDE', true)).toBe(true);
+    expect(ragOnLeft('AWAY_FROM_BINDING_SIDE', false)).toBe(false);
+  });
+
+  it('mirrors teeth and strips for right-aligned text', () => {
+    const slot: LineSlot = { page: 0, baseline: 100, startX: 40, columnLeft: 40, columnRight: 240, gutter: 12, size: 10 };
+    const line = { kind: 'band', available: 200, steerWidth: 150, indent: 0 } as never;
+    const t = toothFor(line, slot, 0, 1, { ragLeft: true, indentAfterWrap: 5 })!;
+    // The text may run from 240 - 150 = 90; with 5 pt of indent after the wrap the tooth ends at 85, outside the column on the left.
+    expect(t.bounds[3]).toBeCloseTo(85);
+    expect(t.bounds[1]).toBeLessThan(40);
+    const plan = { params: { band: 10, flatterzone: 30, measure: 200 }, lines: [{ available: 200, indent: 0 }] } as unknown as Plan;
+    const [long, short] = bandsFor(plan, [slot], 12, 'RIGHT_ALIGN');
+    expect([long!.bounds[1], long!.bounds[3]]).toEqual([40, 50]);
+    expect([short!.bounds[1], short!.bounds[3]]).toEqual([70, 80]);
+  });
+});
+
+describe('mergeBands', () => {
+  const band = (kind: 'long' | 'short', column: number | undefined, top: number, bottom: number, left = 200, right = 240, page = 0) => ({ page, kind, column, bounds: [top, left, bottom, right] as [number, number, number, number] });
+
+  it('joins the strips of one column into one per kind', () => {
+    const merged = mergeBands([band('long', 0, 90, 130), band('short', 0, 90, 130, 170, 180), band('long', 0, 140, 200), band('short', 0, 140, 200, 170, 180)]);
+    expect(merged.map((b) => `${b.kind} ${b.bounds[0]}-${b.bounds[2]}`)).toEqual(['long 90-200', 'short 90-200']);
+  });
+
+  it('keeps other columns, pages, edges and unknown columns apart', () => {
+    const merged = mergeBands([band('long', 0, 90, 130), band('long', 1, 90, 130), band('long', 0, 140, 200, 210), band('long', undefined, 90, 130), band('long', undefined, 140, 200), band('long', 0, 90, 130, 200, 240, 1)]);
+    expect(merged).toHaveLength(6);
   });
 });
 

@@ -1,7 +1,7 @@
 // Bundles the panel.
 //   node packages/panel/build.mjs --dev [--watch]   → dist/dev-panel/ as "Flatter (dev)" (own plugin id, so it runs
 //                                                   beside an installed release); load it with tools/indesign/uxp-load.mjs
-//   node packages/panel/build.mjs [--out <file>]     → release bundle (packages/panel/plugin/index.js, or <file>)
+//   node packages/panel/build.mjs --out <file>       → release bundle (tools/package-panel.mjs stages it outside plugin/)
 import { context } from 'esbuild';
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,7 +13,8 @@ const watch = process.argv.includes('--watch');
 // --out <file>: write the bundle elsewhere (the release package is staged outside plugin/).
 const outArg = process.argv.indexOf('--out');
 const manifest = JSON.parse(readFileSync(resolve(here, 'plugin/manifest.json'), 'utf8'));
-let outfile = outArg > 0 ? resolve(process.argv[outArg + 1]) : resolve(here, 'plugin/index.js');
+// Never into plugin/: a stale bundle there loaded if the UXP Developer Tool was pointed at the source folder (2026-11-26).
+let outfile = outArg > 0 ? resolve(process.argv[outArg + 1]) : resolve(here, '../../dist/release/index.js');
 if (dev && outArg < 0) {
   // The dev panel gets its own id and name, so it never clashes with an installed release.
   const stage = resolve(here, '../../dist/dev-panel');

@@ -186,7 +186,6 @@ export interface GermanAnalysis {
   /** Joints that differ between equally good parses: the word is ambiguous there. */
   ambiguousJoints: number[];
   /** The lexicon covered the word. */
-  parsed: boolean;
 }
 
 function syllabifyWithJoints(word: string, joints: number[]): number[] {
@@ -204,7 +203,7 @@ export function analyseGerman(word: string): GermanAnalysis {
   const lower = word.toLowerCase();
   const parses = parseCompound(lower);
   if (parses.length === 0) {
-    return { points: syllabifyWithJoints(lower, []), joints: [], ambiguousJoints: [], parsed: false };
+    return { points: syllabifyWithJoints(lower, []), joints: [], ambiguousJoints: [] };
   }
   // Best parses: fewest stems, then fewest parts. Ties are genuine ambiguities.
   const minStems = Math.min(...parses.map((p) => p.stems));
@@ -217,5 +216,5 @@ export function analyseGerman(word: string): GermanAnalysis {
   const ambiguous = allJoints.filter((j) => !jointSets.every((s) => s.has(j)));
   const pointSets = best.map((p) => new Set(syllabifyWithJoints(lower, p.joints)));
   const points = [...pointSets[0]!].filter((x) => pointSets.every((s) => s.has(x)));
-  return { points, joints: shared.sort((a, b) => a - b), ambiguousJoints: ambiguous.sort((a, b) => a - b), parsed: true };
+  return { points, joints: shared.sort((a, b) => a - b), ambiguousJoints: ambiguous.sort((a, b) => a - b) };
 }

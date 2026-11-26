@@ -26,7 +26,7 @@ export const FIXED_FROM_AUTO = 'fixed leading (from auto)';
 
 export const REQUIRED_SETTINGS: readonly RequiredSetting[] = [
   { attribute: 'composer', expected: 'Adobe Single-line Composer', fix: () => 'Adobe Single-line Composer', reason: 'The paragraph composer breaks earlier than the teeth allow; steering needs the single-line composer.', required: true },
-  { attribute: 'justification', expected: 'LEFT_ALIGN', fix: () => 'LEFT_ALIGN', reason: 'Flatter sets left-aligned ragged text.', required: true },
+  { attribute: 'justification', expected: (v) => RAGGED_ALIGNMENTS.has(String(v)), fix: () => 'LEFT_ALIGN', reason: 'Flatter sets ragged text: left- or right-aligned (justified text becomes left-aligned).', required: true },
   { attribute: 'balanceRaggedLines', expected: (v) => v === false || v === 'NO_BALANCING', fix: () => false, reason: 'Balance Ragged Lines fights the planned rhythm.', required: true },
   { attribute: 'hyphenationZone', expected: 0, fix: () => 0, reason: 'A hyphenation zone lets InDesign skip planned hyphenation points.', required: true },
   { attribute: 'hyphenateLastWord', expected: false, fix: () => false, reason: 'Never hyphenate the last word of a paragraph (plan §4.4).', required: false },
@@ -49,13 +49,28 @@ export interface SettingIssue {
 }
 
 /**
- * Alignments Flatter leaves alone (ADR-026): a centred heading or a right-aligned caption inside a ragged story keeps
- * its alignment and is not planned. Left-aligned and justified paragraphs are set ragged.
+ * Alignments Flatter leaves alone: a centred heading inside a ragged story keeps its alignment and is not planned
+ * (ADR-026). Right-aligned text is set ragged on the left since 2026-11-26 (ADR-037).
  */
-const KEPT_ALIGNMENTS = new Set(['CENTER_ALIGN', 'RIGHT_ALIGN', 'TO_BINDING_SIDE', 'AWAY_FROM_BINDING_SIDE']);
+const KEPT_ALIGNMENTS = new Set(['CENTER_ALIGN']);
 
 export function keepsAlignment(justification: string): boolean {
   return KEPT_ALIGNMENTS.has(justification);
+}
+
+/** Ragged alignments Flatter sets as they are; justified ones become left-aligned. */
+const RAGGED_ALIGNMENTS = new Set(['LEFT_ALIGN', 'RIGHT_ALIGN', 'TO_BINDING_SIDE', 'AWAY_FROM_BINDING_SIDE']);
+
+/**
+ * Whether a paragraph's rag (and Flatter's teeth and strips) is on the left of the line: right-aligned text, and text
+ * aligned towards or away from the spine on the page side where that means right-aligned. `rightHand` is the
+ * line's page: a right-hand page, or a single-sided one (its spine counts as being on the left).
+ */
+export function ragOnLeft(justification: string | undefined, rightHand = true): boolean {
+  if (justification === 'RIGHT_ALIGN') return true;
+  if (justification === 'TO_BINDING_SIDE') return !rightHand;
+  if (justification === 'AWAY_FROM_BINDING_SIDE') return rightHand;
+  return false;
 }
 
 /** Compare one paragraph's current attributes with what the plugin needs. */

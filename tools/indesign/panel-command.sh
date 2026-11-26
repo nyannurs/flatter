@@ -4,7 +4,8 @@
 #   tools/indesign/panel-command.sh '{"cmd":"s4","ticks":20}'
 set -eu
 cmd="$1"
-esc=$(printf '%s' "$cmd" | sed 's/\\/\\\\/g; s/"/\\"/g')
+# Backslashes and double quotes for AppleScript, single quotes for the JavaScript string inside it.
+esc=$(printf '%s' "$cmd" | sed "s/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g; s/'/\\\\\\\\'/g")
 osascript -e "tell application id \"com.adobe.InDesign\" to do script \"app.insertLabel('flatter-dev-result', ''); app.insertLabel('flatter-dev-command', '$esc')\" language javascript" >/dev/null
 tries=0
 while [ "$tries" -lt "${FLATTER_TIMEOUT:-240}" ]; do

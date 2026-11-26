@@ -36,8 +36,21 @@ export interface ParagraphData {
   spaceAfter?: number;
   /** InDesign's "Hyphenate Across Column": when false (Flatter's setting) the last line of a column or frame never hyphenates. */
   hyphenateAcrossColumns?: boolean;
+  /** Right indent (points). */
+  rightIndent?: number;
+  /** InDesign's justification name (LEFT_ALIGN, RIGHT_ALIGN, TO_BINDING_SIDE, …): right-aligned text is ragged on the left. */
+  alignment?: string;
+  /** The document honours text indents with text wrap (textPreferences.honourTextIndentsWithTextWrap). */
+  indentsAtWrap?: boolean;
   /** Content the port found Flatter cannot plan around (shown in the report; no compatibility alarm). */
   unsupported?: string[];
+  /**
+   * A drop cap: its characters hang in an indent beside the first `lines` lines (2026-11-26). They take no room in
+   * the line; those lines are as wide as the read-back shows (from where their text starts).
+   */
+  dropCap?: { lines: number; chars: number };
+  /** The paragraph contains Indent to Here: lines after it start where its next character stands (read back). */
+  indentHere?: boolean;
 }
 
 export interface ReadLine {
