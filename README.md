@@ -1,5 +1,7 @@
 # Flatter
 
+<img src="docs/images/panel.png" alt="The Flatter panel in InDesign" width="260" align="right">
+
 **Beautiful ragged text in InDesign, in one click.**
 
 Flatter is a plugin for Adobe InDesign that gives left-aligned text (Flattersatz) an even, deliberate right edge. Pick a strict long, short, long, short rhythm (**Aesthetic**) or a calm rag tuned for reading (**Functional**). Flatter chooses every line break for you, hyphenates carefully, and keeps words that belong together on one line. German and English.
