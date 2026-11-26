@@ -4,7 +4,7 @@
 
 Flatter is a plugin for Adobe InDesign that gives ragged text (Flattersatz) an even, deliberate edge. Pick a strict long, short, long, short rhythm (**Aesthetic**) or a calm rag tuned for reading (**Functional**). Flatter chooses every line break for you, hyphenates carefully, and keeps phrases together. Left- and right-aligned text, German and English.
 
-### [⬇ Download Flatter](https://github.com/nyannurs/rag-indesign-plugin/releases/latest/download/Flatter.ccx)
+### [⬇ Download Flatter](https://github.com/nyannurs/flatter/releases/latest/download/Flatter.ccx)
 
 Version 0.7.0 · Mac · English InDesign 2026 or newer
 

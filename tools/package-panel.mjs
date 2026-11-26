@@ -1,7 +1,7 @@
 // Builds the release panel and packages it as an installable .ccx (a zip with manifest.json at its root).
 //   npm run package      → dist/Flatter-<version>.ccx, and the same file as dist/Flatter.ccx
 // Upload both to the GitHub release: Flatter.ccx gives the README one download link that always gets the newest version
-// (https://github.com/nyannurs/rag-indesign-plugin/releases/latest/download/Flatter.ccx).
+// (https://github.com/nyannurs/flatter/releases/latest/download/Flatter.ccx).
 // Install by double-clicking the .ccx (Creative Cloud asks to confirm), or with Adobe's installer:
 //   "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install dist/Flatter-<version>.ccx
 import { execFileSync } from 'node:child_process';
