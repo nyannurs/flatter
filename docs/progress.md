@@ -2,6 +2,12 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-26 (later) — Panel screenshot; "Apply does nothing" was InDesign stuck
+
+- README: a screenshot of the 0.6.9 panel (`docs/images/panel.png`, cut out of the designer's screenshot with transparent rounded corners), to the right of the introduction.
+- The designer: Apply and Run self-check did nothing in 0.6.9. The panel had started (its selection listener was registered, the story line showed the selected story) and the engine set a copy of the story without error, but InDesign had run for 21 hours and sat at 100 % CPU in its own run-loop/window code (`sample`: main thread in CoreFoundation run-loop observers, nothing of Flatter's). A panel gets no time then, so no click reached it. Restarting InDesign fixed it. If the panel ignores every click, even Run self-check, check `ps -o %cpu= -p $(pgrep -x "Adobe InDesign 2027")` before suspecting Flatter.
+- Found on the way (open): a copy of that story (2 paragraphs, Avara ß Black, facing pages, spread ruler origin) set only 2 of 16 lines as planned (`i21-font-mismatch`, 4 rounds). Earlier Avara stories set every line; not yet investigated.
+
 ## 2026-11-26 — README for a public release
 
 The designer wants to release Flatter publicly, easy enough for non-technical users. README rewritten for them: one download link that always gets the newest version (`releases/latest/download/Flatter.ccx`; `npm run package` now also writes `dist/Flatter.ccx`, and v0.6.9 has it attached), a four-step install with what Creative Cloud shows and what to click (checked against Adobe's UXP install guide: open the host app once first, double-click the `.ccx`, "Install", uninstall via Manage Plugins → ••• → Uninstall), a short Use section matching the ADR-034 panel, sending files to others (Freeze), troubleshooting (double-click does nothing, failed install, panel not found, the alarm box, slow long stories, headings left alone), uninstall, and the developer part folded away.
