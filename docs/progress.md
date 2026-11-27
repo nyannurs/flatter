@@ -2,9 +2,9 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
-## 2026-11-27 — Non-English InDesign: composer and language names (ADR-039); release 0.7.1
+## 2026-11-27 — Non-English InDesign: composer and language names (ADR-039); release 0.7.1 published
 
-A friend of the designer (German-language InDesign 2026, 21.3, Windows) got the compatibility alarm: InDesign refused the English composer name "Adobe Single-line Composer", so every check failed. Composer, the None swatch and the self-check's language are now looked up through InDesign's language-independent keys (ExtendScript `translateKeyString`), and languages are recognised by locale code (German "Englisch: Großbritannien" would have been hyphenated as US English, "[Keine Sprache]" not recognised). New spike `i53-local-names` (in `test:indesign`); 3 new unit tests. Next: the friend installs 0.7.1 and reports whether the alarm is gone; no non-English InDesign is available here.
+A friend of the designer (German-language InDesign 2026, 21.3, Windows) got the compatibility alarm: InDesign refused the English composer name "Adobe Single-line Composer", so every check failed. Composer, the None swatch and the self-check's language are now looked up through InDesign's language-independent keys (ExtendScript `translateKeyString`), and languages are recognised by locale code (German "Englisch: Großbritannien" would have been hyphenated as US English, "[Keine Sprache]" not recognised). New spike `i53-local-names` (in `test:indesign`); 3 new unit tests. Published as GitHub release v0.7.1 (both `.ccx` assets; the latest-download link serves 0.7.1) and installed for the designer (UPIA lists 0.7.1, enabled). Next: the friend installs 0.7.1 and reports whether the alarm is gone; no non-English InDesign is available here.
 
 ## 2026-11-26 (night, late) — Release 0.7.0: InDesign 2026 or newer, README for the new workflow
 
