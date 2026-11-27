@@ -1,7 +1,7 @@
 import { createHyphenator } from '@flatter/hyphenation';
 import type { Item } from '@flatter/core';
 import { describe, expect, it } from 'vitest';
-import { applyToPort, FlatterSession, languageOf, MIXED_LANGUAGES, NO_LANGUAGE, paragraphLanguages, type LanguageRun } from '../src/index.ts';
+import { applyToPort, FlatterSession, indesignNames, isNoLanguage, knownHyphenLanguage, languageOf, MIXED_LANGUAGES, NO_LANGUAGE, paragraphLanguages, rememberLocale, REQUIRED_SETTINGS, type LanguageRun } from '../src/index.ts';
 import { FakeInDesign } from './fake-indesign.ts';
 
 const DE = 'German: 2006 Reform';
@@ -92,5 +92,46 @@ describe('languages inside a paragraph', () => {
     const qualities = items.slice(k).filter((it) => it.type === 'penalty' && it.flagged).slice(0, 2).map((it) => (it as { quality?: string }).quality);
     expect(qualities.length).toBeGreaterThan(0);
     expect(qualities.every((q) => q === 'C')).toBe(true);
+  });
+});
+
+describe('language names of a non-English InDesign (ADR-039)', () => {
+  it('maps names by their locale code', () => {
+    rememberLocale('Deutsch: Rechtschreibreform 2006', 'de_DE');
+    rememberLocale('Deutsch: Schweiz (Rechtschreibreform 2006)', 'de_CH');
+    rememberLocale('Englisch: Großbritannien', 'en_GB');
+    rememberLocale('Englisch: USA', 'en_US');
+    rememberLocale('[Keine Sprache]', 'en_US_POSIX');
+    rememberLocale('Französisch', 'fr_FR');
+    expect(knownHyphenLanguage('Deutsch: Rechtschreibreform 2006')).toBe('de');
+    expect(knownHyphenLanguage('Deutsch: Schweiz (Rechtschreibreform 2006)')).toBe('de-CH');
+    expect(knownHyphenLanguage('Englisch: Großbritannien')).toBe('en-GB');
+    expect(knownHyphenLanguage('Englisch: USA')).toBe('en-US');
+    expect(knownHyphenLanguage('[Keine Sprache]')).toBeUndefined();
+    expect(knownHyphenLanguage('Französisch')).toBeUndefined();
+    expect(isNoLanguage('[Keine Sprache]')).toBe(true);
+    expect(isNoLanguage('[No Language]')).toBe(true);
+    expect(isNoLanguage('Englisch: USA')).toBe(false);
+  });
+
+  it('falls back to the name without a locale code', () => {
+    expect(knownHyphenLanguage('German: 2006 Reform')).toBe('de');
+    expect(knownHyphenLanguage('English: UK')).toBe('en-GB');
+    expect(knownHyphenLanguage('Englisch: Vereinigtes Königreich')).toBe('en-GB');
+  });
+});
+
+describe('composer name of a non-English InDesign (ADR-039)', () => {
+  it('checks and fixes the composer by the running InDesign\'s name', () => {
+    const composer = REQUIRED_SETTINGS.find((s) => s.attribute === 'composer')!;
+    const before = indesignNames.singleLineComposer;
+    try {
+      indesignNames.singleLineComposer = 'Adobe Ein-Zeilen-Setzer';
+      expect(composer.fix('de')).toBe('Adobe Ein-Zeilen-Setzer');
+      expect((composer.expected as (v: string, l: string) => boolean)('Adobe Ein-Zeilen-Setzer', 'de')).toBe(true);
+      expect((composer.expected as (v: string, l: string) => boolean)('Adobe Single-line Composer', 'de')).toBe(false);
+    } finally {
+      indesignNames.singleLineComposer = before;
+    }
   });
 });

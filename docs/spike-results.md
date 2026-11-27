@@ -275,3 +275,10 @@ One story per character, inserted every fifth word, Preview on the whole story (
 - **Footnote references, inline graphics, soft hyphens, non-breaking hyphens, dashes, guillemets and quotes**: every line as planned (inline graphics are reported as anchored objects but steer correctly).
 - Stress test after all fixes: 27 cases (18 layouts plus 9 with special characters), all pass; tabs and right indent tabs pass as "reported, text restored".
 
+## Names in InDesign's own language (2026-11-27, `i53-local-names`)
+
+- A German InDesign 2026 (21.3, Windows) refused `composer = 'Adobe Single-line Composer'` ("Ungültiger Wert … String erwartet"): composer names are localised.
+- Language-independent keys: `app.findKeyStrings('Adobe Single-line Composer')` → `$ID/HL Single`; Paragraph Composer `$ID/HL Composer`; German: 2006 Reform `$ID/de_DE_2006`; English: USA `$ID/English: USA`; English: UK `$ID/English: UK`; [No Language] `$ID/[No Language]`; swatch None `$ID/None`.
+- ExtendScript translates them (`app.translateKeyString`) and accepts them as values (`composer = '$ID/HL Single'`, `appliedLanguage = '$ID/de_DE_2006'`, `swatches.itemByName('$ID/None')`). UXP does neither: `translateKeyString` returns the key, and setting `composer` or `appliedLanguage` to a key throws. `app.doScript(text, ScriptLanguage.JAVASCRIPT)` from UXP returns the ExtendScript's last value, so one call resolves all names.
+- Locale codes (`icuLocaleName`, readable from UXP): German 1996/2006/Old Rules de_DE, Swiss de_CH, Austria de_AT, English UK en_GB, USA (also Medical, Legal) en_US, Canadian en_CA, [No Language] en_US_POSIX.
+

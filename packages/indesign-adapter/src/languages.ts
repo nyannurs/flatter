@@ -16,6 +16,27 @@ export const NO_LANGUAGE = '[No Language]';
 /** A word whose letters carry more than one language. */
 export const MIXED_LANGUAGES = 'mixed';
 
+/**
+ * Language names are InDesign's display names and follow InDesign's own language ("Deutsch: Rechtschreibreform 2006",
+ * "[Keine Sprache]"), so the DOM layer also records each name's locale code (2026-11-27, ADR-039). [No Language] has
+ * the code en_US_POSIX.
+ */
+const locales = new Map<string, string>();
+const NO_LANGUAGE_LOCALE = 'en_US_POSIX';
+
+export function rememberLocale(name: string, locale: string): void {
+  if (name && locale) locales.set(name, locale);
+}
+
+export function localeOf(name: string): string | undefined {
+  return locales.get(name);
+}
+
+/** Text InDesign never hyphenates: [No Language], under whatever name this InDesign gives it. */
+export function isNoLanguage(name: string): boolean {
+  return name === NO_LANGUAGE || locales.get(name) === NO_LANGUAGE_LOCALE;
+}
+
 const LETTER = /\p{L}/u;
 
 /**

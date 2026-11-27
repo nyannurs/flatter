@@ -7,17 +7,51 @@
 import { FlatterUserError } from './errors.ts';
 import type { BreakWrite, TrackingWrite } from './bake-chunks.ts';
 import type { BandSpec, LineSlot, ToothSpec } from './geometry.ts';
-import { paragraphLanguages, type LanguageRun } from './languages.ts';
+import { paragraphLanguages, rememberLocale, type LanguageRun } from './languages.ts';
 import { paragraphAt } from './paragraph-match.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 import { textArea } from './geometry.ts';
-import { keepsAlignment, ragOnLeft } from './settings.ts';
+import { indesignNames, keepsAlignment, ragOnLeft } from './settings.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const require: (m: string) => any;
 export const indesign = (): Any => require('indesign');
+
+/**
+ * Names that follow InDesign's own language (ADR-039, 2026-11-27): a German InDesign refused "Adobe Single-line
+ * Composer". InDesign translates its language-independent keys only in ExtendScript (UXP's translateKeyString returns
+ * the key unchanged), so one short ExtendScript call looks them up the first time they are needed.
+ */
+export interface LocalNames {
+  singleLineComposer: string;
+  german: string;
+  none: string;
+}
+const NAME_KEYS: Record<keyof LocalNames, string> = { singleLineComposer: '$ID/HL Single', german: '$ID/de_DE_2006', none: '$ID/None' };
+const ENGLISH_NAMES: LocalNames = { singleLineComposer: 'Adobe Single-line Composer', german: 'German: 2006 Reform', none: 'None' };
+let localNamesCache: LocalNames | undefined;
+
+export function localNames(): LocalNames {
+  if (localNamesCache) return localNamesCache;
+  const keys = Object.keys(NAME_KEYS) as (keyof LocalNames)[];
+  const names: LocalNames = { ...ENGLISH_NAMES };
+  try {
+    const id = indesign();
+    const script = `[${keys.map((k) => `app.translateKeyString('${NAME_KEYS[k]}')`).join(', ')}].join('\\n')`;
+    const out = String(id.app.doScript(script, id.ScriptLanguage.JAVASCRIPT)).split('\n');
+    keys.forEach((k, i) => {
+      const v = out[i];
+      if (v && !v.startsWith('$ID/')) names[k] = v;
+    });
+  } catch {
+    /* keep the English names */
+  }
+  indesignNames.singleLineComposer = names.singleLineComposer;
+  localNamesCache = names;
+  return names;
+}
 
 export const CONTROL_LAYER = 'Flatter (Steuerung)';
 export const TOOTH_LABEL = 'flatter-tooth';
@@ -605,7 +639,7 @@ export class DomPort implements Port {
         used.add(have);
         continue;
       }
-      none ??= this.doc.swatches.itemByName('None');
+      none ??= this.doc.swatches.itemByName(localNames().none);
       const rect = this.doc.pages.item(t.page).rectangles.add({ geometricBounds: t.bounds, strokeWeight: 0, strokeColor: none, fillColor: none, itemLayer: this.layer, nonprinting: true });
       // The text goes on the tooth's left side (a line ending at it), or its right side for right-aligned text.
       rect.textWrapPreferences.properties = { textWrapMode: id.TextWrapModes.BOUNDING_BOX_TEXT_WRAP, textWrapSide: t.textOnRight ? id.TextWrapSideOptions.RIGHT_SIDE : id.TextWrapSideOptions.LEFT_SIDE, textWrapOffset: [0, 0, 0, 0] };
@@ -737,7 +771,7 @@ export class DomPort implements Port {
     const cache = this.bandCache;
     const colors: Record<string, Any> = {};
     const colorOf = (k: BandSpec['kind']) => (colors[k] ??= this.bandColor(k));
-    const none = this.doc.swatches.itemByName('None');
+    const none = this.doc.swatches.itemByName(localNames().none);
     bands.forEach((b, i) => {
       const have = cache[i];
       if (have && have.page === b.page && have.kind === b.kind) {
@@ -1060,7 +1094,7 @@ export class DomPort implements Port {
         /* not settable here */
       }
     }
-    all.composer = 'Adobe Single-line Composer';
+    all.composer = localNames().singleLineComposer;
     all.justification = this.id.Justification.LEFT_ALIGN;
     // The probed word is always the last word of the probe text. Flatter's required settings turn
     // "Hyphenate Last Word" off (a paragraph rule the planner applies itself); copied here it made
@@ -1124,7 +1158,7 @@ export class DomPort implements Port {
       if (typeof ch.contents !== 'string') ch.contents = '\r';
     });
     const all = story.texts.item(0);
-    all.properties = { hyphenation: false, composer: 'Adobe Single-line Composer', justification: id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0, leading: 2 };
+    all.properties = { hyphenation: false, composer: localNames().singleLineComposer, justification: id.Justification.LEFT_ALIGN, leftIndent: 0, rightIndent: 0, firstLineIndent: 0, spaceBefore: 0, spaceAfter: 0, leading: 2 };
     // Nothing that moves text to another column or frame, or indents the first letters (no effect on widths).
     for (const [k, v] of [['startParagraph', id.StartParagraph?.ANYWHERE], ['keepWithNext', 0], ['keepLinesTogether', false], ['dropCapCharacters', 0], ['dropCapLines', 0], ['alignToBaseline', false]] as const) {
       try {
@@ -1232,7 +1266,15 @@ export function readLanguageRuns(story: Any): LanguageRun[] {
   const nameOf = (l: Any): string => {
     const spec = typeof l?.toSpecifier === 'function' ? String(l.toSpecifier()) : undefined;
     if (spec === undefined) return String(l?.name ?? l);
-    if (!names.has(spec)) names.set(spec, String(l.name));
+    if (!names.has(spec)) {
+      const name = String(l.name);
+      names.set(spec, name);
+      try {
+        rememberLocale(name, String(l.icuLocaleName));
+      } catch {
+        /* no locale code: the name alone decides */
+      }
+    }
     return names.get(spec)!;
   };
   const out: LanguageRun[] = [];

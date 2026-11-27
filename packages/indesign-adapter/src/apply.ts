@@ -9,7 +9,7 @@ import { bandsFor, mergeBands, slotsForPlan, textArea, toothFor, sameSlot, type 
 import { ragOnLeft } from './settings.ts';
 import { itemsFromMeasured, mergePoints, type MeasuredParagraph } from './items.ts';
 import { predictSlots, type FlowParagraph } from './flow.ts';
-import { languageOf, MIXED_LANGUAGES, NO_LANGUAGE } from './languages.ts';
+import { isNoLanguage, languageOf, localeOf, MIXED_LANGUAGES } from './languages.ts';
 import type { ParagraphData, Port, ReadLine, TrackingSpan } from './port.ts';
 
 /** Read-back rounds after steering (see FlatterSession.verify). */
@@ -126,8 +126,18 @@ export function hyphenLanguage(name: string): HyphenLanguage {
 
 /** The hyphenation module's language for an InDesign language name, or undefined when our rules do not cover it. */
 export function knownHyphenLanguage(name: string): HyphenLanguage | undefined {
+  // By locale code where the DOM layer recorded one: names follow InDesign's own language (ADR-039).
+  const locale = localeOf(name);
+  if (isNoLanguage(name)) return undefined;
+  if (locale) {
+    if (/^de_CH/.test(locale)) return 'de-CH';
+    if (/^de/.test(locale)) return 'de';
+    if (/^en_GB/.test(locale)) return 'en-GB';
+    if (/^en/.test(locale)) return 'en-US';
+    return undefined;
+  }
   if (/German|Deutsch/i.test(name)) return /Swiss|Schweiz/i.test(name) ? 'de-CH' : 'de';
-  if (/\bUK\b|British/i.test(name)) return 'en-GB';
+  if (/\bUK\b|British|Großbritannien|Vereinigtes Königreich/i.test(name)) return 'en-GB';
   if (/English|Englisch/i.test(name)) return 'en-US';
   return undefined;
 }
@@ -195,7 +205,7 @@ export class FlatterSession {
         while (e < data.chars.length && LETTER.test(data.chars[e]!)) e++;
         if (e - k >= 5) {
           const language = wordLanguage(k, e - k);
-          if (language !== MIXED_LANGUAGES && language !== NO_LANGUAGE) {
+          if (language !== MIXED_LANGUAGES && !isNoLanguage(language)) {
             if (!wordsByLanguage.has(language)) wordsByLanguage.set(language, new Set());
             wordsByLanguage.get(language)!.add(data.chars.slice(k, e).join(''));
           }
@@ -215,7 +225,7 @@ export class FlatterSession {
       }
       const points = (w: string, at: number) => {
         const language = wordLanguage(at, Array.from(w).length);
-        if (language === MIXED_LANGUAGES || language === NO_LANGUAGE) return [];
+        if (language === MIXED_LANGUAGES || isNoLanguage(language)) return [];
         // Languages our rules do not cover: InDesign's points only, as class C (Normal mode).
         const known = knownHyphenLanguage(language);
         const ours = known ? this.hyphenator(known).points(w) : [];

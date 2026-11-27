@@ -331,3 +331,12 @@ The designer asked for a codebase audit (bugs, dead code, robustness, best pract
 - Undo steps roll back in the story's own document; the whole-story job stops when another undo step came in between; slider moves after Cmd+Z find the teeth again; soft hyphens at line ends count as hyphenated; Remove restores settings one at a time.
 - Spikes are typechecked (`tools/indesign/spikes/tsconfig.json`, in `npm run typecheck`); `panel:release` and the stale bundle in `packages/panel/plugin/` are gone (release builds only through `npm run package`).
 
+## ADR-039: Names that follow InDesign's own language (2026-11-27)
+
+A tester with a German-language InDesign 2026 on Windows got the compatibility alarm on every check: "Ungültiger Wert für Einrichtung der Eigenschaft composer … Adobe Single-line Composer". InDesign's composer, swatch and language names are display names in InDesign's own language, and a German InDesign refuses the English ones.
+
+- **Composer, the None swatch and the self-check's German** are looked up once per session through InDesign's language-independent keys (`$ID/HL Single`, `$ID/None`, `$ID/de_DE_2006`) with `app.translateKeyString` in one short ExtendScript call (`localNames` in `dom-port.ts`). UXP cannot do it: its `translateKeyString` returns the key, and UXP refuses `$ID/` keys as property values (measured, `i53-local-names`). The English names stay as the fallback.
+- **The settings check compares the composer with that name** (`indesignNames.singleLineComposer` in `settings.ts`, set by `localNames`); `checkSettings` resolves the names first.
+- **Languages are recognised by locale code** (`icuLocaleName`: de_DE, de_CH, en_GB, en_US; [No Language] is en_US_POSIX), recorded when the language runs are read (`rememberLocale`). The names still go back to InDesign unchanged when probing. Without codes, the names are matched as before, now also "Großbritannien".
+- Untested in a non-English InDesign here; the tester's InDesign is the check.
+

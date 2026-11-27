@@ -8,7 +8,7 @@ Flatter is a plugin for Adobe InDesign that gives ragged text (Flattersatz) an e
 
 ### [⬇ Download Flatter](https://github.com/nyannurs/flatter/releases/latest/download/Flatter.ccx)
 
-Version 0.7.0 · Mac · English InDesign 2026 or newer
+Version 0.7.1 · Mac · English InDesign 2026 or newer
 
 ## AI Disclaimer
 

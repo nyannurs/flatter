@@ -5,7 +5,7 @@
  */
 import { compatibilityAlarms } from './apply.ts';
 import { applyFlatter, freezeFlatter, inPoints, isFrozen, removeFlatter, setWholeStory, unfreezeFlatter } from './dom.ts';
-import { asArray, indesign, type Any } from './dom-port.ts';
+import { asArray, indesign, localNames, type Any } from './dom-port.ts';
 
 export interface SelfCheck {
   name: string;
@@ -61,7 +61,7 @@ export function selfCheck(): SelfCheckResult {
     const frame = inPoints(() => doc.pages.item(0).textFrames.add({ geometricBounds: [40, 40, 860, 290] }));
     frame.contents = SELF_CHECK_TEXT;
     const story = frame.parentStory;
-    story.texts.item(0).properties = { appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13, appliedLanguage: 'German: 2006 Reform', tracking: 0 };
+    story.texts.item(0).properties = { appliedFont: 'Minion Pro\tRegular', pointSize: 10, leading: 13, appliedLanguage: localNames().german, tracking: 0 };
     const original = String(story.contents);
     let plain: Any;
     check('Lines set where Flatter steers them', () => {

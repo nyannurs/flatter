@@ -2,6 +2,10 @@
 
 Newest entry first. Each entry says what changed, where things stand, and what comes next.
 
+## 2026-11-27 — Non-English InDesign: composer and language names (ADR-039); release 0.7.1
+
+A friend of the designer (German-language InDesign 2026, 21.3, Windows) got the compatibility alarm: InDesign refused the English composer name "Adobe Single-line Composer", so every check failed. Composer, the None swatch and the self-check's language are now looked up through InDesign's language-independent keys (ExtendScript `translateKeyString`), and languages are recognised by locale code (German "Englisch: Großbritannien" would have been hyphenated as US English, "[Keine Sprache]" not recognised). New spike `i53-local-names` (in `test:indesign`); 3 new unit tests. Next: the friend installs 0.7.1 and reports whether the alarm is gone; no non-English InDesign is available here.
+
 ## 2026-11-26 (night, late) — Release 0.7.0: InDesign 2026 or newer, README for the new workflow
 
 The designer's answers to the audit's open points: raise the minimum (manifest `minVersion` 21.0.0, InDesign 2026), say "English InDesign" in the README, leave tabs unsupported for now (a tab's width depends on where it lands, which changes with every break; a right indent tab makes its line flush right), leave several Indent to Here per paragraph, and do not split the long files (only a moderate gain for AI maintenance). README rewritten for the Preview → Apply to whole story workflow, frozen results, languages from InDesign's dictionaries, right-aligned text; the panel screenshot was taken out because it shows the 0.6.9 layout (a new one is needed). Version 0.7.0 built and installed for the designer in place of 0.6.9 (UPIA `--list all` shows 0.7.0, enabled) and published as the GitHub release v0.7.0 (both `.ccx` assets). Before publishing, the designer asked for "Remove" → "Remove rag" and sent a new panel screenshot (`docs/images/panel.png`, cut out with transparent corners; it still shows the old "Remove" label). The designer renamed the repository to `nyannurs/flatter`; README link, `package-panel.mjs` comment and the local `origin` point there now.

@@ -5,8 +5,8 @@
 import { FlatterUserError } from './errors.ts';
 import { bakeChunks, insertedLength, type BreakWrite, type TrackingWrite } from './bake-chunks.ts';
 import { DEFAULT_MAX_ROUNDS, FlatterSession, type ApplyResult, type ApplySettings } from './apply.ts';
-import { asArray, CONTROL_LAYER, controlLayer, DomPort, indesign, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
-import { paragraphLanguages } from './languages.ts';
+import { asArray, CONTROL_LAYER, controlLayer, DomPort, indesign, localNames, readLanguageRuns, removeBands, TOOTH_LABEL, type Any } from './dom-port.ts';
+import { paragraphLanguages, rememberLocale } from './languages.ts';
 import { alignPrints, paragraphAt, paragraphPrint, remapByParagraph } from './paragraph-match.ts';
 import { checkParagraph, checkStory, FIXED_FROM_AUTO, keepsAlignment, REQUIRED_SETTINGS, type SettingIssue, type SettingValue } from './settings.ts';
 
@@ -88,6 +88,7 @@ function undoable<T>(name: string, fn: () => T, doc?: Any): T {
 
 /** The settings Flatter needs, checked for the whole story or only paragraphs from..to (a preview). */
 export function checkSettings(story: Any, only?: { from: number; to: number }): Check {
+  localNames();
   return inPoints(() => readSettings(story, only));
 }
 
@@ -821,7 +822,17 @@ export function setStoryLanguage(stories: readonly Any[], language: string): num
 export function storyLanguage(story: Any): string {
   try {
     // Per paragraph: reading every style range (thousands with tracked word spaces) slows later edits.
-    const names = [...new Set(asArray(story.paragraphs.everyItem().appliedLanguage).map((l: Any) => String(l?.name ?? l)))];
+    const languages = asArray(story.paragraphs.everyItem().appliedLanguage);
+    const names = [...new Set(languages.map((l: Any) => String(l?.name ?? l)))];
+    // Locale codes for the panel's language note (names follow InDesign's own language, ADR-039).
+    for (const name of names) {
+      try {
+        const l = languages.find((x: Any) => String(x?.name ?? x) === name);
+        if (l?.icuLocaleName !== undefined) rememberLocale(name, String(l.icuLocaleName));
+      } catch {
+        /* no locale code */
+      }
+    }
     return names.length === 1 ? names[0]! : names.length ? 'mixed' : '';
   } catch {
     return '';

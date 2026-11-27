@@ -21,11 +21,18 @@ export interface RequiredSetting {
 
 const isGerman = (lang: string) => /German|Deutsch/i.test(lang);
 
+/**
+ * InDesign names that depend on InDesign's own language (ADR-039): a German InDesign calls the composer
+ * "Adobe Ein-Zeilen-Setzer" and refuses the English name. The DOM layer replaces the English defaults with the names
+ * of the running InDesign (`localNames` in dom-port.ts) before any setting is read or written.
+ */
+export const indesignNames = { singleLineComposer: 'Adobe Single-line Composer' };
+
 /** Fix value for auto leading: the DOM layer replaces it with the size × auto leading % in effect. */
 export const FIXED_FROM_AUTO = 'fixed leading (from auto)';
 
 export const REQUIRED_SETTINGS: readonly RequiredSetting[] = [
-  { attribute: 'composer', expected: 'Adobe Single-line Composer', fix: () => 'Adobe Single-line Composer', reason: 'The paragraph composer breaks earlier than the teeth allow; steering needs the single-line composer.', required: true },
+  { attribute: 'composer', expected: (v) => v === indesignNames.singleLineComposer, fix: () => indesignNames.singleLineComposer, reason: 'The paragraph composer breaks earlier than the teeth allow; steering needs the single-line composer.', required: true },
   { attribute: 'justification', expected: (v) => RAGGED_ALIGNMENTS.has(String(v)), fix: () => 'LEFT_ALIGN', reason: 'Flatter sets ragged text: left- or right-aligned (justified text becomes left-aligned).', required: true },
   { attribute: 'balanceRaggedLines', expected: (v) => v === false || v === 'NO_BALANCING', fix: () => false, reason: 'Balance Ragged Lines fights the planned rhythm.', required: true },
   { attribute: 'hyphenationZone', expected: 0, fix: () => 0, reason: 'A hyphenation zone lets InDesign skip planned hyphenation points.', required: true },
