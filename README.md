@@ -84,7 +84,7 @@ Open the Creative Cloud app → **Manage Plugins** (in the app's menu or under S
 
 ## Show me your work
 
-If you use Flatter in a project, I'd love to see it: [nyannurs@gmail.com](mailto:nyannurs@gmail.com). A mention is welcome but never required.
+If you use Flatter in a project, I'd love to see it: nyannurs [at] gmail [dot] com. A mention is welcome but never required.
 
 ## Licence
 
