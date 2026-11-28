@@ -82,6 +82,10 @@ Open the Creative Cloud app → **Manage Plugins** (in the app's menu or under S
 - Not on the Adobe Marketplace yet, which is why Creative Cloud shows a warning when you install it.
 - Found a bug or have an idea? [Open an issue](../../issues/new).
 
+## Show me your work
+
+If you use Flatter in a project, I'd love to see it: [nyannurs@gmail.com](mailto:nyannurs@gmail.com). A mention is welcome but never required.
+
 ## Licence
 
 Flatter is free. You may use it for any work, including paid client work, and pass it on to others. You may not sell it or use it to build a competing product. The legal text is the [PolyForm Shield License 1.0.0](LICENSE.md).
